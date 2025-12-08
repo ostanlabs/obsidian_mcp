@@ -131,6 +131,7 @@ export interface Config {
   vaultPath: string;
   accomplishmentsFolder: string;
   defaultCanvas: string;
+  contextDocsFolder?: string; // Optional folder for additional context documents
 }
 
 // Position
