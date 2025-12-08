@@ -1,0 +1,87 @@
+// Export all tool definitions and handlers
+export {
+  manageAccomplishmentDefinition,
+  handleManageAccomplishment,
+  type ManageAccomplishmentInput,
+} from './manage-accomplishment.js';
+
+export {
+  manageDependencyDefinition,
+  handleManageDependency,
+  type ManageDependencyInput,
+} from './manage-dependency.js';
+
+export {
+  manageTaskDefinition,
+  handleManageTask,
+  type ManageTaskInput,
+} from './manage-task.js';
+
+export {
+  setWorkFocusDefinition,
+  handleSetWorkFocus,
+  type SetWorkFocusInput,
+} from './set-work-focus.js';
+
+export {
+  getAccomplishmentDefinition,
+  handleGetAccomplishment,
+  type GetAccomplishmentInput,
+} from './get-accomplishment.js';
+
+export {
+  listAccomplishmentsDefinition,
+  handleListAccomplishments,
+  type ListAccomplishmentsInput,
+} from './list-accomplishments.js';
+
+export {
+  getCurrentWorkDefinition,
+  handleGetCurrentWork,
+  type GetCurrentWorkInput,
+} from './get-current-work.js';
+
+export {
+  getBlockedItemsDefinition,
+  handleGetBlockedItems,
+  type GetBlockedItemsInput,
+} from './get-blocked-items.js';
+
+export {
+  getReadyToStartDefinition,
+  handleGetReadyToStart,
+  type GetReadyToStartInput,
+} from './get-ready-to-start.js';
+
+export {
+  getProjectStatusDefinition,
+  handleGetProjectStatus,
+  type GetProjectStatusInput,
+} from './get-project-status.js';
+
+// All tool definitions for registration
+export const allToolDefinitions = [
+  manageAccomplishmentDefinition,
+  manageDependencyDefinition,
+  manageTaskDefinition,
+  setWorkFocusDefinition,
+  getAccomplishmentDefinition,
+  listAccomplishmentsDefinition,
+  getCurrentWorkDefinition,
+  getBlockedItemsDefinition,
+  getReadyToStartDefinition,
+  getProjectStatusDefinition,
+];
+
+// Import definitions for the array
+import { manageAccomplishmentDefinition } from './manage-accomplishment.js';
+import { manageDependencyDefinition } from './manage-dependency.js';
+import { manageTaskDefinition } from './manage-task.js';
+import { setWorkFocusDefinition } from './set-work-focus.js';
+import { getAccomplishmentDefinition } from './get-accomplishment.js';
+import { listAccomplishmentsDefinition } from './list-accomplishments.js';
+import { getCurrentWorkDefinition } from './get-current-work.js';
+import { getBlockedItemsDefinition } from './get-blocked-items.js';
+import { getReadyToStartDefinition } from './get-ready-to-start.js';
+import { getProjectStatusDefinition } from './get-project-status.js';
+
