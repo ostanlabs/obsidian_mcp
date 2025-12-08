@@ -59,6 +59,18 @@ export {
   type GetProjectStatusInput,
 } from './get-project-status.js';
 
+export {
+  readDocsDefinition,
+  handleReadDocs,
+  type ReadDocsInput,
+} from './read-docs.js';
+
+export {
+  updateDocDefinition,
+  handleUpdateDoc,
+  type UpdateDocInput,
+} from './update-doc.js';
+
 // All tool definitions for registration
 export const allToolDefinitions = [
   manageAccomplishmentDefinition,
@@ -71,6 +83,8 @@ export const allToolDefinitions = [
   getBlockedItemsDefinition,
   getReadyToStartDefinition,
   getProjectStatusDefinition,
+  readDocsDefinition,
+  updateDocDefinition,
 ];
 
 // Import definitions for the array
@@ -84,4 +98,6 @@ import { getCurrentWorkDefinition } from './get-current-work.js';
 import { getBlockedItemsDefinition } from './get-blocked-items.js';
 import { getReadyToStartDefinition } from './get-ready-to-start.js';
 import { getProjectStatusDefinition } from './get-project-status.js';
+import { readDocsDefinition } from './read-docs.js';
+import { updateDocDefinition } from './update-doc.js';
 

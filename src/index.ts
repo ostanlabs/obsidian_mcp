@@ -21,6 +21,8 @@ import {
   handleGetBlockedItems,
   handleGetReadyToStart,
   handleGetProjectStatus,
+  handleReadDocs,
+  handleUpdateDoc,
 } from './tools/index.js';
 
 // Create server instance
@@ -98,6 +100,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_project_status':
         result = await handleGetProjectStatus(config, args as any);
+        break;
+
+      case 'read_docs':
+        result = await handleReadDocs(config, args as any);
+        break;
+
+      case 'update_doc':
+        result = await handleUpdateDoc(config, args as any);
         break;
 
       default:
