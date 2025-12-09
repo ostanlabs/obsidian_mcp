@@ -186,7 +186,7 @@ Once configured, ask your AI assistant things like:
 > "Add a section about API design to the architecture doc"
 > "Create a new doc for meeting notes"
 
-## 🔧 Available Tools (13 total)
+## 🔧 Available Tools (12 total)
 
 | Tool | Purpose |
 |------|---------|
@@ -202,7 +202,6 @@ Once configured, ask your AI assistant things like:
 | `get_project_status` | Get project statistics and overview |
 | `read_docs` | Read context documents |
 | `update_doc` | Create, update, or delete context documents |
-| `sync_dependencies` | Sync canvas edges to MD frontmatter (batch update) |
 
 ## 🔄 Notion Sync (via Plugin)
 
