@@ -71,6 +71,12 @@ export {
   type UpdateDocInput,
 } from './update-doc.js';
 
+export {
+  syncDependenciesDefinition,
+  handleSyncDependencies,
+  type SyncDependenciesInput,
+} from './sync-dependencies.js';
+
 // All tool definitions for registration
 export const allToolDefinitions = [
   manageAccomplishmentDefinition,
@@ -85,6 +91,7 @@ export const allToolDefinitions = [
   getProjectStatusDefinition,
   readDocsDefinition,
   updateDocDefinition,
+  syncDependenciesDefinition,
 ];
 
 // Import definitions for the array
@@ -100,4 +107,5 @@ import { getReadyToStartDefinition } from './get-ready-to-start.js';
 import { getProjectStatusDefinition } from './get-project-status.js';
 import { readDocsDefinition } from './read-docs.js';
 import { updateDocDefinition } from './update-doc.js';
+import { syncDependenciesDefinition } from './sync-dependencies.js';
 
