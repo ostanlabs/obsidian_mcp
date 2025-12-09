@@ -502,6 +502,48 @@ type Priority = "Low" | "Medium" | "High" | "Critical";
 
 ---
 
+### 13. sync_dependencies
+
+**Purpose:** Sync all dependencies from canvas edges to accomplishment frontmatter. Reads all edges from the canvas and updates the `depends_on` array in each accomplishment's MD file to match.
+
+**Use cases:**
+- Initialize dependencies after manually drawing arrows on canvas
+- Fix sync issues between canvas edges and MD files
+- Batch update all accomplishments after importing a canvas
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `canvas_source` | string | No | Canvas file (default: DEFAULT_CANVAS) |
+
+**Returns:**
+```json
+{
+  "success": true,
+  "canvas_source": "projects/main.canvas",
+  "total_accomplishments": 10,
+  "updated_count": 3,
+  "updates": [
+    {
+      "id": "ACC-002",
+      "title": "Build Feature",
+      "old_depends_on": [],
+      "new_depends_on": ["ACC-001"]
+    },
+    {
+      "id": "ACC-003",
+      "title": "Write Tests",
+      "old_depends_on": ["ACC-001"],
+      "new_depends_on": ["ACC-001", "ACC-002"]
+    }
+  ],
+  "errors": []
+}
+```
+
+---
+
 ## Positioning Algorithm
 
 When creating accomplishments or adding dependencies, nodes are positioned on the canvas using this algorithm:

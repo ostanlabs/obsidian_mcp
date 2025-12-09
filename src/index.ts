@@ -23,6 +23,7 @@ import {
   handleGetProjectStatus,
   handleReadDocs,
   handleUpdateDoc,
+  handleSyncDependencies,
 } from './tools/index.js';
 
 // Create server instance
@@ -108,6 +109,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'update_doc':
         result = await handleUpdateDoc(config, args as any);
+        break;
+
+      case 'sync_dependencies':
+        result = await handleSyncDependencies(config, args as any);
         break;
 
       default:
