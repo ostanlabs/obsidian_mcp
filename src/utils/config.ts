@@ -4,7 +4,7 @@ export function getConfig(): Config {
   const vaultPath = process.env.VAULT_PATH;
   const accomplishmentsFolder = process.env.ACCOMPLISHMENTS_FOLDER;
   const defaultCanvas = process.env.DEFAULT_CANVAS;
-  const contextDocsFolder = process.env.CONTEXT_DOCS_FOLDER; // Optional
+  const workspacesJson = process.env.WORKSPACES;
 
   if (!vaultPath) {
     throw new Error('VAULT_PATH environment variable is required');
@@ -16,11 +16,30 @@ export function getConfig(): Config {
     throw new Error('DEFAULT_CANVAS environment variable is required');
   }
 
+  // Parse WORKSPACES JSON (optional, defaults to empty object)
+  let workspaces: Record<string, string> = {};
+  if (workspacesJson) {
+    try {
+      workspaces = JSON.parse(workspacesJson);
+      // Validate that all values are strings (paths)
+      for (const [name, path] of Object.entries(workspaces)) {
+        if (typeof path !== 'string') {
+          throw new Error(`Workspace "${name}" path must be a string`);
+        }
+      }
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        throw new Error(`WORKSPACES environment variable is not valid JSON: ${e.message}`);
+      }
+      throw e;
+    }
+  }
+
   return {
     vaultPath,
     accomplishmentsFolder,
     defaultCanvas,
-    contextDocsFolder: contextDocsFolder || undefined,
+    workspaces,
   };
 }
 
@@ -40,8 +59,17 @@ export function getRelativeAccomplishmentPath(config: Config, title: string): st
   return `${config.accomplishmentsFolder}/${title}.md`;
 }
 
-export function getContextDocsFolderPath(config: Config): string | undefined {
-  if (!config.contextDocsFolder) return undefined;
-  return `${config.vaultPath}/${config.contextDocsFolder}`;
+/**
+ * Get the absolute path for a workspace
+ */
+export function getWorkspacePath(config: Config, workspaceName: string): string | undefined {
+  return config.workspaces[workspaceName];
+}
+
+/**
+ * Get all workspace names
+ */
+export function getWorkspaceNames(config: Config): string[] {
+  return Object.keys(config.workspaces);
 }
 
