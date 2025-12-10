@@ -131,7 +131,7 @@ export interface Config {
   vaultPath: string;
   accomplishmentsFolder: string;
   defaultCanvas: string;
-  contextDocsFolder?: string; // Optional folder for additional context documents
+  workspaces: Record<string, string>; // Map of workspace name to absolute path
 }
 
 // Position

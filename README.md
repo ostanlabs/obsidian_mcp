@@ -66,7 +66,7 @@ Add to your MCP client configuration (e.g., Claude Desktop, Cursor):
         "VAULT_PATH": "/path/to/your/obsidian/vault",
         "ACCOMPLISHMENTS_FOLDER": "accomplishments",
         "DEFAULT_CANVAS": "projects/main.canvas",
-        "CONTEXT_DOCS_FOLDER": "docs"
+        "WORKSPACES": "{\"project_docs\": \"/path/to/project/docs\", \"product_docs\": \"/path/to/product/docs\"}"
       }
     }
   }
@@ -78,7 +78,7 @@ Add to your MCP client configuration (e.g., Claude Desktop, Cursor):
 | `VAULT_PATH` | Yes | Absolute path to your Obsidian vault |
 | `ACCOMPLISHMENTS_FOLDER` | Yes | Folder for accomplishment files (relative to vault) |
 | `DEFAULT_CANVAS` | Yes | Your main project canvas file |
-| `CONTEXT_DOCS_FOLDER` | No | Folder for reference documents the AI can read/write |
+| `WORKSPACES` | No | JSON object mapping workspace names to absolute paths for document storage |
 
 ### 4. Set Up Your Vault Structure
 
@@ -200,8 +200,10 @@ Once configured, ask your AI assistant things like:
 | `get_blocked_items` | Get items waiting on dependencies |
 | `get_ready_to_start` | Get items with all dependencies complete |
 | `get_project_status` | Get project statistics and overview |
-| `read_docs` | Read context documents |
-| `update_doc` | Create, update, or delete context documents |
+| `list_workspaces` | List available document workspaces |
+| `list_files` | List markdown files in a workspace |
+| `read_docs` | Read documents from a workspace |
+| `update_doc` | Create, update, or delete documents in a workspace |
 
 ## 🔄 Notion Sync (via Plugin)
 

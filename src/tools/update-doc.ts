@@ -1,26 +1,27 @@
 import { Config, ValidationError } from '../models/types.js';
 import {
-  createContextDocument,
-  replaceContextDocument,
-  deleteContextDocument,
+  createDocument,
+  replaceDocument,
+  deleteDocument,
   insertAtLine,
   replaceAtRange,
-  parseDocName,
+  normalizeFilename,
 } from '../services/context-doc-service.js';
 
 export type UpdateDocOperation = 'create' | 'replace' | 'delete' | 'insert_at' | 'replace_at';
 
 export interface UpdateDocInput {
+  workspace: string;
   name: string;
   operation: UpdateDocOperation;
   content?: string;
   start_line?: number;
   end_line?: number;
-  canvas_source?: string;
 }
 
 export interface UpdateDocResult {
   success: boolean;
+  workspace: string;
   operation: UpdateDocOperation;
   doc_name: string;
   message: string;
@@ -33,11 +34,7 @@ export interface UpdateDocResult {
 
 export const updateDocDefinition = {
   name: 'update_doc',
-  description: `Create, update, or delete context documents.
-
-Document locations:
-- Canvas folder: Use plain filename (e.g., "notes.md")
-- Context docs folder: Prefix with "context:" (e.g., "context:reference.md")
+  description: `Create, update, or delete documents in a workspace.
 
 Operations:
 - create: Create a new document (error if exists)
@@ -53,9 +50,13 @@ Line numbering is 0-based:
   inputSchema: {
     type: 'object',
     properties: {
+      workspace: {
+        type: 'string',
+        description: 'Name of the workspace. Use list_workspaces to see available workspaces.',
+      },
       name: {
         type: 'string',
-        description: 'Document filename (with or without .md extension). Prefix with "context:" for context docs folder.',
+        description: 'Document filename (with or without .md extension).',
       },
       operation: {
         type: 'string',
@@ -76,12 +77,8 @@ Line numbering is 0-based:
         description: 'End line (0-based, exclusive) for replace_at operation',
         minimum: 0,
       },
-      canvas_source: {
-        type: 'string',
-        description: 'Canvas file path (relative to vault). Defaults to DEFAULT_CANVAS. Only used for canvas folder docs.',
-      },
     },
-    required: ['name', 'operation'],
+    required: ['workspace', 'name', 'operation'],
   },
 };
 
@@ -89,53 +86,61 @@ export async function handleUpdateDoc(
   config: Config,
   input: UpdateDocInput
 ): Promise<UpdateDocResult> {
-  const { name, operation, content, start_line, end_line, canvas_source } = input;
+  const { workspace, name, operation, content, start_line, end_line } = input;
 
-  // Parse the doc name to handle context: prefix properly
-  const { isContextFolder, filename } = parseDocName(name);
-  const docName = isContextFolder ? `context:${filename}` : filename;
-  
+  if (!workspace) {
+    throw new ValidationError('workspace is required');
+  }
+  if (!name) {
+    throw new ValidationError('name is required');
+  }
+
+  const filename = normalizeFilename(name);
+
   switch (operation) {
     case 'create': {
       if (content === undefined) {
         throw new ValidationError('content is required for create operation');
       }
-      await createContextDocument(config, name, content, canvas_source);
+      await createDocument(config, workspace, name, content);
       const lines = content.split('\n');
       return {
         success: true,
+        workspace,
         operation,
-        doc_name: docName,
-        message: `Created document: ${docName}`,
+        doc_name: filename,
+        message: `Created document: ${filename} in workspace "${workspace}"`,
         line_count: lines.length,
       };
     }
-    
+
     case 'replace': {
       if (content === undefined) {
         throw new ValidationError('content is required for replace operation');
       }
-      await replaceContextDocument(config, name, content, canvas_source);
+      await replaceDocument(config, workspace, name, content);
       const lines = content.split('\n');
       return {
         success: true,
+        workspace,
         operation,
-        doc_name: docName,
-        message: `Replaced content of document: ${docName}`,
+        doc_name: filename,
+        message: `Replaced content of document: ${filename} in workspace "${workspace}"`,
         line_count: lines.length,
       };
     }
-    
+
     case 'delete': {
-      await deleteContextDocument(config, name, canvas_source);
+      await deleteDocument(config, workspace, name);
       return {
         success: true,
+        workspace,
         operation,
-        doc_name: docName,
-        message: `Deleted document: ${docName}`,
+        doc_name: filename,
+        message: `Deleted document: ${filename} from workspace "${workspace}"`,
       };
     }
-    
+
     case 'insert_at': {
       if (content === undefined) {
         throw new ValidationError('content is required for insert_at operation');
@@ -143,13 +148,14 @@ export async function handleUpdateDoc(
       if (start_line === undefined) {
         throw new ValidationError('start_line is required for insert_at operation');
       }
-      await insertAtLine(config, name, content, start_line, canvas_source);
+      await insertAtLine(config, workspace, name, content, start_line);
       const insertedLines = content.split('\n');
       return {
         success: true,
+        workspace,
         operation,
-        doc_name: docName,
-        message: `Inserted ${insertedLines.length} line(s) at line ${start_line} in document: ${docName}`,
+        doc_name: filename,
+        message: `Inserted ${insertedLines.length} line(s) at line ${start_line} in document: ${filename}`,
         line_count: insertedLines.length,
         affected_range: {
           start_line,
@@ -157,7 +163,7 @@ export async function handleUpdateDoc(
         },
       };
     }
-    
+
     case 'replace_at': {
       if (content === undefined) {
         throw new ValidationError('content is required for replace_at operation');
@@ -168,14 +174,15 @@ export async function handleUpdateDoc(
       if (end_line === undefined) {
         throw new ValidationError('end_line is required for replace_at operation');
       }
-      await replaceAtRange(config, name, content, start_line, end_line, canvas_source);
+      await replaceAtRange(config, workspace, name, content, start_line, end_line);
       const newLines = content.split('\n');
       const replacedLineCount = end_line - start_line;
       return {
         success: true,
+        workspace,
         operation,
-        doc_name: docName,
-        message: `Replaced ${replacedLineCount} line(s) with ${newLines.length} line(s) at lines ${start_line}-${end_line} in document: ${docName}`,
+        doc_name: filename,
+        message: `Replaced ${replacedLineCount} line(s) with ${newLines.length} line(s) at lines ${start_line}-${end_line} in document: ${filename}`,
         line_count: newLines.length,
         affected_range: {
           start_line,
@@ -183,7 +190,7 @@ export async function handleUpdateDoc(
         },
       };
     }
-    
+
     default:
       throw new ValidationError(`Unknown operation: ${operation}`);
   }
