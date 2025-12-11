@@ -17,8 +17,7 @@ Settings are provided via MCP server configuration (not runtime tools):
       "env": {
         "VAULT_PATH": "/path/to/obsidian/vault",
         "ACCOMPLISHMENTS_FOLDER": "accomplishments",
-        "DEFAULT_CANVAS": "projects/main.canvas",
-        "WORKSPACES": "{\"project_docs\": \"/path/to/project/docs\", \"product_docs\": \"/path/to/product/docs\"}"
+        "DEFAULT_CANVAS": "projects/main.canvas"
       }
     }
   }
@@ -30,7 +29,27 @@ Settings are provided via MCP server configuration (not runtime tools):
 | `VAULT_PATH` | Yes | Absolute path to Obsidian vault root |
 | `ACCOMPLISHMENTS_FOLDER` | Yes | Folder for accomplishment MD files (relative to vault) |
 | `DEFAULT_CANVAS` | Yes | Default canvas file path (relative to vault) |
-| `WORKSPACES` | No | JSON object mapping workspace names to absolute paths. Used for document storage. |
+
+### Workspaces Configuration
+
+Document workspaces are configured via `workspaces.json` in the vault root. This file is auto-created on first run:
+
+```json
+{
+  "docs": {
+    "path": "/absolute/path/to/vault/docs",
+    "description": "Project documentation and reference materials"
+  },
+  "notes": {
+    "path": "/absolute/path/to/vault/notes",
+    "description": "Meeting notes and daily logs"
+  }
+}
+```
+
+Each workspace entry requires:
+- `path`: Absolute path to the folder containing markdown files
+- `description`: Human-readable description of the workspace contents
 
 ---
 
@@ -429,15 +448,18 @@ type Priority = "Low" | "Medium" | "High" | "Critical";
 
 ### 11. list_workspaces
 
-**Purpose:** List all available workspaces configured via the WORKSPACES environment variable.
+**Purpose:** List all configured workspaces with their descriptions.
 
 **Parameters:** None
 
 **Returns:**
 ```json
 {
-  "workspaces": ["project_docs", "product_docs", "side_notes"],
-  "count": 3
+  "workspaces": [
+    { "name": "docs", "description": "Project documentation and reference materials" },
+    { "name": "notes", "description": "Meeting notes and daily logs" }
+  ],
+  "count": 2
 }
 ```
 
@@ -445,19 +467,20 @@ type Priority = "Low" | "Medium" | "High" | "Critical";
 
 ### 12. list_files
 
-**Purpose:** List all markdown files in a workspace.
+**Purpose:** List all markdown files in a workspace, including files in subfolders.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `workspace` | string | Yes | Name of the workspace to list files from. |
+| `workspace` | string | Yes | Name of the workspace to list files from |
 
 **Returns:**
 ```json
 {
-  "workspace": "project_docs",
-  "files": ["notes.md", "requirements.md", "design.md"],
+  "workspace": "docs",
+  "workspace_description": "Project documentation and reference materials",
+  "files": ["architecture.md", "api/endpoints.md", "api/authentication.md"],
   "count": 3
 }
 ```
@@ -466,38 +489,26 @@ type Priority = "Low" | "Medium" | "High" | "Critical";
 
 ### 13. read_docs
 
-**Purpose:** Read documents from a workspace.
+**Purpose:** Read a document from a workspace.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `workspace` | string | Yes | Name of the workspace to read from. |
-| `doc_name` | string | No | Document filename. If not provided, returns all documents in the workspace. |
-| `from_line` | integer | No | Start line (0-based, inclusive). Only used when `doc_name` is provided. |
-| `to_line` | integer | No | End line (0-based, exclusive). Only used when `doc_name` is provided. |
+| `workspace` | string | Yes | Name of the workspace to read from |
+| `doc_name` | string | Yes | Document filename (with or without .md extension) |
+| `from_line` | integer | No | Start line (0-based, inclusive) |
+| `to_line` | integer | No | End line (0-based, exclusive) |
 
-**Returns (single doc):**
+**Returns:**
 ```json
 {
-  "workspace": "project_docs",
-  "doc_name": "notes.md",
-  "content": "# Notes\n\nSome content...",
-  "line_count": 15,
-  "range": { "from_line": 0, "to_line": 15 }
-}
-```
-
-**Returns (all docs):**
-```json
-{
-  "workspace": "project_docs",
-  "documents": {
-    "notes.md": "# Notes\n...",
-    "reference.md": "# Reference\n..."
-  },
-  "document_count": 2,
-  "document_names": ["notes.md", "reference.md"]
+  "workspace": "docs",
+  "workspace_description": "Project documentation and reference materials",
+  "doc_name": "architecture.md",
+  "content": "# Architecture\n\nThis document describes...",
+  "line_count": 150,
+  "range": { "from_line": 0, "to_line": 150 }
 }
 ```
 
@@ -511,8 +522,8 @@ type Priority = "Low" | "Medium" | "High" | "Critical";
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `workspace` | string | Yes | Name of the workspace. |
-| `name` | string | Yes | Document filename. |
+| `workspace` | string | Yes | Name of the workspace |
+| `name` | string | Yes | Document filename (with or without .md extension) |
 | `operation` | enum | Yes | `"create"` \| `"replace"` \| `"delete"` \| `"insert_at"` \| `"replace_at"` |
 | `content` | string | Conditional | Required for create, replace, insert_at, replace_at. Not needed for delete. |
 | `start_line` | integer | Conditional | Required for insert_at and replace_at. 0-based line number. |
@@ -529,8 +540,9 @@ type Priority = "Low" | "Medium" | "High" | "Critical";
 ```json
 {
   "success": true,
-  "workspace": "project_docs",
   "operation": "insert_at",
+  "workspace": "docs",
+  "workspace_description": "Project documentation and reference materials",
   "doc_name": "notes.md",
   "message": "Inserted 5 line(s) at line 10 in document: notes.md",
   "line_count": 5,

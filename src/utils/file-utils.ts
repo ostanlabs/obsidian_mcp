@@ -44,7 +44,7 @@ export async function fileExists(path: string): Promise<boolean> {
 }
 
 /**
- * List files in directory
+ * List files in directory (non-recursive, returns filenames only)
  */
 export async function listFiles(dirPath: string): Promise<string[]> {
   try {
@@ -52,6 +52,30 @@ export async function listFiles(dirPath: string): Promise<string[]> {
     return entries
       .filter(entry => entry.isFile())
       .map(entry => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * List files recursively in directory (returns relative paths like "subfolder/doc.md")
+ */
+export async function listFilesRecursive(dirPath: string, basePath: string = ''): Promise<string[]> {
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    const files: string[] = [];
+
+    for (const entry of entries) {
+      const relativePath = basePath ? `${basePath}/${entry.name}` : entry.name;
+      if (entry.isFile()) {
+        files.push(relativePath);
+      } else if (entry.isDirectory()) {
+        const subFiles = await listFilesRecursive(`${dirPath}/${entry.name}`, relativePath);
+        files.push(...subFiles);
+      }
+    }
+
+    return files;
   } catch {
     return [];
   }
