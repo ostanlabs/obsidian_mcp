@@ -1,12 +1,6 @@
-import { Config, ValidationError } from '../models/types.js';
-import {
-  createDocument,
-  replaceDocument,
-  deleteDocument,
-  insertAtLine,
-  replaceAtRange,
-  normalizeFilename,
-} from '../services/context-doc-service.js';
+import { Config, ValidationError, NotFoundError, ConflictError } from '../models/types.js';
+import { getWorkspacePath, getWorkspaceDescription } from '../utils/config.js';
+import { readFile, writeFileAtomic, deleteFile, fileExists } from '../utils/file-utils.js';
 
 export type UpdateDocOperation = 'create' | 'replace' | 'delete' | 'insert_at' | 'replace_at';
 
@@ -21,8 +15,9 @@ export interface UpdateDocInput {
 
 export interface UpdateDocResult {
   success: boolean;
-  workspace: string;
   operation: UpdateDocOperation;
+  workspace: string;
+  workspace_description: string;
   doc_name: string;
   message: string;
   line_count?: number;
@@ -36,12 +31,20 @@ export const updateDocDefinition = {
   name: 'update_doc',
   description: `Create, update, or delete documents in a workspace.
 
+Parameters:
+- workspace: Name of the workspace (use list_workspaces to see available workspaces)
+- name: Document filename (with or without .md extension)
+- operation: One of create, replace, delete, insert_at, replace_at
+- content: Content for create/replace/insert_at/replace_at operations
+- start_line: Start line (0-based) for insert_at or replace_at
+- end_line: End line (0-based, exclusive) for replace_at
+
 Operations:
 - create: Create a new document (error if exists)
 - replace: Replace entire content of existing document (error if not exists)
 - delete: Delete the document (error if not exists)
-- insert_at: Insert content starting at start_line (0-based). Existing content shifts down.
-- replace_at: Replace content from start_line to end_line (0-based, start inclusive, end exclusive) with new content.
+- insert_at: Insert content starting at start_line. Existing content shifts down.
+- replace_at: Replace content from start_line to end_line with new content.
 
 Line numbering is 0-based:
 - Line 0 is the first line
@@ -52,11 +55,11 @@ Line numbering is 0-based:
     properties: {
       workspace: {
         type: 'string',
-        description: 'Name of the workspace. Use list_workspaces to see available workspaces.',
+        description: 'Name of the workspace',
       },
       name: {
         type: 'string',
-        description: 'Document filename (with or without .md extension).',
+        description: 'Document filename (with or without .md extension)',
       },
       operation: {
         type: 'string',
@@ -89,27 +92,40 @@ export async function handleUpdateDoc(
   const { workspace, name, operation, content, start_line, end_line } = input;
 
   if (!workspace) {
-    throw new ValidationError('workspace is required');
+    throw new ValidationError('workspace parameter is required');
   }
   if (!name) {
-    throw new ValidationError('name is required');
+    throw new ValidationError('name parameter is required');
   }
 
-  const filename = normalizeFilename(name);
+  const workspacePath = getWorkspacePath(config, workspace);
+  if (!workspacePath) {
+    throw new NotFoundError(`Workspace not found: ${workspace}`);
+  }
+
+  const workspaceDescription = getWorkspaceDescription(config, workspace) || '';
+
+  // Ensure .md extension
+  const filename = name.endsWith('.md') ? name : `${name}.md`;
+  const filePath = `${workspacePath}/${filename}`;
 
   switch (operation) {
     case 'create': {
       if (content === undefined) {
         throw new ValidationError('content is required for create operation');
       }
-      await createDocument(config, workspace, name, content);
+      if (await fileExists(filePath)) {
+        throw new ConflictError(`Document already exists: ${filename} in workspace ${workspace}`);
+      }
+      await writeFileAtomic(filePath, content);
       const lines = content.split('\n');
       return {
         success: true,
-        workspace,
         operation,
+        workspace,
+        workspace_description: workspaceDescription,
         doc_name: filename,
-        message: `Created document: ${filename} in workspace "${workspace}"`,
+        message: `Created document: ${filename}`,
         line_count: lines.length,
       };
     }
@@ -118,26 +134,34 @@ export async function handleUpdateDoc(
       if (content === undefined) {
         throw new ValidationError('content is required for replace operation');
       }
-      await replaceDocument(config, workspace, name, content);
+      if (!await fileExists(filePath)) {
+        throw new NotFoundError(`Document not found: ${filename} in workspace ${workspace}`);
+      }
+      await writeFileAtomic(filePath, content);
       const lines = content.split('\n');
       return {
         success: true,
-        workspace,
         operation,
+        workspace,
+        workspace_description: workspaceDescription,
         doc_name: filename,
-        message: `Replaced content of document: ${filename} in workspace "${workspace}"`,
+        message: `Replaced content of document: ${filename}`,
         line_count: lines.length,
       };
     }
 
     case 'delete': {
-      await deleteDocument(config, workspace, name);
+      if (!await fileExists(filePath)) {
+        throw new NotFoundError(`Document not found: ${filename} in workspace ${workspace}`);
+      }
+      await deleteFile(filePath);
       return {
         success: true,
-        workspace,
         operation,
+        workspace,
+        workspace_description: workspaceDescription,
         doc_name: filename,
-        message: `Deleted document: ${filename} from workspace "${workspace}"`,
+        message: `Deleted document: ${filename}`,
       };
     }
 
@@ -148,18 +172,25 @@ export async function handleUpdateDoc(
       if (start_line === undefined) {
         throw new ValidationError('start_line is required for insert_at operation');
       }
-      await insertAtLine(config, workspace, name, content, start_line);
-      const insertedLines = content.split('\n');
+      if (!await fileExists(filePath)) {
+        throw new NotFoundError(`Document not found: ${filename} in workspace ${workspace}`);
+      }
+      const existingContent = await readFile(filePath);
+      const lines = existingContent.split('\n');
+      const newLines = content.split('\n');
+      lines.splice(start_line, 0, ...newLines);
+      await writeFileAtomic(filePath, lines.join('\n'));
       return {
         success: true,
-        workspace,
         operation,
+        workspace,
+        workspace_description: workspaceDescription,
         doc_name: filename,
-        message: `Inserted ${insertedLines.length} line(s) at line ${start_line} in document: ${filename}`,
-        line_count: insertedLines.length,
+        message: `Inserted ${newLines.length} line(s) at line ${start_line} in document: ${filename}`,
+        line_count: newLines.length,
         affected_range: {
           start_line,
-          end_line: start_line + insertedLines.length,
+          end_line: start_line + newLines.length,
         },
       };
     }
@@ -174,13 +205,20 @@ export async function handleUpdateDoc(
       if (end_line === undefined) {
         throw new ValidationError('end_line is required for replace_at operation');
       }
-      await replaceAtRange(config, workspace, name, content, start_line, end_line);
+      if (!await fileExists(filePath)) {
+        throw new NotFoundError(`Document not found: ${filename} in workspace ${workspace}`);
+      }
+      const existingContent = await readFile(filePath);
+      const lines = existingContent.split('\n');
       const newLines = content.split('\n');
       const replacedLineCount = end_line - start_line;
+      lines.splice(start_line, replacedLineCount, ...newLines);
+      await writeFileAtomic(filePath, lines.join('\n'));
       return {
         success: true,
-        workspace,
         operation,
+        workspace,
+        workspace_description: workspaceDescription,
         doc_name: filename,
         message: `Replaced ${replacedLineCount} line(s) with ${newLines.length} line(s) at lines ${start_line}-${end_line} in document: ${filename}`,
         line_count: newLines.length,

@@ -1,110 +1,175 @@
-# Obsidian Structured Notes MCP Server
+# Obsidian MCP Server
 
-An MCP (Model Context Protocol) server that enables AI assistants to manage structured project accomplishments in Obsidian. Works alongside the [Canvas Structured Items Plugin](https://bitbucket.org/ostanmarc/obsidian-canvas-structured-items/src/master/) for visual project management and Notion synchronization.
+An MCP (Model Context Protocol) server that enables AI assistants to manage structured project accomplishments in Obsidian. Works alongside the [Canvas Structured Items Plugin](https://bitbucket.org/ostanmarc/obsidian-canvas-structured-items/src/master/) for visual project management.
 
-## 🎯 What This Does
+## What This Does
 
-This system lets you:
-- **Plan projects visually** using Obsidian's canvas feature
-- **Break work into accomplishments** - atomic units with outcomes, acceptance criteria, and tasks
-- **Track dependencies** between accomplishments (arrows on canvas)
-- **Let AI assistants help** manage your project through natural conversation
-- **Sync to Notion** for team visibility and mobile access
+This MCP server lets AI assistants:
+- **Manage accomplishments** — create, update, and track work items with outcomes, acceptance criteria, and tasks
+- **Handle dependencies** — define what blocks what, find blocked items, and identify what's ready to start
+- **Track progress** — see project status, current work, and completion statistics
+- **Read and write documents** — access reference materials organized in workspaces
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        Your Workflow                                 │
+│                        Your Workflow                                │
 ├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│   ┌──────────┐      ┌──────────────┐      ┌──────────┐             │
-│   │ Obsidian │◄────►│  MCP Server  │◄────►│    AI    │             │
-│   │  Canvas  │      │  (this repo) │      │ Assistant│             │
-│   └────┬─────┘      └──────────────┘      └──────────┘             │
-│        │                                                            │
-│        ▼                                                            │
-│   ┌──────────┐      ┌──────────────┐                               │
-│   │  Plugin  │─────►│    Notion    │  (optional sync)              │
-│   └──────────┘      └──────────────┘                               │
-│                                                                      │
+│                                                                     │
+│   ┌──────────┐      ┌──────────────┐      ┌──────────┐            │
+│   │ Obsidian │◄────►│  MCP Server  │◄────►│    AI    │            │
+│   │  Canvas  │      │  (this repo) │      │ Assistant│            │
+│   └────┬─────┘      └──────────────┘      └──────────┘            │
+│        │                                                           │
+│        ▼                                                           │
+│   ┌──────────┐      ┌──────────────┐                              │
+│   │  Plugin  │─────►│    Notion    │  (optional sync)             │
+│   └──────────┘      └──────────────┘                              │
+│                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-## 🚀 Quick Start
+---
 
-### 1. Install the Obsidian Plugin
+## Installation
 
-First, install the [Canvas Structured Items Plugin](https://bitbucket.org/ostanmarc/obsidian-canvas-structured-items/src/master/) in your Obsidian vault. This plugin:
-- Converts canvas text nodes into structured accomplishment files
-- Manages the visual canvas layout
-- Syncs accomplishments to Notion (optional)
+### Prerequisites
 
-### 2. Set Up This MCP Server
+- Node.js 18 or later
+- An Obsidian vault
+- The [Canvas Structured Items Plugin](https://bitbucket.org/ostanmarc/obsidian-canvas-structured-items/src/master/) installed in your vault
+
+### Option 1: Install from npm (Recommended)
 
 ```bash
-# Clone the repository
-git clone git@bitbucket.org:ostanmarc/obsidian-structured-notes-mcp.git
-cd obsidian-structured-notes-mcp
+npm install -g obsidian-accomplishments-mcp
+```
 
-# Install dependencies
+Or run directly with npx:
+
+```bash
+npx obsidian-accomplishments-mcp
+```
+
+### Option 2: Install from Source
+
+```bash
+git clone https://github.com/ostanlabs/obsidian_mcp.git
+cd obsidian_mcp
 npm install
-
-# Build
 npm run build
 ```
 
-### 3. Configure Your AI Assistant
+### Set Up Your Vault
 
-Add to your MCP client configuration (e.g., Claude Desktop, Cursor):
+Create the required folder structure in your Obsidian vault:
 
+```
+your-vault/
+├── accomplishments/          # Accomplishment markdown files
+├── projects/
+│   └── main.canvas           # Your project canvas
+└── workspaces.json           # Workspace configuration (auto-created on first run)
+```
+
+### Configure Your AI Assistant
+
+Add the MCP server to your AI client's configuration.
+
+**For Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+Using npx (recommended):
 ```json
 {
   "mcpServers": {
-    "obsidian-accomplishments": {
-      "command": "node",
-      "args": ["/path/to/obsidian-structured-notes-mcp/dist/index.js"],
+    "obsidian": {
+      "command": "npx",
+      "args": ["-y", "obsidian-accomplishments-mcp@latest"],
       "env": {
-        "VAULT_PATH": "/path/to/your/obsidian/vault",
+        "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
         "ACCOMPLISHMENTS_FOLDER": "accomplishments",
-        "DEFAULT_CANVAS": "projects/main.canvas",
-        "WORKSPACES": "{\"project_docs\": \"/path/to/project/docs\", \"product_docs\": \"/path/to/product/docs\"}"
+        "DEFAULT_CANVAS": "projects/main.canvas"
       }
     }
   }
 }
 ```
 
+Using global install:
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "obsidian-accomplishments-mcp",
+      "env": {
+        "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
+        "ACCOMPLISHMENTS_FOLDER": "accomplishments",
+        "DEFAULT_CANVAS": "projects/main.canvas"
+      }
+    }
+  }
+}
+```
+
+Using local install:
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "node",
+      "args": ["/path/to/obsidian_mcp/dist/index.js"],
+      "env": {
+        "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
+        "ACCOMPLISHMENTS_FOLDER": "accomplishments",
+        "DEFAULT_CANVAS": "projects/main.canvas"
+      }
+    }
+  }
+}
+```
+
+#### Environment Variables
+
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `VAULT_PATH` | Yes | Absolute path to your Obsidian vault |
 | `ACCOMPLISHMENTS_FOLDER` | Yes | Folder for accomplishment files (relative to vault) |
-| `DEFAULT_CANVAS` | Yes | Your main project canvas file |
-| `WORKSPACES` | No | JSON object mapping workspace names to absolute paths for document storage |
+| `DEFAULT_CANVAS` | Yes | Path to your main project canvas file (relative to vault) |
 
-### 4. Set Up Your Vault Structure
+### Configure Workspaces
 
+On first run, the server creates a `workspaces.json` file in your vault. Edit this file to define document workspaces that the AI can access:
+
+```json
+{
+  "docs": {
+    "path": "/absolute/path/to/your/vault/docs",
+    "description": "Project documentation and reference materials"
+  },
+  "notes": {
+    "path": "/absolute/path/to/your/vault/notes",
+    "description": "Meeting notes and daily logs"
+  }
+}
 ```
-your-vault/
-├── accomplishments/          # Accomplishment markdown files
-│   ├── Setup Project.md
-│   └── Build Feature.md
-├── projects/
-│   └── main.canvas           # Visual project board
-├── docs/                     # Context documents (optional)
-│   └── architecture.md
-└── templates/
-    └── accomplishment.md     # Template for new accomplishments
-```
 
-## 📋 Core Concepts
+Each workspace is a named folder containing markdown files that the AI can read and write.
+
+---
+
+## Core Concepts
 
 ### Accomplishments
 
-An **accomplishment** is the atomic unit of work. Each one has:
+An **accomplishment** is the atomic unit of work. Each accomplishment has:
 
-- **Outcome**: What will be true when this is done
-- **Acceptance Criteria**: How you know it's complete
-- **Tasks**: Specific steps to achieve it
-- **Dependencies**: Other accomplishments that must finish first
+- **Title** — A clear name for the work item
+- **Outcome** — What will be true when this is done
+- **Acceptance Criteria** — Checkboxes defining completion
+- **Tasks** — Specific steps to achieve the outcome
+- **Dependencies** — Other accomplishments that must finish first
+- **Status** — Not Started, In Progress, Completed, or Blocked
+- **Effort Type** — Business, Engineering, Infra, or Research
+- **Priority** — Low, Medium, High, or Critical
 
 Example accomplishment file:
 
@@ -145,23 +210,69 @@ Users can securely log in and maintain sessions.
 
 ### Canvas as Project Board
 
-The `.canvas` file is your visual project view:
+The `.canvas` file provides a visual project view:
 
 - **Nodes** = Accomplishments (colored by effort type)
 - **Arrows** = Dependencies (A → B means "B depends on A")
 - **Position** = Workflow stage (left-to-right progression)
 - **Red border** = Currently being worked on (`inProgress: true`)
 
-### Effort Types (Color-Coded)
+### Workspaces
 
-| Effort | Description | Use For |
-|--------|-------------|---------|
-| **Business** | Business logic, product features | User-facing functionality |
-| **Engineering** | Technical implementation | Architecture, refactoring |
-| **Infra** | Infrastructure, DevOps | CI/CD, deployment, tooling |
-| **Research** | Investigation, prototyping | Spikes, learning, POCs |
+Workspaces are named document collections that the AI can access. Configure them in `workspaces.json` to give the AI access to:
+- Project documentation
+- Meeting notes
+- Reference materials
+- Any other markdown files
 
-## 🤖 What Your AI Can Do
+---
+
+## Available Tools
+
+The MCP server provides 14 tools organized by function:
+
+### Accomplishment Management
+
+| Tool | Description |
+|------|-------------|
+| `manage_accomplishment` | Create, update, or delete accomplishments |
+| `get_accomplishment` | Get full details of a specific accomplishment |
+| `list_accomplishments` | List all accomplishments with optional status filter |
+
+### Task Management
+
+| Tool | Description |
+|------|-------------|
+| `manage_task` | Add, update, or remove tasks within an accomplishment |
+| `set_work_focus` | Set which accomplishment/task is currently being worked on |
+
+### Dependency Management
+
+| Tool | Description |
+|------|-------------|
+| `manage_dependency` | Add or remove dependencies between accomplishments |
+
+### Project Status
+
+| Tool | Description |
+|------|-------------|
+| `get_project_status` | Get project statistics and overview |
+| `get_current_work` | Get items marked as in-progress |
+| `get_blocked_items` | Get items waiting on incomplete dependencies |
+| `get_ready_to_start` | Get items with all dependencies complete |
+
+### Document Management
+
+| Tool | Description |
+|------|-------------|
+| `list_workspaces` | List all configured workspaces |
+| `list_files` | List all markdown files in a workspace |
+| `read_docs` | Read a document from a workspace |
+| `update_doc` | Create, update, or delete documents in a workspace |
+
+---
+
+## Usage Examples
 
 Once configured, ask your AI assistant things like:
 
@@ -169,71 +280,68 @@ Once configured, ask your AI assistant things like:
 > "What's the status of my project?"
 > "Show me what's currently in progress"
 > "What items are blocked?"
+> "What can I start working on?"
 
-### Managing Work
+### Managing Accomplishments
 > "Create an accomplishment for building the payment system"
-> "Add a task to ACC-003 for writing unit tests"
 > "Mark ACC-001 as complete"
 > "Set ACC-005 as my current focus"
+> "What are the details of ACC-003?"
+
+### Managing Tasks
+> "Add a task to ACC-003 for writing unit tests"
+> "Mark task 2 of ACC-001 as complete"
+> "What tasks are left on ACC-002?"
 
 ### Dependencies
 > "ACC-004 depends on ACC-002 and ACC-003"
-> "What can I start working on now?"
-> "Show me the critical path"
+> "Remove the dependency from ACC-005 to ACC-001"
+> "What's blocking ACC-006?"
 
-### Context Documents
-> "Read the architecture doc"
+### Documents
+> "What workspaces are available?"
+> "List files in the docs workspace"
+> "Read the architecture document"
 > "Add a section about API design to the architecture doc"
-> "Create a new doc for meeting notes"
+> "Create a new meeting notes document"
 
-## 🔧 Available Tools (12 total)
+---
 
-| Tool | Purpose |
-|------|---------|
-| `manage_accomplishment` | Create, update, delete accomplishments |
-| `manage_task` | Add, update, remove tasks within accomplishments |
-| `manage_dependency` | Add or remove dependencies between accomplishments |
-| `set_work_focus` | Set which accomplishment/task is currently being worked on |
-| `get_accomplishment` | Get detailed info about a specific accomplishment |
-| `list_accomplishments` | List all accomplishments with optional filters |
-| `get_current_work` | Get items marked as in-progress |
-| `get_blocked_items` | Get items waiting on dependencies |
-| `get_ready_to_start` | Get items with all dependencies complete |
-| `get_project_status` | Get project statistics and overview |
-| `list_workspaces` | List available document workspaces |
-| `list_files` | List markdown files in a workspace |
-| `read_docs` | Read documents from a workspace |
-| `update_doc` | Create, update, or delete documents in a workspace |
+## Notion Sync (Optional)
 
-## 🔄 Notion Sync (via Plugin)
+The [Canvas Structured Items Plugin](https://bitbucket.org/ostanmarc/obsidian-canvas-structured-items/src/master/) can sync accomplishments to Notion:
 
-The [Canvas Structured Items Plugin](https://bitbucket.org/ostanmarc/obsidian-canvas-structured-items/src/master/) handles Notion synchronization:
-
-1. **Configure Notion** in the plugin settings with your API key and database ID
-2. **Sync accomplishments** from Obsidian to Notion automatically
-3. **Dependencies** become Notion relations
-4. **Two-way sync** keeps both systems in sync
+1. Configure Notion API key and database ID in the plugin settings
+2. Accomplishments sync automatically when saved
+3. Dependencies become Notion relations
+4. Two-way sync keeps both systems updated
 
 This lets your team see project status in Notion while you manage everything from Obsidian.
 
-## 📚 Documentation
+---
 
-- [Technical Specification](docs/MCP_TECHNICAL_SPEC.md) - Detailed API and data model reference
-- [Plugin Design](docs/PLUGIN_DESIGN.md) - How the Obsidian plugin works
-- [Accomplishment Template](docs/canvas-accomplishment-template.md) - Template for new accomplishments
-
-## 🛠 Development
+## Development
 
 ```bash
-# Build
+# Build the project
 npm run build
 
-# Watch mode
-npm run watch
+# Watch mode for development
+npm run dev
 
-# The server runs via MCP protocol (stdio)
-# Test by configuring in an MCP client
+# Run tests
+npm test
 ```
+
+The server communicates via MCP protocol over stdio. Test by configuring it in an MCP-compatible client.
+
+---
+
+## Technical Reference
+
+For detailed API specifications, data models, and implementation details, see [Technical Specification](docs/MCP_TECHNICAL_SPEC.md).
+
+---
 
 ## License
 

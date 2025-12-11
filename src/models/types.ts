@@ -126,12 +126,18 @@ export interface TaskData {
   notes?: string;
 }
 
+// Workspace configuration
+export interface WorkspaceConfig {
+  path: string;
+  description: string;
+}
+
 // Configuration
 export interface Config {
   vaultPath: string;
   accomplishmentsFolder: string;
   defaultCanvas: string;
-  workspaces: Record<string, string>; // Map of workspace name to absolute path
+  workspaces: Record<string, WorkspaceConfig>; // Map of workspace name to config
 }
 
 // Position

@@ -1,22 +1,47 @@
 {
   "name": "obsidian-accomplishments-mcp",
-  "version": "1.0.0",
-  "description": "MCP server for managing Obsidian accomplishment files",
+  "version": "0.1.0",
+  "description": "Model Context Protocol (MCP) server for managing structured project accomplishments in Obsidian",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "obsidian-accomplishments-mcp": "dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc --watch",
-    "test": "vitest"
+    "test": "vitest",
+    "prepublishOnly": "npm run build"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "keywords": [
     "mcp",
+    "model-context-protocol",
+    "mcp-server",
     "obsidian",
-    "accomplishments"
+    "accomplishments",
+    "project-management",
+    "canvas"
   ],
-  "author": "",
+  "author": "Ostan Labs",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ostanlabs/obsidian_mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ostanlabs/obsidian_mcp/issues"
+  },
+  "homepage": "https://github.com/ostanlabs/obsidian_mcp#readme",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "yaml": "^2.3.4",
