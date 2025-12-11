@@ -17,8 +17,7 @@ Settings are provided via MCP server configuration (not runtime tools):
       "env": {
         "VAULT_PATH": "/path/to/obsidian/vault",
         "ACCOMPLISHMENTS_FOLDER": "accomplishments",
-        "DEFAULT_CANVAS": "projects/main.canvas",
-        "CONTEXT_DOCS_FOLDER": "docs"
+        "DEFAULT_CANVAS": "projects/main.canvas"
       }
     }
   }
@@ -30,7 +29,27 @@ Settings are provided via MCP server configuration (not runtime tools):
 | `VAULT_PATH` | Yes | Absolute path to Obsidian vault root |
 | `ACCOMPLISHMENTS_FOLDER` | Yes | Folder for accomplishment MD files (relative to vault) |
 | `DEFAULT_CANVAS` | Yes | Default canvas file path (relative to vault) |
-| `CONTEXT_DOCS_FOLDER` | No | Additional folder for context documents (relative to vault). All MD files in this folder are treated as context docs. |
+
+### Workspaces Configuration
+
+Document workspaces are configured via `workspaces.json` in the vault root. This file is auto-created on first run:
+
+```json
+{
+  "docs": {
+    "path": "/absolute/path/to/vault/docs",
+    "description": "Project documentation and reference materials"
+  },
+  "notes": {
+    "path": "/absolute/path/to/vault/notes",
+    "description": "Meeting notes and daily logs"
+  }
+}
+```
+
+Each workspace entry requires:
+- `path`: Absolute path to the folder containing markdown files
+- `description`: Human-readable description of the workspace contents
 
 ---
 
@@ -427,59 +446,88 @@ type Priority = "Low" | "Medium" | "High" | "Critical";
 
 ---
 
-### 11. read_docs
+### 11. list_workspaces
 
-**Purpose:** Read context documents. Context documents come from two sources:
-1. MD files in the canvas folder that are NOT referenced by the canvas
-2. All MD files in `CONTEXT_DOCS_FOLDER` (if configured) - these are prefixed with `context:`
+**Purpose:** List all configured workspaces with their descriptions.
 
-**Parameters:**
+**Parameters:** None
 
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `doc_name` | string | No | Document filename. Prefix with `context:` for context folder docs. If not provided, returns all context documents. |
-| `from_line` | integer | No | Start line (0-based, inclusive). Only used when `doc_name` is provided. |
-| `to_line` | integer | No | End line (0-based, exclusive). Only used when `doc_name` is provided. |
-| `canvas_source` | string | No | Canvas file (default: DEFAULT_CANVAS). Used to determine canvas folder docs. |
-
-**Returns (single doc):**
+**Returns:**
 ```json
 {
-  "doc_name": "notes.md",
-  "content": "# Notes\n\nSome content...",
-  "line_count": 15,
-  "range": { "from_line": 0, "to_line": 15 }
-}
-```
-
-**Returns (all docs):**
-```json
-{
-  "documents": {
-    "notes.md": "# Notes\n...",
-    "context:reference.md": "# Reference\n..."
-  },
-  "document_count": 2,
-  "document_names": ["notes.md", "context:reference.md"]
+  "workspaces": [
+    { "name": "docs", "description": "Project documentation and reference materials" },
+    { "name": "notes", "description": "Meeting notes and daily logs" }
+  ],
+  "count": 2
 }
 ```
 
 ---
 
-### 12. update_doc
+### 12. list_files
 
-**Purpose:** Create, update, or delete context documents.
+**Purpose:** List all markdown files in a workspace, including files in subfolders.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `name` | string | Yes | Document filename. Prefix with `context:` for context folder docs. |
+| `workspace` | string | Yes | Name of the workspace to list files from |
+
+**Returns:**
+```json
+{
+  "workspace": "docs",
+  "workspace_description": "Project documentation and reference materials",
+  "files": ["architecture.md", "api/endpoints.md", "api/authentication.md"],
+  "count": 3
+}
+```
+
+---
+
+### 13. read_docs
+
+**Purpose:** Read a document from a workspace.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `workspace` | string | Yes | Name of the workspace to read from |
+| `doc_name` | string | Yes | Document filename (with or without .md extension) |
+| `from_line` | integer | No | Start line (0-based, inclusive) |
+| `to_line` | integer | No | End line (0-based, exclusive) |
+
+**Returns:**
+```json
+{
+  "workspace": "docs",
+  "workspace_description": "Project documentation and reference materials",
+  "doc_name": "architecture.md",
+  "content": "# Architecture\n\nThis document describes...",
+  "line_count": 150,
+  "range": { "from_line": 0, "to_line": 150 }
+}
+```
+
+---
+
+### 14. update_doc
+
+**Purpose:** Create, update, or delete documents in a workspace.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `workspace` | string | Yes | Name of the workspace |
+| `name` | string | Yes | Document filename (with or without .md extension) |
 | `operation` | enum | Yes | `"create"` \| `"replace"` \| `"delete"` \| `"insert_at"` \| `"replace_at"` |
 | `content` | string | Conditional | Required for create, replace, insert_at, replace_at. Not needed for delete. |
 | `start_line` | integer | Conditional | Required for insert_at and replace_at. 0-based line number. |
 | `end_line` | integer | Conditional | Required for replace_at. 0-based, exclusive. |
-| `canvas_source` | string | No | Canvas file (default: DEFAULT_CANVAS). Only used for canvas folder docs. |
 
 **Operations:**
 - `create`: Create new document (error if exists)
@@ -493,6 +541,8 @@ type Priority = "Low" | "Medium" | "High" | "Critical";
 {
   "success": true,
   "operation": "insert_at",
+  "workspace": "docs",
+  "workspace_description": "Project documentation and reference materials",
   "doc_name": "notes.md",
   "message": "Inserted 5 line(s) at line 10 in document: notes.md",
   "line_count": 5,

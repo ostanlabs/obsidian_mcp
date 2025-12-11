@@ -71,6 +71,18 @@ export {
   type UpdateDocInput,
 } from './update-doc.js';
 
+export {
+  listWorkspacesDefinition,
+  handleListWorkspaces,
+  type ListWorkspacesInput,
+} from './list-workspaces.js';
+
+export {
+  listFilesDefinition,
+  handleListFiles,
+  type ListFilesInput,
+} from './list-files.js';
+
 // All tool definitions for registration
 export const allToolDefinitions = [
   manageAccomplishmentDefinition,
@@ -85,6 +97,8 @@ export const allToolDefinitions = [
   getProjectStatusDefinition,
   readDocsDefinition,
   updateDocDefinition,
+  listWorkspacesDefinition,
+  listFilesDefinition,
 ];
 
 // Import definitions for the array
@@ -100,4 +114,6 @@ import { getReadyToStartDefinition } from './get-ready-to-start.js';
 import { getProjectStatusDefinition } from './get-project-status.js';
 import { readDocsDefinition } from './read-docs.js';
 import { updateDocDefinition } from './update-doc.js';
+import { listWorkspacesDefinition } from './list-workspaces.js';
+import { listFilesDefinition } from './list-files.js';
 

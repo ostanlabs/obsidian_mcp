@@ -23,6 +23,8 @@ import {
   handleGetProjectStatus,
   handleReadDocs,
   handleUpdateDoc,
+  handleListWorkspaces,
+  handleListFiles,
 } from './tools/index.js';
 
 // Create server instance
@@ -108,6 +110,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'update_doc':
         result = await handleUpdateDoc(config, args as any);
+        break;
+
+      case 'list_workspaces':
+        result = await handleListWorkspaces(config, args as any);
+        break;
+
+      case 'list_files':
+        result = await handleListFiles(config, args as any);
         break;
 
       default:
