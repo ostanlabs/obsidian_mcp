@@ -1,72 +1,62 @@
-import { Config } from '../models/types.js';
-import {
-  readContextDocument,
-  readAllContextDocuments,
-  getContextDocuments,
-  parseDocName,
-} from '../services/context-doc-service.js';
+import { Config, ValidationError, NotFoundError } from '../models/types.js';
+import { getWorkspacePath, getWorkspaceDescription } from '../utils/config.js';
+import { readFile, fileExists } from '../utils/file-utils.js';
 
 export interface ReadDocsInput {
-  doc_name?: string;
+  workspace: string;
+  doc_name: string;
   from_line?: number;
   to_line?: number;
-  canvas_source?: string;
 }
 
 export interface ReadDocsResult {
-  // When doc_name is provided
-  doc_name?: string;
-  content?: string;
-  line_count?: number;
+  workspace: string;
+  workspace_description: string;
+  doc_name: string;
+  content: string;
+  line_count: number;
   range?: {
     from_line: number;
     to_line: number;
   };
-
-  // When doc_name is not provided
-  documents?: Record<string, string>;
-  document_count?: number;
-  document_names?: string[];
 }
 
 export const readDocsDefinition = {
   name: 'read_docs',
-  description: `Read context documents. Context documents come from two sources:
-1. MD files in the canvas folder that are NOT referenced by the canvas
-2. All MD files in CONTEXT_DOCS_FOLDER (if configured) - these are prefixed with "context:"
+  description: `Read a document from a workspace.
 
-When doc_name is provided:
-- Returns the content of that specific document
-- Use "context:" prefix for docs in the context folder (e.g., "context:reference.md")
-- Optionally use from_line and to_line to get a specific range (0-based, from_line inclusive, to_line exclusive)
+Parameters:
+- workspace: Name of the workspace (use list_workspaces to see available workspaces)
+- doc_name: Filename of the document (with or without .md extension)
+- from_line: Optional start line (0-based, inclusive)
+- to_line: Optional end line (0-based, exclusive)
 
-When doc_name is NOT provided:
-- Returns a dictionary of all context documents with filenames as keys and contents as values
-- Documents from context folder are prefixed with "context:"
-- from_line and to_line are ignored in this case`,
+Line numbering is 0-based:
+- Line 0 is the first line
+- from_line=0, to_line=10 returns lines 0-9`,
   inputSchema: {
     type: 'object',
     properties: {
+      workspace: {
+        type: 'string',
+        description: 'Name of the workspace to read from',
+      },
       doc_name: {
         type: 'string',
-        description: 'Name of the document to read (with or without .md extension). Prefix with "context:" for context folder docs. If not provided, returns all context documents.',
+        description: 'Name of the document to read (with or without .md extension)',
       },
       from_line: {
         type: 'integer',
-        description: 'Start line (0-based, inclusive). Only used when doc_name is provided.',
+        description: 'Start line (0-based, inclusive)',
         minimum: 0,
       },
       to_line: {
         type: 'integer',
-        description: 'End line (0-based, exclusive). Only used when doc_name is provided.',
+        description: 'End line (0-based, exclusive)',
         minimum: 0,
       },
-      canvas_source: {
-        type: 'string',
-        description: 'Canvas file path (relative to vault). Defaults to DEFAULT_CANVAS. Used to determine canvas folder docs.',
-      },
     },
-    required: [],
+    required: ['workspace', 'doc_name'],
   },
 };
 
@@ -74,48 +64,60 @@ export async function handleReadDocs(
   config: Config,
   input: ReadDocsInput
 ): Promise<ReadDocsResult> {
-  const { doc_name, from_line, to_line, canvas_source } = input;
+  const { workspace, doc_name, from_line, to_line } = input;
 
-  if (doc_name) {
-    // Read specific document
-    const content = await readContextDocument(
-      config,
-      doc_name,
-      canvas_source,
-      from_line,
-      to_line
-    );
+  if (!workspace) {
+    throw new ValidationError('workspace parameter is required');
+  }
+  if (!doc_name) {
+    throw new ValidationError('doc_name parameter is required');
+  }
 
-    // Parse doc name to get proper formatted name
-    const { isContextFolder, filename } = parseDocName(doc_name);
-    const formattedDocName = isContextFolder ? `context:${filename}` : filename;
+  const workspacePath = getWorkspacePath(config, workspace);
+  if (!workspacePath) {
+    throw new NotFoundError(`Workspace not found: ${workspace}`);
+  }
 
-    const lines = content.split('\n');
-    const result: ReadDocsResult = {
-      doc_name: formattedDocName,
-      content,
-      line_count: lines.length,
-    };
-    
-    // Include range info if specified
-    if (from_line !== undefined || to_line !== undefined) {
-      result.range = {
-        from_line: from_line ?? 0,
-        to_line: to_line ?? lines.length,
-      };
-    }
-    
-    return result;
-  } else {
-    // Read all context documents
-    const documents = await readAllContextDocuments(config, canvas_source);
-    const documentNames = await getContextDocuments(config, canvas_source);
-    
+  const workspaceDescription = getWorkspaceDescription(config, workspace) || '';
+
+  // Ensure .md extension
+  const filename = doc_name.endsWith('.md') ? doc_name : `${doc_name}.md`;
+  const filePath = `${workspacePath}/${filename}`;
+
+  if (!await fileExists(filePath)) {
+    throw new NotFoundError(`Document not found: ${filename} in workspace ${workspace}`);
+  }
+
+  let content = await readFile(filePath);
+  const allLines = content.split('\n');
+  let totalLineCount = allLines.length;
+
+  // Apply line range if specified
+  if (from_line !== undefined || to_line !== undefined) {
+    const start = from_line ?? 0;
+    const end = to_line ?? allLines.length;
+    const selectedLines = allLines.slice(start, end);
+    content = selectedLines.join('\n');
+
     return {
-      documents,
-      document_count: Object.keys(documents).length,
-      document_names: documentNames,
+      workspace,
+      workspace_description: workspaceDescription,
+      doc_name: filename,
+      content,
+      line_count: totalLineCount,
+      range: {
+        from_line: start,
+        to_line: end,
+      },
     };
   }
+
+  return {
+    workspace,
+    workspace_description: workspaceDescription,
+    doc_name: filename,
+    content,
+    line_count: totalLineCount,
+  };
 }
 
