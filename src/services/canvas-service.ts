@@ -6,9 +6,119 @@ import {
   NotFoundError,
 } from '../models/types.js';
 import { parseCanvas, serializeCanvas, findNodeByFile } from '../parsers/canvas-parser.js';
-import { readFile, writeFileAtomic, fileExists } from '../utils/file-utils.js';
+import { readFile, writeFileAtomic, fileExists, triggerObsidianReload } from '../utils/file-utils.js';
 import { getCanvasPath } from '../utils/config.js';
 import { generateId } from '../utils/file-utils.js';
+
+/**
+ * Canvas operation types for merge-based updates
+ */
+export type CanvasOperation =
+  | { type: 'add_node'; node: CanvasNode }
+  | { type: 'remove_node'; filePath: string }
+  | { type: 'update_position'; filePath: string; position: { x: number; y: number } }
+  | { type: 'add_edge'; fromFilePath: string; toFilePath: string }
+  | { type: 'remove_edge'; fromFilePath: string; toFilePath: string };
+
+/**
+ * Apply multiple operations to canvas atomically with merge strategy.
+ *
+ * Flow:
+ * 1. Read current canvas (captures Obsidian's latest state)
+ * 2. Apply our operations in memory (our changes take precedence on conflicts)
+ * 3. Write to temp file
+ * 4. Atomic rename to canvas file
+ * 5. Trigger Obsidian reload
+ *
+ * This minimizes race conditions with Obsidian and preserves user changes
+ * that don't conflict with our operations.
+ */
+export async function applyCanvasOperations(
+  config: Config,
+  operations: CanvasOperation[],
+  canvasSource?: string
+): Promise<void> {
+  if (operations.length === 0) return;
+
+  const canvasPath = getCanvasPath(config, canvasSource);
+
+  // Step 1: Read current canvas (captures any user changes)
+  const canvas = await loadCanvas(config, canvasSource);
+
+  // Step 2: Apply our operations (our changes win on conflicts)
+  for (const op of operations) {
+    switch (op.type) {
+      case 'add_node': {
+        // Check if node with same file already exists
+        const existing = findNodeByFile(canvas, op.node.file!);
+        if (existing) {
+          // Update to our values (our changes win)
+          Object.assign(existing, op.node);
+        } else {
+          canvas.nodes.push(op.node);
+        }
+        break;
+      }
+
+      case 'remove_node': {
+        const node = findNodeByFile(canvas, op.filePath);
+        if (node) {
+          canvas.nodes = canvas.nodes.filter(n => n.id !== node.id);
+          canvas.edges = canvas.edges.filter(e => e.fromNode !== node.id && e.toNode !== node.id);
+        }
+        break;
+      }
+
+      case 'update_position': {
+        const node = findNodeByFile(canvas, op.filePath);
+        if (node) {
+          node.x = op.position.x;
+          node.y = op.position.y;
+        }
+        break;
+      }
+
+      case 'add_edge': {
+        const fromNode = findNodeByFile(canvas, op.fromFilePath);
+        const toNode = findNodeByFile(canvas, op.toFilePath);
+        if (fromNode && toNode) {
+          // Only add if not already exists
+          const exists = canvas.edges.some(
+            e => e.fromNode === fromNode.id && e.toNode === toNode.id
+          );
+          if (!exists) {
+            canvas.edges.push({
+              id: generateId(),
+              fromNode: fromNode.id,
+              toNode: toNode.id,
+              fromSide: 'right',
+              toSide: 'left',
+            });
+          }
+        }
+        break;
+      }
+
+      case 'remove_edge': {
+        const fromNode = findNodeByFile(canvas, op.fromFilePath);
+        const toNode = findNodeByFile(canvas, op.toFilePath);
+        if (fromNode && toNode) {
+          canvas.edges = canvas.edges.filter(
+            e => !(e.fromNode === fromNode.id && e.toNode === toNode.id)
+          );
+        }
+        break;
+      }
+    }
+  }
+
+  // Steps 3-4: Write to temp file and atomic rename (handled by writeFileAtomic)
+  const content = serializeCanvas(canvas);
+  await writeFileAtomic(canvasPath, content);
+
+  // Step 5: Trigger Obsidian to reload the canvas
+  triggerObsidianReload(config.vaultPath, canvasPath);
+}
 
 /**
  * Load a canvas file
@@ -89,6 +199,7 @@ export async function generateAccomplishmentId(
 
 /**
  * Add a node to canvas for an accomplishment
+ * Uses merge-based approach to handle concurrent Obsidian edits
  */
 export async function addAccomplishmentNode(
   config: Config,
@@ -96,8 +207,6 @@ export async function addAccomplishmentNode(
   position: { x: number; y: number },
   canvasSource?: string
 ): Promise<CanvasNode> {
-  const canvas = await loadCanvas(config, canvasSource);
-  
   const node: CanvasNode = {
     id: generateId(),
     type: 'file',
@@ -107,35 +216,27 @@ export async function addAccomplishmentNode(
     width: 400,
     height: 300,
   };
-  
-  canvas.nodes.push(node);
-  await saveCanvas(config, canvas, canvasSource);
-  
+
+  await applyCanvasOperations(config, [{ type: 'add_node', node }], canvasSource);
+
   return node;
 }
 
 /**
  * Remove an accomplishment node from canvas
+ * Uses merge-based approach to handle concurrent Obsidian edits
  */
 export async function removeAccomplishmentNode(
   config: Config,
   filePath: string,
   canvasSource?: string
 ): Promise<void> {
-  const canvas = await loadCanvas(config, canvasSource);
-  
-  const node = findNodeByFile(canvas, filePath);
-  if (!node) return;
-  
-  // Remove node and all associated edges
-  canvas.nodes = canvas.nodes.filter(n => n.id !== node.id);
-  canvas.edges = canvas.edges.filter(e => e.fromNode !== node.id && e.toNode !== node.id);
-  
-  await saveCanvas(config, canvas, canvasSource);
+  await applyCanvasOperations(config, [{ type: 'remove_node', filePath }], canvasSource);
 }
 
 /**
  * Update node position
+ * Uses merge-based approach to handle concurrent Obsidian edits
  */
 export async function updateNodePosition(
   config: Config,
@@ -143,19 +244,12 @@ export async function updateNodePosition(
   position: { x: number; y: number },
   canvasSource?: string
 ): Promise<void> {
-  const canvas = await loadCanvas(config, canvasSource);
-  
-  const node = findNodeByFile(canvas, filePath);
-  if (!node) return;
-  
-  node.x = position.x;
-  node.y = position.y;
-  
-  await saveCanvas(config, canvas, canvasSource);
+  await applyCanvasOperations(config, [{ type: 'update_position', filePath, position }], canvasSource);
 }
 
 /**
  * Add a dependency edge between two accomplishments
+ * Uses merge-based approach to handle concurrent Obsidian edits
  */
 export async function addDependencyEdge(
   config: Config,
@@ -163,15 +257,15 @@ export async function addDependencyEdge(
   blockedFilePath: string,
   canvasSource?: string
 ): Promise<CanvasEdge | null> {
+  // First check if nodes exist (read-only operation)
   const canvas = await loadCanvas(config, canvasSource);
-  
   const blockerNode = findNodeByFile(canvas, blockerFilePath);
   const blockedNode = findNodeByFile(canvas, blockedFilePath);
-  
+
   if (!blockerNode || !blockedNode) {
     return null;
   }
-  
+
   // Check if edge already exists
   const existingEdge = canvas.edges.find(
     e => e.fromNode === blockerNode.id && e.toNode === blockedNode.id
@@ -179,23 +273,27 @@ export async function addDependencyEdge(
   if (existingEdge) {
     return existingEdge;
   }
-  
-  const edge: CanvasEdge = {
-    id: generateId(),
-    fromNode: blockerNode.id,
-    toNode: blockedNode.id,
-    fromSide: 'right',
-    toSide: 'left',
-  };
-  
-  canvas.edges.push(edge);
-  await saveCanvas(config, canvas, canvasSource);
-  
-  return edge;
+
+  // Apply the operation with merge strategy
+  await applyCanvasOperations(
+    config,
+    [{ type: 'add_edge', fromFilePath: blockerFilePath, toFilePath: blockedFilePath }],
+    canvasSource
+  );
+
+  // Return the edge info (re-read to get the actual edge created)
+  const updatedCanvas = await loadCanvas(config, canvasSource);
+  const newBlockerNode = findNodeByFile(updatedCanvas, blockerFilePath);
+  const newBlockedNode = findNodeByFile(updatedCanvas, blockedFilePath);
+
+  return updatedCanvas.edges.find(
+    e => e.fromNode === newBlockerNode?.id && e.toNode === newBlockedNode?.id
+  ) || null;
 }
 
 /**
  * Remove a dependency edge
+ * Uses merge-based approach to handle concurrent Obsidian edits
  */
 export async function removeDependencyEdge(
   config: Config,
@@ -203,18 +301,11 @@ export async function removeDependencyEdge(
   blockedFilePath: string,
   canvasSource?: string
 ): Promise<void> {
-  const canvas = await loadCanvas(config, canvasSource);
-  
-  const blockerNode = findNodeByFile(canvas, blockerFilePath);
-  const blockedNode = findNodeByFile(canvas, blockedFilePath);
-  
-  if (!blockerNode || !blockedNode) return;
-  
-  canvas.edges = canvas.edges.filter(
-    e => !(e.fromNode === blockerNode.id && e.toNode === blockedNode.id)
+  await applyCanvasOperations(
+    config,
+    [{ type: 'remove_edge', fromFilePath: blockerFilePath, toFilePath: blockedFilePath }],
+    canvasSource
   );
-  
-  await saveCanvas(config, canvas, canvasSource);
 }
 
 /**
