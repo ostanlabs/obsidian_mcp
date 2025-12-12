@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
-import { dirname } from 'path';
+import { dirname, basename } from 'path';
+import { exec } from 'child_process';
 
 /**
  * Read file content as string
@@ -85,7 +86,42 @@ export async function listFilesRecursive(dirPath: string, basePath: string = '')
  * Generate a unique ID for canvas nodes/edges
  */
 export function generateId(): string {
-  return Math.random().toString(36).substring(2, 15) + 
+  return Math.random().toString(36).substring(2, 15) +
          Math.random().toString(36).substring(2, 15);
+}
+
+/**
+ * Trigger Obsidian to reload a file by opening it via obsidian:// URI
+ * This works cross-platform and forces Obsidian to refresh its view
+ */
+export function triggerObsidianReload(vaultPath: string, filePath: string): void {
+  const vaultName = basename(vaultPath);
+  // filePath should be relative to vault
+  const relativePath = filePath.startsWith(vaultPath)
+    ? filePath.slice(vaultPath.length + 1)
+    : filePath;
+
+  const uri = `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(relativePath)}`;
+
+  // Detect platform and open URI accordingly
+  const platform = process.platform;
+  let command: string;
+
+  if (platform === 'darwin') {
+    command = `open "${uri}"`;
+  } else if (platform === 'win32') {
+    command = `start "" "${uri}"`;
+  } else {
+    // Linux
+    command = `xdg-open "${uri}"`;
+  }
+
+  // Fire and forget - we don't wait for this
+  exec(command, (error) => {
+    if (error) {
+      // Silently ignore errors - Obsidian might not be running
+      // or the vault might not be open
+    }
+  });
 }
 
