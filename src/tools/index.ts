@@ -83,6 +83,12 @@ export {
   type ListFilesInput,
 } from './list-files.js';
 
+export {
+  getAccomplishmentsGraphDefinition,
+  handleGetAccomplishmentsGraph,
+  type GetAccomplishmentsGraphInput,
+} from './get-accomplishments-graph.js';
+
 // All tool definitions for registration
 export const allToolDefinitions = [
   manageAccomplishmentDefinition,
@@ -95,6 +101,7 @@ export const allToolDefinitions = [
   getBlockedItemsDefinition,
   getReadyToStartDefinition,
   getProjectStatusDefinition,
+  getAccomplishmentsGraphDefinition,
   readDocsDefinition,
   updateDocDefinition,
   listWorkspacesDefinition,
@@ -116,4 +123,5 @@ import { readDocsDefinition } from './read-docs.js';
 import { updateDocDefinition } from './update-doc.js';
 import { listWorkspacesDefinition } from './list-workspaces.js';
 import { listFilesDefinition } from './list-files.js';
+import { getAccomplishmentsGraphDefinition } from './get-accomplishments-graph.js';
 
