@@ -206,11 +206,64 @@ async function runTests() {
     const status = await handleGetProjectStatus(config, {});
     console.log('Project status:', JSON.stringify(status, null, 2));
 
-    // Test 11: Get accomplishments graph
-    console.log('\n--- Test 11: Get Accomplishments Graph ---');
+    // Test 11: Get accomplishments graph (with orphan detection)
+    console.log('\n--- Test 11: Get Accomplishments Graph (with orphan detection) ---');
+
+    // Create orphaned accomplishments (not connected to main graph)
+    const orphan1 = await handleManageAccomplishment(config, {
+      operation: 'create',
+      data: {
+        title: 'Orphan Task A',
+        effort: 'Research',
+        priority: 'Low',
+        outcome: 'Standalone research task',
+      },
+    });
+    console.log('Created orphan1:', JSON.stringify(orphan1, null, 2));
+
+    const orphan2 = await handleManageAccomplishment(config, {
+      operation: 'create',
+      data: {
+        title: 'Orphan Task B',
+        effort: 'Research',
+        priority: 'Low',
+        outcome: 'Another standalone task',
+      },
+    });
+    console.log('Created orphan2:', JSON.stringify(orphan2, null, 2));
+
+    // Create a small connected orphan graph (2 nodes connected to each other but not to main)
+    const orphan3 = await handleManageAccomplishment(config, {
+      operation: 'create',
+      data: {
+        title: 'Mini Graph Node 1',
+        effort: 'Infra',
+        priority: 'Medium',
+        outcome: 'Part of mini orphan graph',
+      },
+    });
+    console.log('Created orphan3:', JSON.stringify(orphan3, null, 2));
+
+    await handleManageDependency(config, {
+      operation: 'add',
+      blocker_id: 'ACC-007',
+      blocked_id: 'ACC-006',
+    });
 
     const graph = await handleGetAccomplishmentsGraph(config, {});
     console.log('Accomplishments graph:', JSON.stringify(graph, null, 2));
+
+    // Verify orphan detection
+    const graphResult = graph as any;
+    console.log('\n--- Orphan Detection Verification ---');
+    console.log(`Main graph nodes: ${graphResult.main_graph.node_count}`);
+    console.log(`Orphaned graph count: ${graphResult.orphaned_graph_count}`);
+
+    if (graphResult.orphaned_graph_count === 2) {
+      console.log('✅ SUCCESS: Correctly detected 2 orphaned graphs (1 single node + 1 two-node graph)');
+    } else {
+      console.log(`❌ UNEXPECTED: Expected 2 orphaned graphs, got ${graphResult.orphaned_graph_count}`);
+    }
 
     console.log('\n=== All Tests Completed Successfully ===');
   } catch (error) {
