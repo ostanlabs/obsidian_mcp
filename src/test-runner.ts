@@ -16,6 +16,8 @@ import {
   handleGetReadyToStart,
   handleGetProjectStatus,
 } from './tools/index.js';
+import { loadCanvas } from './services/canvas-service.js';
+import { findNodeByFile } from './parsers/canvas-parser.js';
 
 // Set environment variables for testing
 process.env.VAULT_PATH = process.cwd() + '/test-vault';
@@ -66,9 +68,9 @@ async function runTests() {
     });
     console.log('Created ACC3:', JSON.stringify(acc3, null, 2));
 
-    // Test 2: Add dependencies
-    console.log('\n--- Test 2: Add Dependencies ---');
-    
+    // Test 2: Add dependencies using manage_dependency
+    console.log('\n--- Test 2: Add Dependencies (via manage_dependency) ---');
+
     // ACC-002 depends on ACC-001
     const dep1 = await handleManageDependency(config, {
       operation: 'add',
@@ -84,6 +86,50 @@ async function runTests() {
       blocked_id: 'ACC-003',
     });
     console.log('Added dependency:', JSON.stringify(dep2, null, 2));
+
+    // Test 2b: Create accomplishment WITH depends_on at creation time
+    console.log('\n--- Test 2b: Create Accomplishment with depends_on (edge creation test) ---');
+
+    const acc4 = await handleManageAccomplishment(config, {
+      operation: 'create',
+      data: {
+        title: 'Deploy to Production',
+        effort: 'Engineering',
+        priority: 'High',
+        outcome: 'Application is deployed and running in production',
+        depends_on: ['ACC-002', 'ACC-003'], // Should create edges at creation time
+      },
+    });
+    console.log('Created ACC4 with depends_on:', JSON.stringify(acc4, null, 2));
+
+    // Verify edges were created in canvas
+    console.log('\n--- Verifying canvas edges for ACC-004 ---');
+    const canvas = await loadCanvas(config);
+
+    // Find nodes
+    const acc2Node = findNodeByFile(canvas, 'accomplishments/Implement Core Features.md');
+    const acc3Node = findNodeByFile(canvas, 'accomplishments/Write Documentation.md');
+    const acc4Node = findNodeByFile(canvas, 'accomplishments/Deploy to Production.md');
+
+    console.log('ACC-002 node:', acc2Node ? `found (id: ${acc2Node.id})` : 'NOT FOUND');
+    console.log('ACC-003 node:', acc3Node ? `found (id: ${acc3Node.id})` : 'NOT FOUND');
+    console.log('ACC-004 node:', acc4Node ? `found (id: ${acc4Node.id})` : 'NOT FOUND');
+
+    // Check for edges
+    const edgeFromAcc2ToAcc4 = canvas.edges.find(
+      e => e.fromNode === acc2Node?.id && e.toNode === acc4Node?.id
+    );
+    const edgeFromAcc3ToAcc4 = canvas.edges.find(
+      e => e.fromNode === acc3Node?.id && e.toNode === acc4Node?.id
+    );
+
+    console.log('Edge ACC-002 -> ACC-004:', edgeFromAcc2ToAcc4 ? '✅ EXISTS' : '❌ MISSING');
+    console.log('Edge ACC-003 -> ACC-004:', edgeFromAcc3ToAcc4 ? '✅ EXISTS' : '❌ MISSING');
+
+    if (!edgeFromAcc2ToAcc4 || !edgeFromAcc3ToAcc4) {
+      throw new Error('FAILED: Edges were not created when passing depends_on at creation time!');
+    }
+    console.log('\n✅ SUCCESS: Edges are correctly created when passing depends_on at creation time!');
 
     // Test 3: Add tasks
     console.log('\n--- Test 3: Add Tasks ---');

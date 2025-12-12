@@ -24,6 +24,7 @@ import {
   loadCanvas,
   getNodeIdsByFilePaths,
   updateNodePosition,
+  addDependencyEdge,
 } from './canvas-service.js';
 import { calculatePosition } from '../utils/positioning.js';
 import { findNodeByFile } from '../parsers/canvas-parser.js';
@@ -88,12 +89,21 @@ export async function createAccomplishment(
   const position = calculatePosition(canvas, dependsOnNodeIds);
 
   // Add node to canvas
+  const newNodeFilePath = getRelativeAccomplishmentPath(config, data.title);
   await addAccomplishmentNode(
     config,
-    getRelativeAccomplishmentPath(config, data.title),
+    newNodeFilePath,
     position,
     canvasSource
   );
+
+  // Create edges for dependencies
+  if (data.depends_on && data.depends_on.length > 0) {
+    const depFilePaths = await getFilePathsForIds(config, data.depends_on);
+    for (const blockerFilePath of depFilePaths) {
+      await addDependencyEdge(config, blockerFilePath, newNodeFilePath, canvasSource);
+    }
+  }
 
   return accomplishment;
 }
