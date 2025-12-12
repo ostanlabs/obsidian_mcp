@@ -15,6 +15,7 @@ import {
   handleGetBlockedItems,
   handleGetReadyToStart,
   handleGetProjectStatus,
+  handleGetAccomplishmentsGraph,
 } from './tools/index.js';
 import { loadCanvas } from './services/canvas-service.js';
 import { findNodeByFile } from './parsers/canvas-parser.js';
@@ -201,9 +202,15 @@ async function runTests() {
 
     // Test 10: Get project status
     console.log('\n--- Test 10: Get Project Status ---');
-    
+
     const status = await handleGetProjectStatus(config, {});
     console.log('Project status:', JSON.stringify(status, null, 2));
+
+    // Test 11: Get accomplishments graph
+    console.log('\n--- Test 11: Get Accomplishments Graph ---');
+
+    const graph = await handleGetAccomplishmentsGraph(config, {});
+    console.log('Accomplishments graph:', JSON.stringify(graph, null, 2));
 
     console.log('\n=== All Tests Completed Successfully ===');
   } catch (error) {

@@ -21,6 +21,7 @@ import {
   handleGetBlockedItems,
   handleGetReadyToStart,
   handleGetProjectStatus,
+  handleGetAccomplishmentsGraph,
   handleReadDocs,
   handleUpdateDoc,
   handleListWorkspaces,
@@ -102,6 +103,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_project_status':
         result = await handleGetProjectStatus(config, args as any);
+        break;
+
+      case 'get_accomplishments_graph':
+        result = await handleGetAccomplishmentsGraph(config, args as any);
         break;
 
       case 'read_docs':
