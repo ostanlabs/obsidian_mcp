@@ -13,7 +13,12 @@ export type ManageDependencyInput = z.infer<typeof manageDependencySchema>;
 
 export const manageDependencyDefinition = {
   name: 'manage_dependency',
-  description: 'Add or remove dependencies between accomplishments. The blocker must complete before the blocked can start. Adding a dependency automatically repositions the blocked node on the canvas.',
+  description: `Add or remove a dependency between accomplishments.
+
+NOTE: When creating accomplishments, prefer passing depends_on directly to manage_accomplishment or batch_operations.
+This tool is mainly for adding/removing dependencies AFTER accomplishments already exist.
+
+The blocker must complete before the blocked can start. Adding a dependency automatically repositions the blocked node on the canvas.`,
   inputSchema: {
     type: 'object',
     properties: {

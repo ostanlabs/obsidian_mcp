@@ -16,6 +16,7 @@ import {
   handleGetReadyToStart,
   handleGetProjectStatus,
   handleGetAccomplishmentsGraph,
+  handleBatchOperations,
 } from './tools/index.js';
 import { loadCanvas } from './services/canvas-service.js';
 import { findNodeByFile } from './parsers/canvas-parser.js';
@@ -263,6 +264,32 @@ async function runTests() {
       console.log('✅ SUCCESS: Correctly detected 2 orphaned graphs (1 single node + 1 two-node graph)');
     } else {
       console.log(`❌ UNEXPECTED: Expected 2 orphaned graphs, got ${graphResult.orphaned_graph_count}`);
+    }
+
+    // Test 11: Batch Operations
+    console.log('\n=== Test 11: Batch Operations ===');
+    const batchResult = await handleBatchOperations(config, {
+      accomplishments: [
+        { title: 'Batch Test 1', effort: 'Engineering', priority: 'High' },
+        { title: 'Batch Test 2', effort: 'Engineering', depends_on: ['$0'] },
+        { title: 'Batch Test 3', effort: 'Engineering', depends_on: ['$1'] },
+      ],
+      tasks: [
+        { accomplishment_ref: '$0', name: 'Task A', goal: 'Goal A' },
+        { accomplishment_ref: '$0', name: 'Task B', goal: 'Goal B' },
+        { accomplishment_ref: '$1', name: 'Task C', goal: 'Goal C' },
+      ],
+    });
+
+    console.log('Batch result:', JSON.stringify(batchResult, null, 2));
+
+    if (batchResult.success &&
+        batchResult.created_accomplishments.length === 3 &&
+        batchResult.created_tasks.length === 3 &&
+        batchResult.created_dependencies.length === 2) {
+      console.log('✅ SUCCESS: Batch operations created 3 accomplishments, 3 tasks, 2 dependencies');
+    } else {
+      console.log('❌ UNEXPECTED: Batch operations did not create expected items');
     }
 
     console.log('\n=== All Tests Completed Successfully ===');

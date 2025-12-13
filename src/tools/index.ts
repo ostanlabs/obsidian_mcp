@@ -89,8 +89,15 @@ export {
   type GetAccomplishmentsGraphInput,
 } from './get-accomplishments-graph.js';
 
+export {
+  batchOperationsDefinition,
+  handleBatchOperations,
+  type BatchOperationsInput,
+} from './batch-operations.js';
+
 // All tool definitions for registration
 export const allToolDefinitions = [
+  batchOperationsDefinition, // Preferred for creating multiple items
   manageAccomplishmentDefinition,
   manageDependencyDefinition,
   manageTaskDefinition,
@@ -109,6 +116,7 @@ export const allToolDefinitions = [
 ];
 
 // Import definitions for the array
+import { batchOperationsDefinition } from './batch-operations.js';
 import { manageAccomplishmentDefinition } from './manage-accomplishment.js';
 import { manageDependencyDefinition } from './manage-dependency.js';
 import { manageTaskDefinition } from './manage-task.js';
