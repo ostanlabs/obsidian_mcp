@@ -117,11 +117,8 @@ export function triggerObsidianReload(vaultPath: string, filePath: string): void
   }
 
   // Fire and forget - we don't wait for this
-  exec(command, (error) => {
-    if (error) {
-      // Silently ignore errors - Obsidian might not be running
-      // or the vault might not be open
-    }
+  exec(command, () => {
+    // Silently ignore errors - Obsidian might not be running
   });
 }
 

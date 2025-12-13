@@ -45,8 +45,8 @@ export function updateStatusIndicatorInCanvas(
   // Calculate position: top-right corner of accomplishment node
   const indicatorX = accomplishmentNode.x + accomplishmentNode.width + 5;
   const indicatorY = accomplishmentNode.y;
-  const indicatorWidth = 30;
-  const indicatorHeight = 30;
+  const indicatorWidth = 60;
+  const indicatorHeight = 60;
 
   // Find existing indicator
   const existingIndex = canvas.nodes.findIndex(n => n.id === indicatorId);
@@ -108,7 +108,7 @@ export async function updateStatusIndicator(
   const accNode = findNodeByFile(canvas, relPath);
 
   if (!accNode) {
-    // Accomplishment not on canvas, skip
+    // Accomplishment node not found on canvas, skip indicator
     return;
   }
 
@@ -181,7 +181,6 @@ export async function reconcileAllStatusIndicators(
     const accNode = findNodeByFile(canvas, relPath);
 
     if (!accNode) {
-      // Accomplishment not on canvas, skip
       continue;
     }
 
@@ -192,7 +191,6 @@ export async function reconcileAllStatusIndicators(
     const expectedIndicator = STATUS_INDICATORS[acc.status];
 
     if (!existingIndicator) {
-      // Create new indicator
       updateStatusIndicatorInCanvas(canvas, accNode, acc.id, acc.status);
       result.created++;
     } else {
@@ -226,6 +224,10 @@ export async function reconcileAllStatusIndicators(
   // Save canvas once at the end
   const canvasPath = getCanvasPath(config, canvasSource);
   await writeFileAtomic(canvasPath, serializeCanvas(canvas));
+
+  // Trigger Obsidian to reload the canvas
+  const { triggerObsidianReload } = await import('../utils/file-utils.js');
+  triggerObsidianReload(config.vaultPath, canvasSource || config.defaultCanvas);
 
   return result;
 }
