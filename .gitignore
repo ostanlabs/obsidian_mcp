@@ -25,3 +25,6 @@ npm-debug.log*
 .env
 .env.local
 
+# Local test scripts
+src/test-real-vault.ts
+
