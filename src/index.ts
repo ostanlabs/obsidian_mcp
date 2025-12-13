@@ -11,6 +11,7 @@ import { getConfig } from './utils/config.js';
 import { MCPError } from './models/types.js';
 import {
   allToolDefinitions,
+  handleBatchOperations,
   handleManageAccomplishment,
   handleManageDependency,
   handleManageTask,
@@ -67,6 +68,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case 'manage_accomplishment':
         result = await handleManageAccomplishment(config, args as any);
+        break;
+
+      case 'batch_operations':
+        result = await handleBatchOperations(config, args as any);
         break;
 
       case 'manage_dependency':

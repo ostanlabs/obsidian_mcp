@@ -23,7 +23,12 @@ export type ManageTaskInput = z.infer<typeof manageTaskSchema>;
 
 export const manageTaskDefinition = {
   name: 'manage_task',
-  description: 'Add, update, or remove tasks within an accomplishment. For add: provide accomplishment_id and data with name and goal. For update/remove: provide accomplishment_id and task_id.',
+  description: `Add, update, or remove a SINGLE task within an accomplishment.
+
+NOTE: For creating MULTIPLE tasks, use batch_operations instead - it's more efficient.
+
+For add: provide accomplishment_id and data with name and goal.
+For update/remove: provide accomplishment_id and task_id.`,
   inputSchema: {
     type: 'object',
     properties: {

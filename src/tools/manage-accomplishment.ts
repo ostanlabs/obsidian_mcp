@@ -29,7 +29,12 @@ export type ManageAccomplishmentInput = z.infer<typeof manageAccomplishmentSchem
 
 export const manageAccomplishmentDefinition = {
   name: 'manage_accomplishment',
-  description: 'Create, update, or delete accomplishments. For create: provide data with title and effort. For update/delete: provide id.',
+  description: `Create, update, or delete a SINGLE accomplishment.
+
+NOTE: For creating MULTIPLE accomplishments, use batch_operations instead - it's more efficient.
+
+When creating, pass depends_on to set up dependencies in one step (no need for separate manage_dependency calls).
+Example: { "operation": "create", "data": { "title": "Build API", "effort": "Engineering", "depends_on": ["ACC-001"] } }`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -47,32 +52,32 @@ export const manageAccomplishmentDefinition = {
         description: 'Accomplishment data (required for create, optional for update)',
         properties: {
           title: { type: 'string', description: 'Accomplishment title' },
-          effort: { 
-            type: 'string', 
+          effort: {
+            type: 'string',
             enum: ['Business', 'Infra', 'Engineering', 'Research'],
-            description: 'Effort type' 
+            description: 'Effort type'
           },
-          priority: { 
-            type: 'string', 
+          priority: {
+            type: 'string',
             enum: ['Low', 'Medium', 'High', 'Critical'],
-            description: 'Priority level' 
+            description: 'Priority level'
           },
-          status: { 
-            type: 'string', 
+          status: {
+            type: 'string',
             enum: ['Not Started', 'In Progress', 'Completed', 'Blocked'],
-            description: 'Status' 
+            description: 'Status'
           },
           inProgress: { type: 'boolean', description: 'Whether actively being worked on' },
           outcome: { type: 'string', description: 'Outcome description' },
-          acceptance_criteria: { 
-            type: 'array', 
+          acceptance_criteria: {
+            type: 'array',
             items: { type: 'string' },
-            description: 'List of acceptance criteria' 
+            description: 'List of acceptance criteria'
           },
-          depends_on: { 
-            type: 'array', 
+          depends_on: {
+            type: 'array',
             items: { type: 'string' },
-            description: 'IDs of accomplishments this depends on' 
+            description: 'IDs of accomplishments this depends on - creates edges automatically'
           },
           canvas_source: { type: 'string', description: 'Canvas file path' },
           notes: { type: 'string', description: 'Additional notes' },

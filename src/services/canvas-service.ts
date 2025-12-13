@@ -6,7 +6,7 @@ import {
   NotFoundError,
 } from '../models/types.js';
 import { parseCanvas, serializeCanvas, findNodeByFile } from '../parsers/canvas-parser.js';
-import { readFile, writeFileAtomic, fileExists, triggerObsidianReload } from '../utils/file-utils.js';
+import { readFile, writeFileAtomic, fileExists } from '../utils/file-utils.js';
 import { getCanvasPath } from '../utils/config.js';
 import { generateId } from '../utils/file-utils.js';
 
@@ -116,8 +116,7 @@ export async function applyCanvasOperations(
   const content = serializeCanvas(canvas);
   await writeFileAtomic(canvasPath, content);
 
-  // Step 5: Trigger Obsidian to reload the canvas
-  triggerObsidianReload(config.vaultPath, canvasPath);
+  // Note: Obsidian auto-detects file changes, no need to trigger reload
 }
 
 /**
