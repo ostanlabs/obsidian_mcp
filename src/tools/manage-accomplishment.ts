@@ -6,6 +6,10 @@ import {
   updateAccomplishment,
   deleteAccomplishment,
 } from '../services/accomplishment-service.js';
+import {
+  updateStatusIndicator,
+  removeStatusIndicator,
+} from '../services/status-indicator-service.js';
 
 // Schema for the tool
 export const manageAccomplishmentSchema = z.object({
@@ -103,7 +107,7 @@ export async function handleManageAccomplishment(
           400
         );
       }
-      
+
       const accomplishment = await createAccomplishment(config, {
         title: data.title,
         effort: data.effort,
@@ -114,7 +118,15 @@ export async function handleManageAccomplishment(
         depends_on: data.depends_on,
         canvas_source: data.canvas_source,
       });
-      
+
+      // Update status indicator on canvas
+      await updateStatusIndicator(
+        config,
+        accomplishment.frontmatter.id,
+        accomplishment.frontmatter.status,
+        data.canvas_source
+      );
+
       return {
         success: true,
         operation: 'create',
@@ -136,9 +148,17 @@ export async function handleManageAccomplishment(
           400
         );
       }
-      
+
       const accomplishment = await updateAccomplishment(config, id, data || {});
-      
+
+      // Update status indicator on canvas
+      await updateStatusIndicator(
+        config,
+        accomplishment.frontmatter.id,
+        accomplishment.frontmatter.status,
+        accomplishment.frontmatter.canvas_source
+      );
+
       return {
         success: true,
         operation: 'update',
@@ -161,9 +181,16 @@ export async function handleManageAccomplishment(
           400
         );
       }
-      
+
+      // Get accomplishment first to know the canvas source
+      const acc = await getAccomplishment(config, id);
+      const canvasSource = acc.frontmatter.canvas_source;
+
       await deleteAccomplishment(config, id);
-      
+
+      // Remove status indicator from canvas
+      await removeStatusIndicator(config, id, canvasSource);
+
       return {
         success: true,
         operation: 'delete',

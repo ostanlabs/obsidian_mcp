@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Config, MCPError } from '../models/types.js';
 import { getAccomplishment, updateAccomplishment } from '../services/accomplishment-service.js';
 import { setTaskStatus } from '../services/task-service.js';
+import { updateStatusIndicator } from '../services/status-indicator-service.js';
 
 // Schema for the tool
 export const setWorkFocusSchema = z.object({
@@ -66,6 +67,14 @@ export async function handleSetWorkFocus(
       });
     }
   }
+
+  // Update status indicator on canvas
+  await updateStatusIndicator(
+    config,
+    accomplishment.frontmatter.id,
+    accomplishment.frontmatter.status,
+    accomplishment.frontmatter.canvas_source
+  );
 
   const response: Record<string, unknown> = {
     success: true,

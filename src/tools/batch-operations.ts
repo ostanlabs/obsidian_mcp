@@ -3,6 +3,7 @@ import { Config, CreateAccomplishmentData, Effort, Priority, AccomplishmentStatu
 import { createAccomplishment } from '../services/accomplishment-service.js';
 import { addTask } from '../services/task-service.js';
 import { addDependency } from '../services/dependency-service.js';
+import { updateStatusIndicator } from '../services/status-indicator-service.js';
 
 // Schema for batch operations
 const accomplishmentDataSchema = z.object({
@@ -202,6 +203,14 @@ export async function handleBatchOperations(
           id: accomplishment.frontmatter.id,
           title: accomplishment.frontmatter.title,
         });
+
+        // Update status indicator on canvas
+        await updateStatusIndicator(
+          config,
+          accomplishment.frontmatter.id,
+          accomplishment.frontmatter.status,
+          accData.canvas_source
+        );
 
         for (const blockerId of resolvedDependsOn) {
           result.created_dependencies.push({
