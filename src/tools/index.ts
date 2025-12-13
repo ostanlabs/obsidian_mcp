@@ -95,6 +95,12 @@ export {
   type BatchOperationsInput,
 } from './batch-operations.js';
 
+export {
+  reconcileCanvasDefinition,
+  handleReconcileCanvas,
+  type ReconcileCanvasInput,
+} from './reconcile-canvas.js';
+
 // All tool definitions for registration
 export const allToolDefinitions = [
   batchOperationsDefinition, // Preferred for creating multiple items
@@ -109,6 +115,7 @@ export const allToolDefinitions = [
   getReadyToStartDefinition,
   getProjectStatusDefinition,
   getAccomplishmentsGraphDefinition,
+  reconcileCanvasDefinition,
   readDocsDefinition,
   updateDocDefinition,
   listWorkspacesDefinition,
@@ -132,4 +139,5 @@ import { updateDocDefinition } from './update-doc.js';
 import { listWorkspacesDefinition } from './list-workspaces.js';
 import { listFilesDefinition } from './list-files.js';
 import { getAccomplishmentsGraphDefinition } from './get-accomplishments-graph.js';
+import { reconcileCanvasDefinition } from './reconcile-canvas.js';
 

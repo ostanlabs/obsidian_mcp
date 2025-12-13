@@ -23,6 +23,7 @@ import {
   handleGetReadyToStart,
   handleGetProjectStatus,
   handleGetAccomplishmentsGraph,
+  handleReconcileCanvas,
   handleReadDocs,
   handleUpdateDoc,
   handleListWorkspaces,
@@ -112,6 +113,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_accomplishments_graph':
         result = await handleGetAccomplishmentsGraph(config, args as any);
+        break;
+
+      case 'reconcile_canvas':
+        result = await handleReconcileCanvas(config, args as any);
         break;
 
       case 'read_docs':

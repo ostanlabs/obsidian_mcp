@@ -17,9 +17,11 @@ import {
   handleGetProjectStatus,
   handleGetAccomplishmentsGraph,
   handleBatchOperations,
+  handleReconcileCanvas,
 } from './tools/index.js';
 import { loadCanvas } from './services/canvas-service.js';
 import { findNodeByFile } from './parsers/canvas-parser.js';
+import { getStatusIndicatorId, findStatusIndicator } from './services/status-indicator-service.js';
 
 // Set environment variables for testing
 process.env.VAULT_PATH = process.cwd() + '/test-vault';
@@ -291,6 +293,36 @@ async function runTests() {
     } else {
       console.log('❌ UNEXPECTED: Batch operations did not create expected items');
     }
+
+    // Test 12: Status Indicators
+    console.log('\n=== Test 12: Status Indicators ===');
+
+    // Check that status indicators were created for batch operations
+    const canvasAfterBatch = await loadCanvas(config);
+    const batchAcc1Id = batchResult.created_accomplishments[0].id;
+    const indicator1 = findStatusIndicator(canvasAfterBatch, batchAcc1Id);
+
+    if (indicator1 && indicator1.text === '⚪') {
+      console.log(`✅ SUCCESS: Status indicator created for ${batchAcc1Id}: ${indicator1.text}`);
+    } else {
+      console.log(`❌ UNEXPECTED: Status indicator not found or wrong emoji for ${batchAcc1Id}`);
+    }
+
+    // Test reconcile_canvas
+    console.log('\n=== Test 13: Reconcile Canvas ===');
+    const reconcileResult = await handleReconcileCanvas(config, {});
+    console.log('Reconcile result:', JSON.stringify(reconcileResult, null, 2));
+
+    if (reconcileResult.success) {
+      console.log(`✅ SUCCESS: Reconciled canvas - ${reconcileResult.created} created, ${reconcileResult.updated} updated, ${reconcileResult.removed} removed`);
+    } else {
+      console.log('❌ UNEXPECTED: Reconcile failed');
+    }
+
+    // Verify all accomplishments have indicators
+    const canvasAfterReconcile = await loadCanvas(config);
+    const statusNodes = canvasAfterReconcile.nodes.filter(n => n.id.startsWith('status-'));
+    console.log(`Status indicator nodes on canvas: ${statusNodes.length}`);
 
     console.log('\n=== All Tests Completed Successfully ===');
   } catch (error) {
