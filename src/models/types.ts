@@ -74,6 +74,9 @@ export interface CanvasNode {
   width: number;
   height: number;
   color?: string;
+  styleAttributes?: {
+    textAlign?: 'left' | 'center' | 'right';
+  };
 }
 
 // Canvas Edge

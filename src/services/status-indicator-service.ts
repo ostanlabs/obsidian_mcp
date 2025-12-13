@@ -60,6 +60,9 @@ export function updateStatusIndicatorInCanvas(
     width: indicatorWidth,
     height: indicatorHeight,
     ...(indicator.color && { color: indicator.color }),
+    styleAttributes: {
+      textAlign: 'center',
+    },
   };
 
   if (existingIndex >= 0) {
