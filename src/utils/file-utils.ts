@@ -91,6 +91,14 @@ export function generateId(): string {
 }
 
 /**
+ * Get file modified time as ISO string
+ */
+export async function getFileModifiedTime(path: string): Promise<string> {
+  const stat = await fs.stat(path);
+  return stat.mtime.toISOString();
+}
+
+/**
  * Trigger Obsidian to reload a file by opening it via obsidian:// URI
  * This works cross-platform and forces Obsidian to refresh its view
  */

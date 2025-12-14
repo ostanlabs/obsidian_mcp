@@ -39,6 +39,7 @@ export async function handleGetBlockedItems(
     status: string;
     priority: string;
     effort: string;
+    updated: string;
     blocking_items: Array<{
       id: string;
       title: string;
@@ -77,6 +78,7 @@ export async function handleGetBlockedItems(
         status: acc.frontmatter.status,
         priority: acc.frontmatter.priority,
         effort: acc.frontmatter.effort,
+        updated: acc.frontmatter.updated,
         blocking_items: blockingItems,
       });
     }

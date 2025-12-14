@@ -60,6 +60,7 @@ export interface AccomplishmentSummary {
   depends_on: string[];
   task_count: number;
   completed_task_count: number;
+  updated: string;
 }
 
 // Canvas Node

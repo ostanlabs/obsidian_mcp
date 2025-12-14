@@ -121,3 +121,10 @@ export function getAllWorkspaces(config: Config): Record<string, WorkspaceConfig
   return config.workspaces;
 }
 
+/**
+ * Get the path to workspaces.json config file
+ */
+export function getWorkspacesConfigPath(config: Config): string {
+  return `${config.vaultPath}/workspaces.json`;
+}
+

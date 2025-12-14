@@ -47,6 +47,7 @@ export async function handleGetReadyToStart(
     title: acc.frontmatter.title,
     priority: acc.frontmatter.priority,
     effort: acc.frontmatter.effort,
+    updated: acc.frontmatter.updated,
     task_count: acc.tasks.length,
     outcome: acc.outcome,
   }));

@@ -1,15 +1,20 @@
 import { Config, ValidationError, NotFoundError } from '../models/types.js';
 import { getWorkspacePath, getWorkspaceDescription } from '../utils/config.js';
-import { listFilesRecursive } from '../utils/file-utils.js';
+import { listFilesRecursive, getFileModifiedTime } from '../utils/file-utils.js';
 
 export interface ListFilesInput {
   workspace: string;
 }
 
+export interface FileInfo {
+  name: string;
+  last_changed: string;
+}
+
 export interface ListFilesResult {
   workspace: string;
   workspace_description: string;
-  files: string[];
+  files: FileInfo[];
   count: number;
 }
 
@@ -50,11 +55,19 @@ export async function handleListFiles(
     // Filter to only .md files
     const mdFiles = allFiles.filter(f => f.endsWith('.md'));
 
+    // Get last_changed for each file in parallel
+    const filesWithStats: FileInfo[] = await Promise.all(
+      mdFiles.map(async (file) => ({
+        name: file,
+        last_changed: await getFileModifiedTime(`${workspacePath}/${file}`),
+      }))
+    );
+
     return {
       workspace,
       workspace_description: workspaceDescription,
-      files: mdFiles,
-      count: mdFiles.length,
+      files: filesWithStats,
+      count: filesWithStats.length,
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {

@@ -47,6 +47,7 @@ export async function handleGetCurrentWork(
       status: acc.frontmatter.status,
       priority: acc.frontmatter.priority,
       effort: acc.frontmatter.effort,
+      updated: acc.frontmatter.updated,
       tasks_in_progress: inProgressTasks,
       total_tasks: acc.tasks.length,
       completed_tasks: acc.tasks.filter(t => t.status === 'Complete').length,
