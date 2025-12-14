@@ -66,8 +66,13 @@ export async function handleGetProjectStatus(
   let inProgressCount = 0;
   let totalTasks = 0;
   let completedTasks = 0;
+  let lastUpdated: string | null = null;
 
   for (const acc of accomplishments) {
+    // Track most recent update
+    if (!lastUpdated || acc.frontmatter.updated > lastUpdated) {
+      lastUpdated = acc.frontmatter.updated;
+    }
     // Status counts
     byStatus[acc.frontmatter.status] = (byStatus[acc.frontmatter.status] || 0) + 1;
 
@@ -108,9 +113,10 @@ export async function handleGetProjectStatus(
     in_progress_count: inProgressCount,
     total_tasks: totalTasks,
     completed_tasks: completedTasks,
-    task_completion_percentage: totalTasks > 0 
-      ? Math.round((completedTasks / totalTasks) * 100) 
+    task_completion_percentage: totalTasks > 0
+      ? Math.round((completedTasks / totalTasks) * 100)
       : 0,
+    last_updated: lastUpdated,
   };
 }
 

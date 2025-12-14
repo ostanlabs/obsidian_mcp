@@ -1,5 +1,6 @@
 import { Config } from '../models/types.js';
-import { getAllWorkspaces } from '../utils/config.js';
+import { getAllWorkspaces, getWorkspacesConfigPath } from '../utils/config.js';
+import { getFileModifiedTime } from '../utils/file-utils.js';
 
 export interface ListWorkspacesInput {}
 
@@ -11,6 +12,7 @@ export interface WorkspaceInfo {
 export interface ListWorkspacesResult {
   workspaces: WorkspaceInfo[];
   count: number;
+  config_last_changed: string;
 }
 
 export const listWorkspacesDefinition = {
@@ -28,6 +30,8 @@ export async function handleListWorkspaces(
   _input: ListWorkspacesInput
 ): Promise<ListWorkspacesResult> {
   const allWorkspaces = getAllWorkspaces(config);
+  const configPath = getWorkspacesConfigPath(config);
+  const configLastChanged = await getFileModifiedTime(configPath);
 
   const workspaces: WorkspaceInfo[] = Object.entries(allWorkspaces).map(([name, wsConfig]) => ({
     name,
@@ -37,6 +41,7 @@ export async function handleListWorkspaces(
   return {
     workspaces,
     count: workspaces.length,
+    config_last_changed: configLastChanged,
   };
 }
 

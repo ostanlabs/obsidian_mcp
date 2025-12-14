@@ -33,6 +33,7 @@ interface GraphNode {
   effort: string;
   is_blocked: boolean;
   in_progress: boolean;
+  updated: string;
   tasks: Record<string, string>; // task_id -> task_name
 }
 
@@ -134,6 +135,7 @@ export async function handleGetAccomplishmentsGraph(
       effort: acc.frontmatter.effort,
       is_blocked: acc.is_blocked || false,
       in_progress: acc.frontmatter.inProgress,
+      updated: acc.frontmatter.updated,
       tasks,
     };
 

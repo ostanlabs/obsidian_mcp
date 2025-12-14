@@ -271,7 +271,7 @@ export async function listAccomplishments(
  */
 function toSummary(accomplishment: Accomplishment): AccomplishmentSummary {
   const completedTasks = accomplishment.tasks.filter(t => t.status === 'Complete').length;
-  
+
   return {
     id: accomplishment.frontmatter.id,
     title: accomplishment.frontmatter.title,
@@ -283,6 +283,7 @@ function toSummary(accomplishment: Accomplishment): AccomplishmentSummary {
     depends_on: accomplishment.frontmatter.depends_on,
     task_count: accomplishment.tasks.length,
     completed_task_count: completedTasks,
+    updated: accomplishment.frontmatter.updated,
   };
 }
 

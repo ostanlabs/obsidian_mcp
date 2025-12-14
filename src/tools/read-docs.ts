@@ -1,6 +1,6 @@
 import { Config, ValidationError, NotFoundError } from '../models/types.js';
 import { getWorkspacePath, getWorkspaceDescription } from '../utils/config.js';
-import { readFile, fileExists } from '../utils/file-utils.js';
+import { readFile, fileExists, getFileModifiedTime } from '../utils/file-utils.js';
 
 export interface ReadDocsInput {
   workspace: string;
@@ -15,6 +15,7 @@ export interface ReadDocsResult {
   doc_name: string;
   content: string;
   line_count: number;
+  last_changed: string;
   range?: {
     from_line: number;
     to_line: number;
@@ -89,6 +90,7 @@ export async function handleReadDocs(
   }
 
   let content = await readFile(filePath);
+  const lastChanged = await getFileModifiedTime(filePath);
   const allLines = content.split('\n');
   let totalLineCount = allLines.length;
 
@@ -105,6 +107,7 @@ export async function handleReadDocs(
       doc_name: filename,
       content,
       line_count: totalLineCount,
+      last_changed: lastChanged,
       range: {
         from_line: start,
         to_line: end,
@@ -118,6 +121,7 @@ export async function handleReadDocs(
     doc_name: filename,
     content,
     line_count: totalLineCount,
+    last_changed: lastChanged,
   };
 }
 
