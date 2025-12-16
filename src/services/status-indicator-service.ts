@@ -162,7 +162,7 @@ export async function reconcileAllStatusIndicators(
   const { serializeCanvas } = await import('../parsers/canvas-parser.js');
 
   const canvas = await loadCanvas(config, canvasSource);
-  const accomplishments = await listAccomplishments(config, undefined, canvasSource);
+  const accomplishments = await listAccomplishments(config, undefined, undefined, canvasSource);
 
   const result: ReconcileResult = {
     created: 0,
