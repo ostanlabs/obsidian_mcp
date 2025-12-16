@@ -249,20 +249,25 @@ export async function listAllAccomplishments(config: Config): Promise<Accomplish
 export async function listAccomplishments(
   config: Config,
   status?: AccomplishmentStatus,
+  effort?: Effort,
   canvasSource?: string
 ): Promise<AccomplishmentSummary[]> {
   const accomplishments = await listAllAccomplishments(config);
-  
+
   let filtered = accomplishments;
-  
+
   if (status) {
     filtered = filtered.filter(a => a.frontmatter.status === status);
   }
-  
+
+  if (effort) {
+    filtered = filtered.filter(a => a.frontmatter.effort === effort);
+  }
+
   if (canvasSource) {
     filtered = filtered.filter(a => a.frontmatter.canvas_source === canvasSource);
   }
-  
+
   return filtered.map(a => toSummary(a));
 }
 

@@ -1,36 +1,42 @@
 import { z } from 'zod';
-import { Config } from '../models/types.js';
+import { Config, Accomplishment, ValidationError } from '../models/types.js';
 import { getAccomplishment as getAccomplishmentService } from '../services/accomplishment-service.js';
 import { generateTaskId } from '../parsers/markdown-parser.js';
 
-// Schema for the tool
+// Schema for the tool - supports single id or array of ids
 export const getAccomplishmentSchema = z.object({
-  id: z.string(),
+  id: z.string().optional(),
+  ids: z.array(z.string()).optional(),
+}).refine(data => data.id || data.ids, {
+  message: 'Either id or ids must be provided',
 });
 
 export type GetAccomplishmentInput = z.infer<typeof getAccomplishmentSchema>;
 
 export const getAccomplishmentDefinition = {
   name: 'get_accomplishment',
-  description: 'Get full details of a single accomplishment including frontmatter, outcome, acceptance criteria, tasks, and notes.',
+  description: 'Get full details of accomplishment(s). Use "id" for a single accomplishment or "ids" for bulk retrieval.',
   inputSchema: {
     type: 'object',
     properties: {
       id: {
         type: 'string',
-        description: 'Accomplishment ID (e.g., ACC-001)',
+        description: 'Single accomplishment ID (e.g., ACC-001)',
+      },
+      ids: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Array of accomplishment IDs for bulk retrieval',
       },
     },
-    required: ['id'],
+    required: [],
   },
 };
 
-export async function handleGetAccomplishment(
-  config: Config,
-  input: GetAccomplishmentInput
-): Promise<unknown> {
-  const accomplishment = await getAccomplishmentService(config, input.id);
-
+/**
+ * Format accomplishment for response
+ */
+function formatAccomplishment(accomplishment: Accomplishment) {
   return {
     id: accomplishment.frontmatter.id,
     title: accomplishment.frontmatter.title,
@@ -58,6 +64,43 @@ export async function handleGetAccomplishment(
       notes: task.notes,
     })),
     notes: accomplishment.notes,
+  };
+}
+
+export async function handleGetAccomplishment(
+  config: Config,
+  input: GetAccomplishmentInput
+): Promise<unknown> {
+  // Validate input
+  if (!input.id && !input.ids) {
+    throw new ValidationError('Either id or ids must be provided');
+  }
+
+  // Single ID mode
+  if (input.id) {
+    const accomplishment = await getAccomplishmentService(config, input.id);
+    return formatAccomplishment(accomplishment);
+  }
+
+  // Bulk IDs mode
+  const results = await Promise.all(
+    input.ids!.map(async (id) => {
+      try {
+        const accomplishment = await getAccomplishmentService(config, id);
+        return formatAccomplishment(accomplishment);
+      } catch (error) {
+        // Return error info for this ID instead of failing entire request
+        return {
+          id,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    })
+  );
+
+  return {
+    count: results.length,
+    accomplishments: results,
   };
 }
 
