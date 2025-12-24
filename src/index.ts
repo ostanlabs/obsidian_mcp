@@ -34,6 +34,7 @@ import {
   batchOperations,
   batchUpdateStatus,
   batchArchive,
+  batchUpdate,
 } from './tools/batch-operations-tools.js';
 import {
   getProjectOverview,
@@ -42,6 +43,7 @@ import {
 } from './tools/project-understanding-tools.js';
 import {
   searchEntities,
+  getEntity,
   getEntitySummary,
   getEntityFull,
   navigateHierarchy,
@@ -58,9 +60,6 @@ import {
   generateImplementationPackage,
   validateSpecCompleteness,
 } from './tools/implementation-handoff-tools.js';
-import {
-  autoLayoutCanvas,
-} from './tools/canvas-layout-tools.js';
 
 // Create server instance
 const server = new Server(
@@ -171,16 +170,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       // Batch Operations
+      case 'batch_update': {
+        const runtime = await getOrCreateV2Runtime();
+        result = await batchUpdate(args as any, runtime.getBatchOperationsDeps());
+        break;
+      }
+      // DEPRECATED: Use batch_update instead
       case 'batch_operations': {
         const runtime = await getOrCreateV2Runtime();
         result = await batchOperations(args as any, runtime.getBatchOperationsDeps());
         break;
       }
+      // DEPRECATED: Use batch_update instead
       case 'batch_update_status': {
         const runtime = await getOrCreateV2Runtime();
         result = await batchUpdateStatus(args as any, runtime.getBatchOperationsDeps());
         break;
       }
+      // DEPRECATED: Use batch_update instead
       case 'batch_archive': {
         const runtime = await getOrCreateV2Runtime();
         result = await batchArchive(args as any, runtime.getBatchOperationsDeps());
@@ -210,6 +217,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await searchEntities(args as any, runtime.getSearchNavigationDeps());
         break;
       }
+      case 'get_entity': {
+        const runtime = await getOrCreateV2Runtime();
+        result = await getEntity(args as any, runtime.getSearchNavigationDeps());
+        break;
+      }
+      // Legacy handlers (deprecated - use get_entity instead)
       case 'get_entity_summary': {
         const runtime = await getOrCreateV2Runtime();
         result = await getEntitySummary(args as any, runtime.getSearchNavigationDeps());
@@ -267,13 +280,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'validate_spec_completeness': {
         const runtime = await getOrCreateV2Runtime();
         result = await validateSpecCompleteness(args as any, runtime.getImplementationHandoffDeps());
-        break;
-      }
-
-      // Canvas Layout
-      case 'auto_layout_canvas': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await autoLayoutCanvas(args as any, runtime.getCanvasLayoutDeps());
         break;
       }
 

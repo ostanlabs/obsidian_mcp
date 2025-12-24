@@ -60,17 +60,19 @@ export interface ProjectUnderstandingDependencies {
 
 /**
  * Get high-level project status across all workstreams.
+ * Enhanced to support workstream filtering and grouping (consolidates get_workstream_status).
  */
 export async function getProjectOverview(
   input: GetProjectOverviewInput,
   deps: ProjectUnderstandingDependencies
 ): Promise<GetProjectOverviewOutput> {
-  const { include_completed, include_archived } = input;
+  const { include_completed, include_archived, workstream: filterWorkstream, group_by } = input;
 
-  // Get all entities
+  // Get all entities (optionally filtered by workstream)
   const entities = await deps.getAllEntities({
     includeCompleted: include_completed,
     includeArchived: include_archived,
+    workstream: filterWorkstream,
   });
 
   // Initialize counters
@@ -153,20 +155,133 @@ export async function getProjectOverview(
         : 'healthy';
   }
 
-  return {
+  const result: GetProjectOverviewOutput = {
     summary,
     workstreams,
     pending_decisions: pendingDecisions,
     ready_for_implementation: readyForImplementation,
   };
+
+  // If workstream filter is specified, add detailed workstream info
+  if (filterWorkstream) {
+    result.workstream_detail = await buildWorkstreamDetail(
+      filterWorkstream,
+      entities,
+      group_by || 'status',
+      deps
+    );
+  }
+
+  return result;
+}
+
+/**
+ * Build detailed workstream information (extracted from getWorkstreamStatus).
+ */
+async function buildWorkstreamDetail(
+  workstream: string,
+  entities: Entity[],
+  group_by: 'status' | 'type' | 'priority',
+  deps: ProjectUnderstandingDependencies
+): Promise<GetProjectOverviewOutput['workstream_detail']> {
+  // Build summary
+  const byStatus: Record<string, number> = {};
+  const byType: Record<string, number> = {};
+  let blockedCount = 0;
+  let crossWorkstreamDeps = 0;
+
+  for (const entity of entities) {
+    // Count by status
+    byStatus[entity.status] = (byStatus[entity.status] || 0) + 1;
+
+    // Count by type
+    byType[entity.type] = (byType[entity.type] || 0) + 1;
+
+    // Count blocked
+    if (entity.status === 'Blocked') {
+      blockedCount++;
+    }
+
+    // Check for cross-workstream dependencies
+    const blockers = await deps.getBlockers(entity.id);
+    for (const blocker of blockers) {
+      if (blocker.workstream !== workstream) {
+        crossWorkstreamDeps++;
+      }
+    }
+  }
+
+  // Group entities
+  const groupMap = new Map<string, EntitySummary[]>();
+  for (const entity of entities) {
+    let key: string;
+    switch (group_by) {
+      case 'type':
+        key = entity.type;
+        break;
+      case 'priority':
+        key = (entity as { priority?: string }).priority || 'none';
+        break;
+      default:
+        key = entity.status;
+    }
+    if (!groupMap.has(key)) {
+      groupMap.set(key, []);
+    }
+    groupMap.get(key)!.push(deps.toEntitySummary(entity));
+  }
+
+  const groups = Array.from(groupMap.entries()).map(([group_key, entities]) => ({
+    group_key,
+    entities,
+  }));
+
+  // Find cross-workstream blocking relationships
+  const blockingOther: EntitySummary[] = [];
+  const blockedByOther: EntitySummary[] = [];
+
+  for (const entity of entities) {
+    const blockedBy = await deps.getBlockedBy(entity.id);
+    for (const blocked of blockedBy) {
+      if (blocked.workstream !== workstream) {
+        blockingOther.push(deps.toEntitySummary(entity));
+        break;
+      }
+    }
+
+    const blockers = await deps.getBlockers(entity.id);
+    for (const blocker of blockers) {
+      if (blocker.workstream !== workstream) {
+        blockedByOther.push(deps.toEntitySummary(entity));
+        break;
+      }
+    }
+  }
+
+  return {
+    workstream,
+    summary: {
+      total: entities.length,
+      by_status: byStatus,
+      by_type: byType,
+      blocked_count: blockedCount,
+      cross_workstream_dependencies: crossWorkstreamDeps,
+    },
+    groups,
+    blocking_other_workstreams: blockingOther,
+    blocked_by_other_workstreams: blockedByOther,
+  };
 }
 
 // =============================================================================
-// Get Workstream Status
+// Get Workstream Status (DEPRECATED)
 // =============================================================================
 
 /**
  * Get detailed status for a specific workstream.
+ *
+ * @deprecated Use `getProjectOverview` with `workstream` filter instead.
+ * Example: `getProjectOverview({ workstream: 'auth', group_by: 'status' })`
  */
 export async function getWorkstreamStatus(
   input: GetWorkstreamStatusInput,

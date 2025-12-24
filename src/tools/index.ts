@@ -44,7 +44,6 @@ export * from './project-understanding-tools.js';
 export * from './search-navigation-tools.js';
 export * from './decision-document-tools.js';
 export * from './implementation-handoff-tools.js';
-export * from './canvas-layout-tools.js';
 export * from './tool-types.js';
 
 // =============================================================================
@@ -99,7 +98,7 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'update_entity',
-    description: 'Update entity fields and/or modify relationships.',
+    description: 'Update entity fields, status, relationships, or archive/restore. Consolidates update_entity_status, archive_entity, archive_milestone, restore_from_archive.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -123,13 +122,40 @@ export const entityToolDefinitions: Tool[] = [
           },
           description: 'Remove from array fields',
         },
+        // Enhanced: Status update (replaces update_entity_status)
+        status: { type: 'string', description: 'New status (replaces update_entity_status)' },
+        status_note: { type: 'string', description: 'Optional note about the status change' },
+        cascade: { type: 'boolean', description: 'Whether to cascade status changes to related entities' },
+        // Enhanced: Archive/restore (replaces archive_entity, archive_milestone, restore_from_archive)
+        archived: { type: 'boolean', description: 'Set to true to archive, false to restore' },
+        archive_options: {
+          type: 'object',
+          properties: {
+            force: { type: 'boolean', description: 'Archive even if entity has children' },
+            cascade: { type: 'boolean', description: 'Archive children too (for milestones)' },
+            archive_folder: { type: 'string', description: 'Custom archive folder path' },
+            remove_from_canvas: { type: 'boolean', description: 'Remove from canvas when archiving' },
+            canvas_source: { type: 'string', description: 'Canvas file path' },
+          },
+          description: 'Options for archive operation',
+        },
+        restore_options: {
+          type: 'object',
+          properties: {
+            restore_children: { type: 'boolean', description: 'Restore children as well' },
+            add_to_canvas: { type: 'boolean', description: 'Add to canvas when restoring' },
+            canvas_source: { type: 'string', description: 'Canvas file path' },
+          },
+          description: 'Options for restore operation',
+        },
       },
       required: ['id'],
     },
   },
+  // DEPRECATED: Use update_entity with status field instead
   {
     name: 'update_entity_status',
-    description: 'Update entity status with optional note and cascade.',
+    description: '[DEPRECATED: Use update_entity with status field] Update entity status with optional note and cascade.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -141,9 +167,10 @@ export const entityToolDefinitions: Tool[] = [
       required: ['id', 'status'],
     },
   },
+  // DEPRECATED: Use update_entity with archived: true instead
   {
     name: 'archive_entity',
-    description: 'Archive a single entity.',
+    description: '[DEPRECATED: Use update_entity with archived: true] Archive a single entity.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -153,9 +180,10 @@ export const entityToolDefinitions: Tool[] = [
       required: ['id'],
     },
   },
+  // DEPRECATED: Use update_entity with archived: true, archive_options.cascade: true instead
   {
     name: 'archive_milestone',
-    description: 'Archive a milestone and all its children (stories, tasks).',
+    description: '[DEPRECATED: Use update_entity with archived: true, archive_options.cascade: true] Archive a milestone and all its children (stories, tasks).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -165,9 +193,10 @@ export const entityToolDefinitions: Tool[] = [
       required: ['milestone_id'],
     },
   },
+  // DEPRECATED: Use update_entity with archived: false instead
   {
     name: 'restore_from_archive',
-    description: 'Restore an archived entity.',
+    description: '[DEPRECATED: Use update_entity with archived: false] Restore an archived entity.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -179,9 +208,60 @@ export const entityToolDefinitions: Tool[] = [
   },
 
   // Category 2: Batch Operations
+
+  // NEW: Unified batch_update tool with client_id support
+  {
+    name: 'batch_update',
+    description: 'Unified batch operation for create, update, and archive. Supports client_id for idempotency and cross-referencing within the batch.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ops: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              client_id: { type: 'string', description: 'Client-provided ID for idempotency and cross-reference' },
+              op: { type: 'string', enum: ['create', 'update', 'archive'], description: 'Operation type' },
+              type: { type: 'string', enum: ['milestone', 'story', 'task', 'decision', 'document'], description: 'Entity type (required for create)' },
+              id: { type: 'string', description: 'Entity ID (required for update/archive)' },
+              payload: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string', description: 'Entity title (for create)' },
+                  workstream: { type: 'string', description: 'Workstream (for create)' },
+                  parent: { type: 'string', description: 'Parent ID or client_id (for create)' },
+                  depends_on: { type: 'array', items: { type: 'string' }, description: 'Dependency IDs or client_ids' },
+                  implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs this implements' },
+                  enables: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this enables (for decisions)' },
+                  status: { type: 'string', description: 'New status (for update)' },
+                  archived: { type: 'boolean', description: 'Archive flag (for archive)' },
+                  cascade: { type: 'boolean', description: 'Archive children too (for archive)' },
+                },
+                description: 'Operation payload',
+              },
+            },
+            required: ['client_id', 'op', 'payload'],
+          },
+          description: 'Array of operations to perform',
+        },
+        options: {
+          type: 'object',
+          properties: {
+            atomic: { type: 'boolean', description: 'Rollback all on any failure (default: false)' },
+            add_to_canvas: { type: 'boolean', description: 'Add created entities to canvas' },
+            canvas_source: { type: 'string', description: 'Canvas file path' },
+          },
+        },
+      },
+      required: ['ops'],
+    },
+  },
+
+  // DEPRECATED: Use batch_update instead
   {
     name: 'batch_operations',
-    description: 'Create multiple entities with dependencies in a single operation.',
+    description: 'DEPRECATED: Use batch_update instead. Create multiple entities with dependencies in a single operation.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -230,9 +310,10 @@ export const entityToolDefinitions: Tool[] = [
       required: ['entities'],
     },
   },
+  // DEPRECATED: Use batch_update instead
   {
     name: 'batch_update_status',
-    description: 'Update status of multiple entities with optional cascading.',
+    description: 'DEPRECATED: Use batch_update instead. Update status of multiple entities with optional cascading.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -258,9 +339,10 @@ export const entityToolDefinitions: Tool[] = [
       required: ['updates'],
     },
   },
+  // DEPRECATED: Use batch_update instead
   {
     name: 'batch_archive',
-    description: 'Archive multiple entities (milestones with children, or individual entities).',
+    description: 'DEPRECATED: Use batch_update instead. Archive multiple entities (milestones with children, or individual entities).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -280,19 +362,23 @@ export const entityToolDefinitions: Tool[] = [
   // Category 3: Project Understanding
   {
     name: 'get_project_overview',
-    description: 'Get high-level project status across all workstreams.',
+    description: 'Get high-level project status across all workstreams. Enhanced to support workstream filtering and grouping (consolidates get_workstream_status).',
     inputSchema: {
       type: 'object',
       properties: {
         include_completed: { type: 'boolean', description: 'Include completed items' },
         include_archived: { type: 'boolean', description: 'Include archived items' },
         canvas_source: { type: 'string', description: 'Filter by canvas source' },
+        // Enhanced: workstream filtering (from get_workstream_status)
+        workstream: { type: 'string', description: 'Filter by specific workstream. When specified, returns detailed workstream info in workstream_detail field.' },
+        // Enhanced: grouping (from get_workstream_status)
+        group_by: { type: 'string', enum: ['status', 'type', 'priority'], description: 'Group entities by this field (only used when workstream is specified)' },
       },
     },
   },
   {
     name: 'get_workstream_status',
-    description: 'Get detailed status for a specific workstream.',
+    description: '[DEPRECATED - use get_project_overview with workstream filter] Get detailed status for a specific workstream.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -319,11 +405,17 @@ export const entityToolDefinitions: Tool[] = [
   // Category 4: Search & Navigation
   {
     name: 'search_entities',
-    description: 'Full-text search across entities with filters.',
+    description: 'Full-text search across entities with filters. Enhanced to support navigation mode (consolidates navigate_hierarchy). Use query for search mode, or from_id+direction for navigation mode.',
     inputSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Search query' },
+        // Search mode
+        query: { type: 'string', description: 'Search query (for search mode)' },
+        // Navigation mode (from navigate_hierarchy)
+        from_id: { type: 'string', description: 'Starting entity ID (for navigation mode)' },
+        direction: { type: 'string', enum: ['up', 'down', 'siblings', 'dependencies'], description: 'Navigation direction (for navigation mode)' },
+        depth: { type: 'number', description: 'How many levels to traverse (for navigation mode)' },
+        // Filters (apply to both modes)
         filters: {
           type: 'object',
           properties: {
@@ -333,15 +425,45 @@ export const entityToolDefinitions: Tool[] = [
             archived: { type: 'boolean' },
           },
         },
+        // Response control
         limit: { type: 'number', description: 'Max results to return' },
         include_content: { type: 'boolean' },
+        fields: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Fields to include in response (for controlling response size)',
+        },
       },
-      required: ['query'],
     },
   },
   {
+    name: 'get_entity',
+    description: 'Get entity with selective field retrieval. Control response size by specifying only needed fields. Default returns summary fields (id, type, title, status, workstream, last_updated).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Entity ID' },
+        fields: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: [
+              'id', 'type', 'title', 'status', 'workstream', 'last_updated',
+              'parent', 'children_count', 'content', 'effort', 'priority',
+              'dependencies', 'dependency_details', 'task_progress',
+              'acceptance_criteria', 'children', 'implementation_context'
+            ],
+          },
+          description: 'Fields to include in response. If not specified, returns summary fields.',
+        },
+      },
+      required: ['id'],
+    },
+  },
+  // Legacy tools (deprecated - use get_entity instead)
+  {
     name: 'get_entity_summary',
-    description: 'Get a quick overview of an entity.',
+    description: '[DEPRECATED: Use get_entity instead] Get a quick overview of an entity.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -352,7 +474,7 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'get_entity_full',
-    description: 'Get complete entity with all relationships.',
+    description: '[DEPRECATED: Use get_entity with fields parameter instead] Get complete entity with all relationships.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -366,7 +488,7 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'navigate_hierarchy',
-    description: 'Traverse entity relationships in a given direction.',
+    description: '[DEPRECATED: Use search_entities with from_id and direction instead] Traverse entity relationships in a given direction.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -381,8 +503,34 @@ export const entityToolDefinitions: Tool[] = [
 
   // Category 5: Decision & Document Management
   {
+    name: 'manage_documents',
+    description: 'Consolidated tool for document and decision management. Use action to specify operation: get_decision_history, supersede_document, get_document_history, or check_freshness.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['get_decision_history', 'supersede_document', 'get_document_history', 'check_freshness'],
+          description: 'The action to perform',
+        },
+        // For get_decision_history
+        topic: { type: 'string', description: 'Filter by topic keyword (for get_decision_history)' },
+        workstream: { type: 'string', description: 'Filter by workstream (for get_decision_history)' },
+        include_superseded: { type: 'boolean', description: 'Include superseded decisions (for get_decision_history)' },
+        include_archived: { type: 'boolean', description: 'Include archived decisions (for get_decision_history, default: true)' },
+        // For supersede_document, get_document_history, check_freshness
+        document_id: { type: 'string', description: 'Document ID (for supersede_document, get_document_history, check_freshness)' },
+        decision_id: { type: 'string', description: 'Decision ID (for supersede_document)' },
+        new_content: { type: 'string', description: 'New document content (for supersede_document)' },
+        change_summary: { type: 'string', description: 'Summary of changes (for supersede_document)' },
+      },
+      required: ['action'],
+    },
+  },
+  // Legacy tools (deprecated)
+  {
     name: 'create_decision',
-    description: 'Create a new decision record.',
+    description: '[DEPRECATED: Use create_entity with type: "decision" instead] Create a new decision record.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -402,7 +550,7 @@ export const entityToolDefinitions: Tool[] = [
   {
     name: 'get_decision_history',
     description:
-      'Get decision history for a topic or workstream. By default includes archived decisions (most decisions are archived after being decided). Set include_archived=false to only see non-archived decisions.',
+      '[DEPRECATED: Use manage_documents with action: "get_decision_history" instead] Get decision history for a topic or workstream.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -418,7 +566,7 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'supersede_document',
-    description: 'Update a document based on a decision, creating a new version.',
+    description: '[DEPRECATED: Use manage_documents with action: "supersede_document" instead] Update a document based on a decision.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -432,7 +580,7 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'get_document_history',
-    description: 'Get version history for a document.',
+    description: '[DEPRECATED: Use manage_documents with action: "get_document_history" instead] Get version history for a document.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -443,7 +591,7 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'check_document_freshness',
-    description: 'Check if a document is up-to-date with related decisions.',
+    description: '[DEPRECATED: Use manage_documents with action: "check_freshness" instead] Check if a document is up-to-date.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -453,10 +601,10 @@ export const entityToolDefinitions: Tool[] = [
     },
   },
 
-  // Category 6: Implementation Handoff
+  // Category 6: Implementation Handoff (DEPRECATED - Low usage, will be removed)
   {
     name: 'get_ready_for_implementation',
-    description: 'Find stories and specs that are ready for implementation.',
+    description: '[DEPRECATED - Low usage, will be removed] Find stories and specs that are ready for implementation.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -467,7 +615,7 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'generate_implementation_package',
-    description: 'Generate a complete implementation package for a spec.',
+    description: '[DEPRECATED - Low usage, will be removed] Generate a complete implementation package for a spec.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -478,34 +626,13 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'validate_spec_completeness',
-    description: 'Validate that a spec is complete and ready for implementation.',
+    description: '[DEPRECATED - Low usage, will be removed] Validate that a spec is complete and ready for implementation.',
     inputSchema: {
       type: 'object',
       properties: {
         spec_id: { type: 'string' },
       },
       required: ['spec_id'],
-    },
-  },
-
-  // Category 7: Canvas Layout
-  {
-    name: 'auto_layout_canvas',
-    description: 'Auto-layout canvas nodes using dependency-driven horizontal flow with workstream lanes. Repositions nodes based on edge dependencies (X axis) and groups them by workstream (Y axis).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        canvas_source: { type: 'string', description: 'Path to canvas file (optional, uses default)' },
-        options: {
-          type: 'object',
-          properties: {
-            stage_spacing: { type: 'number', description: 'Horizontal spacing between dependency stages (default: 400)' },
-            item_spacing: { type: 'number', description: 'Vertical spacing between items in same lane (default: 120)' },
-            lane_padding: { type: 'number', description: 'Padding between workstream lanes (default: 50)' },
-            preserve_workstreams: { type: 'array', items: { type: 'string' }, description: 'Workstreams to preserve existing positions for' },
-          },
-        },
-      },
     },
   },
 ];
