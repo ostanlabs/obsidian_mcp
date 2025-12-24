@@ -1,0 +1,247 @@
+/**
+ * Obsidian Canvas Entity Styling
+ *
+ * Place this file in your vault at: .obsidian/snippets/canvas-entities.css
+ * Then enable it in Settings → Appearance → CSS Snippets
+ *
+ * This CSS styles canvas nodes based on cssclasses in entity frontmatter:
+ * - Entity type → Border thickness and style
+ * - Workstream/Effort → Border color
+ * - Status → Visual state (opacity, glow)
+ * - Priority → Badge indicator
+ */
+
+/* =============================================================================
+   ENTITY TYPE STYLES - Border thickness and node sizing
+   ============================================================================= */
+
+/* Milestone - Largest, thickest border (strategic goals) */
+.canvas-node-content:has(.canvas-milestone) {
+  border-width: 4px !important;
+  border-style: solid !important;
+  border-radius: 12px !important;
+  min-width: 280px;
+  min-height: 180px;
+}
+
+/* Story - Medium border (deliverable units of work) */
+.canvas-node-content:has(.canvas-story) {
+  border-width: 3px !important;
+  border-style: solid !important;
+  border-radius: 8px !important;
+  min-width: 200px;
+  min-height: 140px;
+}
+
+/* Task - Thin border (atomic work items) */
+.canvas-node-content:has(.canvas-task) {
+  border-width: 2px !important;
+  border-style: solid !important;
+  border-radius: 6px !important;
+  min-width: 160px;
+  min-height: 100px;
+}
+
+/* Decision - Dashed border (choice points) */
+.canvas-node-content:has(.canvas-decision) {
+  border-width: 3px !important;
+  border-style: dashed !important;
+  border-radius: 8px !important;
+  min-width: 200px;
+  min-height: 140px;
+}
+
+/* Document - Dotted border (specs, guides, research) */
+.canvas-node-content:has(.canvas-document) {
+  border-width: 2px !important;
+  border-style: dotted !important;
+  border-radius: 4px !important;
+  min-width: 180px;
+  min-height: 120px;
+}
+
+/* =============================================================================
+   WORKSTREAM/EFFORT COLORS - Border color by team/effort type
+   ============================================================================= */
+
+/* Engineering - Blue */
+.canvas-node-content:has(.canvas-effort-engineering) {
+  border-color: #3B82F6 !important;
+}
+
+/* Business - Purple */
+.canvas-node-content:has(.canvas-effort-business) {
+  border-color: #9333EA !important;
+}
+
+/* Infra - Orange */
+.canvas-node-content:has(.canvas-effort-infra) {
+  border-color: #F97316 !important;
+}
+
+/* Research - Green */
+.canvas-node-content:has(.canvas-effort-research) {
+  border-color: #22C55E !important;
+}
+
+/* Design - Pink */
+.canvas-node-content:has(.canvas-effort-design) {
+  border-color: #EC4899 !important;
+}
+
+/* Marketing - Yellow */
+.canvas-node-content:has(.canvas-effort-marketing) {
+  border-color: #EAB308 !important;
+}
+
+/* =============================================================================
+   STATUS STYLES - Visual state indicators
+   ============================================================================= */
+
+/* Not Started - Slightly muted */
+.canvas-node-content:has(.canvas-status-not-started) {
+  opacity: 0.75;
+}
+
+/* In Progress - Normal with subtle glow */
+.canvas-node-content:has(.canvas-status-in-progress) {
+  opacity: 1;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
+}
+
+/* Completed - Green tint, slightly faded */
+.canvas-node-content:has(.canvas-status-completed) {
+  opacity: 0.85;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, transparent 100%);
+}
+
+/* Blocked - Red glow, attention-grabbing */
+.canvas-node-content:has(.canvas-status-blocked) {
+  opacity: 1;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
+  border-color: #EF4444 !important;
+}
+
+/* =============================================================================
+   PRIORITY INDICATORS - Visual emphasis
+   ============================================================================= */
+
+/* Critical - Pulsing animation */
+.canvas-node-content:has(.canvas-priority-critical) {
+  animation: pulse-critical 2s infinite;
+}
+
+@keyframes pulse-critical {
+  0%, 100% { box-shadow: 0 0 5px rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.7); }
+}
+
+/* High - Stronger border */
+.canvas-node-content:has(.canvas-priority-high) {
+  border-width: 5px !important;
+}
+
+
+/* =============================================================================
+   TASK-SPECIFIC STATUS STYLES
+   ============================================================================= */
+
+/* Open task */
+.canvas-node-content:has(.canvas-status-open) {
+  opacity: 0.8;
+}
+
+/* Done task - Checkmark feel */
+.canvas-node-content:has(.canvas-status-done) {
+  opacity: 0.7;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, transparent 100%);
+}
+
+/* Skipped task - Strikethrough feel */
+.canvas-node-content:has(.canvas-status-skipped) {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+/* =============================================================================
+   DECISION-SPECIFIC STATUS STYLES
+   ============================================================================= */
+
+/* Proposed decision - Awaiting review */
+.canvas-node-content:has(.canvas-status-proposed) {
+  border-style: dashed !important;
+  opacity: 0.85;
+}
+
+/* Decided - Solid, confirmed */
+.canvas-node-content:has(.canvas-status-decided) {
+  border-style: solid !important;
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.08) 0%, transparent 100%);
+}
+
+/* Superseded - Faded out */
+.canvas-node-content:has(.canvas-status-superseded) {
+  opacity: 0.4;
+  border-style: dotted !important;
+}
+
+/* =============================================================================
+   DOCUMENT-SPECIFIC STATUS STYLES
+   ============================================================================= */
+
+/* Draft document */
+.canvas-node-content:has(.canvas-status-draft) {
+  opacity: 0.75;
+  border-style: dotted !important;
+}
+
+/* Review document */
+.canvas-node-content:has(.canvas-status-review) {
+  box-shadow: 0 0 8px rgba(234, 179, 8, 0.4);
+}
+
+/* Approved document */
+.canvas-node-content:has(.canvas-status-approved) {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, transparent 100%);
+}
+
+/* Archived document */
+.canvas-node-content:has(.canvas-status-archived) {
+  opacity: 0.4;
+}
+
+/* =============================================================================
+   HOVER AND INTERACTION STYLES
+   ============================================================================= */
+
+/* Hover effect for all entity nodes */
+.canvas-node-content:has([class*="canvas-"]):hover {
+  transform: scale(1.02);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Selected node emphasis */
+.canvas-node.is-selected .canvas-node-content:has([class*="canvas-"]) {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+}
+
+/* =============================================================================
+   DARK THEME ADJUSTMENTS
+   ============================================================================= */
+
+.theme-dark .canvas-node-content:has(.canvas-status-completed) {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, transparent 100%);
+}
+
+.theme-dark .canvas-node-content:has(.canvas-status-decided) {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.15) 0%, transparent 100%);
+}
+
+.theme-dark .canvas-node-content:has(.canvas-status-approved) {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, transparent 100%);
+}
+
+.theme-dark .canvas-node-content:has(.canvas-status-done) {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, transparent 100%);
+}
