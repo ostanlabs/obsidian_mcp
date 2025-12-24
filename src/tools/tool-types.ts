@@ -98,7 +98,7 @@ export interface CreateEntityOutput {
   canvas_node_added: boolean;
 }
 
-// update_entity
+// update_entity (enhanced - consolidates update_entity_status, archive_entity, restore_from_archive)
 export interface UpdateEntityInput {
   id: EntityId;
   data?: Record<string, unknown>;
@@ -112,6 +112,24 @@ export interface UpdateEntityInput {
     implements?: EntityId[];
     enables?: EntityId[];
   };
+  // Enhanced: Status update with cascade (replaces update_entity_status)
+  status?: EntityStatus;
+  status_note?: string;
+  cascade?: boolean;
+  // Enhanced: Archive/restore support (replaces archive_entity, restore_from_archive)
+  archived?: boolean;
+  archive_options?: {
+    force?: boolean;  // Archive even if entity has children
+    cascade?: boolean;  // Archive children too (for milestones)
+    archive_folder?: string;  // Custom archive folder
+    remove_from_canvas?: boolean;
+    canvas_source?: string;
+  };
+  restore_options?: {
+    restore_children?: boolean;
+    add_to_canvas?: boolean;
+    canvas_source?: string;
+  };
 }
 
 export interface UpdateEntityOutput {
@@ -119,6 +137,22 @@ export interface UpdateEntityOutput {
   entity: EntityFull;
   dependencies_added: number;
   dependencies_removed: number;
+  // Enhanced: Status change info
+  status_changed?: {
+    old_status: EntityStatus;
+    new_status: EntityStatus;
+    cascaded_updates: EntityId[];
+  };
+  // Enhanced: Archive/restore info
+  archive_result?: {
+    archived: boolean;
+    archive_path?: string;
+    archived_children?: EntityId[];
+  };
+  restore_result?: {
+    restored: boolean;
+    restored_children?: EntityId[];
+  };
 }
 
 // update_entity_status
@@ -264,14 +298,99 @@ export interface BatchArchiveOutput {
 }
 
 // =============================================================================
+// NEW: Unified batch_update (replaces batch_operations, batch_update_status, batch_archive)
+// =============================================================================
+
+/** Operation type for batch_update */
+export type BatchOpType = 'create' | 'update' | 'archive';
+
+/** Single operation in a batch_update call */
+export interface BatchOp {
+  /** Client-provided ID for idempotency and cross-reference within the batch */
+  client_id: string;
+  /** Operation type */
+  op: BatchOpType;
+  /** Entity type (required for create) */
+  type?: EntityType;
+  /** Entity ID (required for update/archive) */
+  id?: EntityId;
+  /** Payload for the operation */
+  payload: {
+    // For create: entity data
+    title?: string;
+    workstream?: string;
+    parent?: string;  // Can be client_id or EntityId
+    depends_on?: string[];  // Can be client_ids or EntityIds
+    implements?: string[];
+    enables?: string[];
+    // For update: fields to update
+    status?: EntityStatus;
+    content?: string;
+    priority?: Priority;
+    effort?: Effort;
+    // For archive
+    archived?: boolean;
+    cascade?: boolean;  // Archive children too
+    [key: string]: unknown;
+  };
+}
+
+/** Input for batch_update tool */
+export interface BatchUpdateInput {
+  /** Array of operations to perform */
+  ops: BatchOp[];
+  /** Options for the batch operation */
+  options?: {
+    /** If true, rollback all on any failure. Default: false */
+    atomic?: boolean;
+    /** Add created entities to canvas */
+    add_to_canvas?: boolean;
+    /** Canvas file path */
+    canvas_source?: string;
+  };
+}
+
+/** Result of a single operation in batch_update */
+export interface BatchOpResult {
+  /** Client-provided ID */
+  client_id: string;
+  /** Operation status */
+  status: 'ok' | 'error';
+  /** Entity ID (for successful creates/updates) */
+  id?: EntityId;
+  /** Error details (for failed operations) */
+  error?: {
+    code: string;
+    message: string;
+    field?: string;
+  };
+}
+
+/** Output for batch_update tool */
+export interface BatchUpdateOutput {
+  /** Results for each operation */
+  results: BatchOpResult[];
+  /** Summary of the batch operation */
+  summary: {
+    total: number;
+    succeeded: number;
+    failed: number;
+  };
+}
+
+// =============================================================================
 // Category 3: Project Understanding
 // =============================================================================
 
-// get_project_overview
+// get_project_overview (enhanced - consolidates get_workstream_status)
 export interface GetProjectOverviewInput {
   include_completed?: boolean;
   include_archived?: boolean;
   canvas_source?: string;
+  // Enhanced: workstream filtering (from get_workstream_status)
+  workstream?: Workstream;
+  // Enhanced: grouping (from get_workstream_status)
+  group_by?: 'status' | 'type' | 'priority';
 }
 
 export interface GetProjectOverviewOutput {
@@ -289,9 +408,26 @@ export interface GetProjectOverviewOutput {
   }>;
   pending_decisions: number;
   ready_for_implementation: number;
+  // Enhanced: workstream detail (when workstream filter is specified)
+  workstream_detail?: {
+    workstream: Workstream;
+    summary: {
+      total: number;
+      by_status: Record<string, number>;
+      by_type: Record<string, number>;
+      blocked_count: number;
+      cross_workstream_dependencies: number;
+    };
+    groups: Array<{
+      group_key: string;
+      entities: EntitySummary[];
+    }>;
+    blocking_other_workstreams: EntitySummary[];
+    blocked_by_other_workstreams: EntitySummary[];
+  };
 }
 
-// get_workstream_status
+// get_workstream_status (DEPRECATED - use get_project_overview with workstream filter)
 export interface GetWorkstreamStatusInput {
   workstream: Workstream;
   include_completed?: boolean;
@@ -370,9 +506,17 @@ export interface AnalyzeProjectStateOutput {
 // Category 4: Search & Navigation
 // =============================================================================
 
-// search_entities
+// search_entities (enhanced - consolidates navigate_hierarchy)
 export interface SearchEntitiesInput {
-  query: string;
+  // Search mode
+  query?: string;
+
+  // Navigation mode (from navigate_hierarchy)
+  from_id?: EntityId;
+  direction?: 'up' | 'down' | 'siblings' | 'dependencies';
+  depth?: number;
+
+  // Filters (apply to both modes)
   filters?: {
     type?: EntityType[];
     status?: EntityStatus[];
@@ -380,8 +524,11 @@ export interface SearchEntitiesInput {
     effort?: Effort[];
     archived?: boolean;
   };
+
+  // Response control
   limit?: number;
   include_content?: boolean;
+  fields?: EntityField[];  // Control response size
 }
 
 export interface SearchEntitiesOutput {
@@ -391,19 +538,97 @@ export interface SearchEntitiesOutput {
     title: string;
     status: EntityStatus;
     workstream: Workstream;
-    relevance_score: number;
-    snippet: string;
+    relevance_score?: number;  // Only for search mode
+    snippet?: string;  // Only for search mode
     parent?: EntityId;
-    path: string;
+    path?: string;  // Only for search mode
   }>;
   total_matches: number;
+  // Navigation mode fields
+  origin?: EntitySummary;  // Only for navigation mode
+  path_description?: string;  // Only for navigation mode
 }
 
-// get_entity_summary
+// get_entity (unified - replaces get_entity_summary and get_entity_full)
+/**
+ * Available fields for get_entity:
+ * - id, type, title, status, workstream, last_updated (always included in summary)
+ * - parent, children_count (basic hierarchy)
+ * - content (full markdown content)
+ * - effort, priority (planning fields)
+ * - dependencies (blocks/blocked_by IDs)
+ * - dependency_details (blocks/blocked_by with summaries)
+ * - task_progress (for stories)
+ * - acceptance_criteria (for stories/tasks)
+ * - children (child entity summaries)
+ * - implementation_context (for implementation handoff)
+ */
+export type EntityField =
+  | 'id'
+  | 'type'
+  | 'title'
+  | 'status'
+  | 'workstream'
+  | 'last_updated'
+  | 'parent'
+  | 'children_count'
+  | 'content'
+  | 'effort'
+  | 'priority'
+  | 'dependencies'
+  | 'dependency_details'
+  | 'task_progress'
+  | 'acceptance_criteria'
+  | 'children'
+  | 'implementation_context';
+
+export interface GetEntityInput {
+  id: EntityId;
+  /** Fields to include in response. If not specified, returns summary fields. */
+  fields?: EntityField[];
+}
+
+export interface GetEntityOutput {
+  id: EntityId;
+  type: EntityType;
+  title: string;
+  status: EntityStatus;
+  workstream: Workstream;
+  last_updated: string;
+  // Optional fields based on request
+  parent?: { id: EntityId; title: string };
+  children_count?: number;
+  content?: string;
+  effort?: Effort;
+  priority?: Priority;
+  dependencies?: {
+    blocks: EntityId[];
+    blocked_by: EntityId[];
+  };
+  dependency_details?: {
+    blocks: EntitySummary[];
+    blocked_by: EntitySummary[];
+  };
+  task_progress?: {
+    total: number;
+    completed: number;
+  };
+  acceptance_criteria?: string[];
+  children?: EntitySummary[];
+  implementation_context?: {
+    required: EntitySummary[];
+    reference: EntitySummary[];
+    assumes: string[];
+  };
+}
+
+// Legacy types for backward compatibility (deprecated)
+/** @deprecated Use GetEntityInput instead */
 export interface GetEntitySummaryInput {
   id: EntityId;
 }
 
+/** @deprecated Use GetEntityOutput instead */
 export interface GetEntitySummaryOutput extends EntitySummary {
   effort?: Effort;
   priority?: Priority;
@@ -417,7 +642,7 @@ export interface GetEntitySummaryOutput extends EntitySummary {
   };
 }
 
-// get_entity_full
+/** @deprecated Use GetEntityInput instead */
 export interface GetEntityFullInput {
   id: EntityId;
   include_children?: boolean;
@@ -425,9 +650,11 @@ export interface GetEntityFullInput {
   depth?: number;
 }
 
+/** @deprecated Use GetEntityOutput instead */
 export interface GetEntityFullOutput extends EntityFull {}
 
-// navigate_hierarchy
+// navigate_hierarchy (DEPRECATED - use search_entities with from_id and direction)
+/** @deprecated Use SearchEntitiesInput with from_id and direction instead */
 export interface NavigateHierarchyInput {
   from_id: EntityId;
   direction: 'up' | 'down' | 'siblings' | 'dependencies';
@@ -435,6 +662,7 @@ export interface NavigateHierarchyInput {
   include_content?: boolean;
 }
 
+/** @deprecated Use SearchEntitiesOutput instead */
 export interface NavigateHierarchyOutput {
   origin: EntitySummary;
   results: EntitySummary[];
@@ -445,7 +673,33 @@ export interface NavigateHierarchyOutput {
 // Category 5: Decision & Document Management
 // =============================================================================
 
-// create_decision
+// manage_documents (consolidated tool - replaces individual decision/document tools)
+export type ManageDocumentsAction = 'get_decision_history' | 'supersede_document' | 'get_document_history' | 'check_freshness';
+
+export interface ManageDocumentsInput {
+  action: ManageDocumentsAction;
+
+  // For get_decision_history
+  topic?: string;
+  workstream?: Workstream;
+  include_superseded?: boolean;
+  include_archived?: boolean;
+
+  // For supersede_document
+  document_id?: EntityId;
+  decision_id?: EntityId;
+  new_content?: string;
+  change_summary?: string;
+}
+
+export type ManageDocumentsOutput =
+  | { action: 'get_decision_history' } & GetDecisionHistoryOutput
+  | { action: 'supersede_document' } & SupersedeDocumentOutput
+  | { action: 'get_document_history' } & GetDocumentHistoryOutput
+  | { action: 'check_freshness' } & CheckDocumentFreshnessOutput;
+
+// create_decision (DEPRECATED - use create_entity with type: 'decision' instead)
+/** @deprecated Use create_entity with type: 'decision' instead */
 export interface CreateDecisionInput {
   title: string;
   context: string;
@@ -640,30 +894,4 @@ export interface ValidateSpecCompletenessOutput {
     detail: string;
     suggestion: string;
   }>;
-}
-
-// =============================================================================
-// Category 8: Canvas Layout
-// =============================================================================
-
-// auto_layout_canvas
-export interface AutoLayoutCanvasInput {
-  canvas_source?: string;
-  options?: {
-    /** Horizontal spacing between dependency stages (default: 400) */
-    stage_spacing?: number;
-    /** Vertical spacing between items in same lane (default: 120) */
-    item_spacing?: number;
-    /** Padding around lanes (default: 50) */
-    lane_padding?: number;
-    /** Preserve existing positions for specific workstreams */
-    preserve_workstreams?: string[];
-  };
-}
-
-export interface AutoLayoutCanvasOutput {
-  success: boolean;
-  nodes_repositioned: number;
-  workstreams_found: string[];
-  errors: string[];
 }

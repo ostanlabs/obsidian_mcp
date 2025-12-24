@@ -5,6 +5,9 @@
  * - get_ready_for_implementation: Find stories/specs ready to implement
  * - generate_implementation_package: Create implementation context
  * - validate_spec_completeness: Check if spec is ready for implementation
+ *
+ * @deprecated All tools in this module are deprecated due to low usage and will be removed.
+ * These tools are considered "Plugin territory" and should be implemented in the Obsidian plugin instead.
  */
 
 import type {
@@ -82,6 +85,7 @@ export interface ImplementationHandoffDependencies {
 
 /**
  * Find stories and specs that are ready for implementation.
+ * @deprecated This tool is deprecated due to low usage and will be removed.
  */
 export async function getReadyForImplementation(
   input: GetReadyForImplementationInput,
@@ -262,6 +266,7 @@ async function evaluateReadiness(
 
 /**
  * Generate a complete implementation package for a spec.
+ * @deprecated This tool is deprecated due to low usage and will be removed.
  */
 export async function generateImplementationPackage(
   input: GenerateImplementationPackageInput,
@@ -373,6 +378,7 @@ export async function generateImplementationPackage(
 
 /**
  * Validate that a spec is complete and ready for implementation.
+ * @deprecated This tool is deprecated due to low usage and will be removed.
  */
 export async function validateSpecCompleteness(
   input: ValidateSpecCompletenessInput,

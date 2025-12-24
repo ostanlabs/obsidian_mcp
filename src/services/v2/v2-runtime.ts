@@ -45,7 +45,6 @@ import type { ProjectUnderstandingDependencies } from '../../tools/project-under
 import type { SearchNavigationDependencies } from '../../tools/search-navigation-tools.js';
 import type { DecisionDocumentDependencies } from '../../tools/decision-document-tools.js';
 import type { ImplementationHandoffDependencies } from '../../tools/implementation-handoff-tools.js';
-import type { CanvasLayoutDependencies } from '../../tools/canvas-layout-tools.js';
 import type { EntitySummary, EntityFull, Workstream } from '../../tools/tool-types.js';
 
 import { getConfig } from '../../utils/config.js';
@@ -74,13 +73,13 @@ export class V2Runtime {
   private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
   private readonly DEBOUNCE_MS = 100;
 
-  // ID counters
-  private idCounters: Map<EntityType, number> = new Map([
-    ['milestone', 0],
-    ['story', 0],
-    ['task', 0],
-    ['decision', 0],
-    ['document', 0],
+  // ID prefix mapping for each entity type
+  private readonly idPrefixes: Map<EntityType, string> = new Map([
+    ['milestone', 'M'],
+    ['story', 'S'],
+    ['task', 'T'],
+    ['decision', 'DEC'],
+    ['document', 'DOC'],
   ]);
 
   // Track duplicate IDs (id -> array of file paths)
@@ -196,16 +195,6 @@ export class V2Runtime {
               paths.map(p => `    - ${p}`).join('\n')
             );
           }
-        }
-      }
-
-      // Update ID counter
-      const type = getEntityTypeFromId(entity.id);
-      if (type) {
-        const num = parseInt(entity.id.split('-')[1], 10);
-        const current = this.idCounters.get(type) || 0;
-        if (num > current) {
-          this.idCounters.set(type, num);
         }
       }
 
@@ -552,19 +541,45 @@ export class V2Runtime {
     }
   }
 
+  /**
+   * Get the highest ID number for a given entity type by scanning the vault.
+   * This ensures we never generate duplicate IDs even if entities were created
+   * by the Obsidian plugin while the MCP server was running.
+   */
+  private getHighestIdForType(type: EntityType): number {
+    const prefix = this.idPrefixes.get(type);
+    if (!prefix) return 0;
+
+    let highest = 0;
+    const allMetadata = this.index.getAll();
+
+    for (const metadata of allMetadata) {
+      if (metadata.type !== type) continue;
+
+      // Parse the ID number from the entity ID (e.g., "S-001" -> 1, "DEC-042" -> 42)
+      const match = metadata.id.match(new RegExp(`^${prefix}-(\\d+)$`));
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > highest) {
+          highest = num;
+        }
+      }
+    }
+
+    return highest;
+  }
+
   /** Get next ID for entity type (zero-padded to 3 digits) */
   async getNextId(type: EntityType): Promise<EntityId> {
-    const current = this.idCounters.get(type) || 0;
-    const next = current + 1;
-    this.idCounters.set(type, next);
+    // Scan the vault to find the highest existing ID for this type
+    // This prevents ID collisions with entities created by the Obsidian plugin
+    const highest = this.getHighestIdForType(type);
+    const next = highest + 1;
 
-    const prefix = {
-      milestone: 'M',
-      story: 'S',
-      task: 'T',
-      decision: 'DEC',
-      document: 'DOC',
-    }[type];
+    const prefix = this.idPrefixes.get(type);
+    if (!prefix) {
+      throw new Error(`Unknown entity type: ${type}`);
+    }
 
     // Zero-pad to 3 digits (e.g., S-001, M-012, T-123)
     const padded = String(next).padStart(3, '0');
@@ -1052,13 +1067,18 @@ export class V2Runtime {
     return decisions.filter(d => d.enables?.includes(docId));
   }
 
-  /** Generate entity ID - delegates to getNextId for consistency */
+  /** Generate entity ID - uses vault scanning for consistency */
   generateId(type: 'decision' | 'document'): EntityId {
-    // Synchronous wrapper - uses same counter logic as getNextId
-    const current = this.idCounters.get(type) || 0;
-    const next = current + 1;
-    this.idCounters.set(type, next);
-    const prefix = type === 'decision' ? 'DEC' : 'DOC';
+    // Scan the vault to find the highest existing ID for this type
+    // This prevents ID collisions with entities created by the Obsidian plugin
+    const highest = this.getHighestIdForType(type);
+    const next = highest + 1;
+
+    const prefix = this.idPrefixes.get(type);
+    if (!prefix) {
+      throw new Error(`Unknown entity type: ${type}`);
+    }
+
     const padded = String(next).padStart(3, '0');
     return `${prefix}-${padded}` as EntityId;
   }
@@ -1285,34 +1305,6 @@ export class V2Runtime {
       getImplementationContext: (id) => this.getImplementationContext(id),
       getRelatedDocuments: (id) => this.getRelatedDocuments(id),
       searchContent: (id, pattern) => this.searchContent(id, pattern),
-    };
-  }
-
-  // ===========================================================================
-  // Canvas Layout Dependencies
-  // ===========================================================================
-
-  /** Get canvas layout dependencies */
-  getCanvasLayoutDeps(): CanvasLayoutDependencies {
-    return {
-      autoLayout: async (entityMetadataResolver, canvasPath, config) => {
-        return this.canvasManager.autoLayout(entityMetadataResolver, canvasPath, config);
-      },
-      getEntityMetadata: async (filePath: string) => {
-        // Extract entity ID from file path and get metadata
-        const fileName = path.basename(filePath, '.md');
-        const entity = this.index.get(fileName as EntityId);
-        if (!entity) {
-          return null;
-        }
-        return {
-          workstream: entity.workstream,
-          entityType: entity.type,
-        };
-      },
-      getAllFileNodes: async (canvasPath) => {
-        return this.canvasManager.getAllFileNodes(canvasPath);
-      },
     };
   }
 }

@@ -2,11 +2,14 @@
  * Decision & Document Management Tools
  *
  * Category 5: Decision & Document Management
- * - create_decision: Create a new decision record
- * - get_decision_history: Get decision history for a topic
- * - supersede_document: Update document based on decision
- * - get_document_history: Get document version history
- * - check_document_freshness: Check if document is up-to-date
+ * - manage_documents: Consolidated tool for document/decision management
+ *   - get_decision_history: Get decision history for a topic
+ *   - supersede_document: Update document based on decision
+ *   - get_document_history: Get document version history
+ *   - check_freshness: Check if document is up-to-date
+ *
+ * DEPRECATED:
+ * - create_decision: Use create_entity with type: 'decision' instead
  */
 
 import type {
@@ -27,6 +30,8 @@ import type {
   GetDocumentHistoryOutput,
   CheckDocumentFreshnessInput,
   CheckDocumentFreshnessOutput,
+  ManageDocumentsInput,
+  ManageDocumentsOutput,
   EntityFull,
   Workstream,
 } from './tool-types.js';
@@ -87,11 +92,77 @@ export interface DecisionDocumentDependencies {
 }
 
 // =============================================================================
-// Create Decision
+// Manage Documents (Consolidated Tool)
+// =============================================================================
+
+/**
+ * Consolidated tool for document and decision management.
+ * Dispatches to the appropriate handler based on action.
+ */
+export async function manageDocuments(
+  input: ManageDocumentsInput,
+  deps: DecisionDocumentDependencies
+): Promise<ManageDocumentsOutput> {
+  const { action } = input;
+
+  switch (action) {
+    case 'get_decision_history': {
+      const result = await getDecisionHistory({
+        topic: input.topic,
+        workstream: input.workstream,
+        include_superseded: input.include_superseded,
+        include_archived: input.include_archived,
+      }, deps);
+      return { action: 'get_decision_history', ...result };
+    }
+
+    case 'supersede_document': {
+      if (!input.document_id || !input.decision_id || !input.new_content || !input.change_summary) {
+        throw new Error('supersede_document requires document_id, decision_id, new_content, and change_summary');
+      }
+      const result = await supersedeDocument({
+        document_id: input.document_id,
+        decision_id: input.decision_id,
+        new_content: input.new_content,
+        change_summary: input.change_summary,
+      }, deps);
+      return { action: 'supersede_document', ...result };
+    }
+
+    case 'get_document_history': {
+      if (!input.document_id) {
+        throw new Error('get_document_history requires document_id');
+      }
+      const result = await getDocumentHistory({
+        document_id: input.document_id,
+      }, deps);
+      return { action: 'get_document_history', ...result };
+    }
+
+    case 'check_freshness': {
+      if (!input.document_id) {
+        throw new Error('check_freshness requires document_id');
+      }
+      const result = await checkDocumentFreshness({
+        document_id: input.document_id,
+      }, deps);
+      return { action: 'check_freshness', ...result };
+    }
+
+    default:
+      throw new Error(`Unknown action: ${action}`);
+  }
+}
+
+// =============================================================================
+// Create Decision (DEPRECATED)
 // =============================================================================
 
 /**
  * Create a new decision record.
+ *
+ * @deprecated Use `create_entity` with `type: 'decision'` instead.
+ * Example: `create_entity({ type: 'decision', data: { title: '...', workstream: '...', ... } })`
  */
 export async function createDecision(
   input: CreateDecisionInput,

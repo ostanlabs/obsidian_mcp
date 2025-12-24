@@ -135,8 +135,6 @@ describe('Tools Index Integration Tests', () => {
       expect(toolNames).toContain('create_decision');
       // Implementation handoff
       expect(toolNames).toContain('get_ready_for_implementation');
-      // Canvas layout
-      expect(toolNames).toContain('auto_layout_canvas');
     });
 
     it('should have valid inputSchema for each tool definition', () => {

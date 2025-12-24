@@ -483,22 +483,71 @@ function buildDocument(
 }
 
 // =============================================================================
-// Update Entity
+// Update Entity (Enhanced - consolidates status, archive, restore operations)
 // =============================================================================
 
 /**
  * Update entity fields and/or modify relationships.
+ * Enhanced to support:
+ * - Status updates with validation and cascade (replaces update_entity_status)
+ * - Archive operations (replaces archive_entity, archive_milestone)
+ * - Restore operations (replaces restore_from_archive)
  */
 export async function updateEntity(
   input: UpdateEntityInput,
   deps: EntityManagementDependencies
 ): Promise<UpdateEntityOutput> {
-  const { id, data, add_dependencies, remove_dependencies, add_to, remove_from } = input;
+  const {
+    id,
+    data,
+    add_dependencies,
+    remove_dependencies,
+    add_to,
+    remove_from,
+    status,
+    status_note,
+    cascade,
+    archived,
+    archive_options,
+    restore_options,
+  } = input;
 
   // Get existing entity
   const entity = await deps.getEntity(id);
   if (!entity) {
     throw new Error(`Entity not found: ${id}`);
+  }
+
+  // Initialize result
+  const result: UpdateEntityOutput = {
+    id,
+    entity: null as unknown as EntityFull, // Will be set at the end
+    dependencies_added: 0,
+    dependencies_removed: 0,
+  };
+
+  // Handle archive operation (takes precedence)
+  if (archived === true) {
+    const archiveResult = await handleArchiveOperation(entity, archive_options, deps);
+    result.archive_result = archiveResult;
+    // After archiving, get the updated entity
+    const archivedEntity = await deps.getEntity(id);
+    if (archivedEntity) {
+      result.entity = await deps.toEntityFull(archivedEntity);
+    }
+    return result;
+  }
+
+  // Handle restore operation
+  if (archived === false && entity.archived) {
+    const restoreResult = await handleRestoreOperation(entity, restore_options, deps);
+    result.restore_result = restoreResult;
+    // After restoring, get the updated entity
+    const restoredEntity = await deps.getEntity(id);
+    if (restoredEntity) {
+      result.entity = await deps.toEntityFull(restoredEntity);
+    }
+    return result;
   }
 
   // Apply field updates
@@ -507,23 +556,27 @@ export async function updateEntity(
     Object.assign(updatedEntity, data);
   }
 
-  // Handle dependency changes
-  let depsAdded = 0;
-  let depsRemoved = 0;
+  // Handle status update with validation and cascade
+  if (status && status !== entity.status) {
+    const statusResult = await handleStatusUpdate(entity, status, status_note, cascade, deps);
+    result.status_changed = statusResult;
+    updatedEntity.status = status as typeof updatedEntity.status;
+  }
 
+  // Handle dependency changes
   if ('depends_on' in updatedEntity) {
     const currentDeps = (updatedEntity as { depends_on: EntityId[] }).depends_on || [];
 
     if (add_dependencies) {
       const newDeps = [...new Set([...currentDeps, ...add_dependencies])];
       (updatedEntity as { depends_on: EntityId[] }).depends_on = newDeps;
-      depsAdded = newDeps.length - currentDeps.length;
+      result.dependencies_added = newDeps.length - currentDeps.length;
     }
 
     if (remove_dependencies) {
       const filtered = currentDeps.filter((d) => !remove_dependencies.includes(d));
       (updatedEntity as { depends_on: EntityId[] }).depends_on = filtered;
-      depsRemoved = currentDeps.length - filtered.length;
+      result.dependencies_removed = currentDeps.length - filtered.length;
     }
   }
 
@@ -562,22 +615,179 @@ export async function updateEntity(
   await deps.writeEntity(updatedEntity);
 
   // Convert to full representation
-  const entityFull = await deps.toEntityFull(updatedEntity);
+  result.entity = await deps.toEntityFull(updatedEntity);
+
+  return result;
+}
+
+// =============================================================================
+// Helper: Handle Status Update
+// =============================================================================
+
+async function handleStatusUpdate(
+  entity: Entity,
+  newStatus: EntityStatus,
+  note: string | undefined,
+  cascade: boolean | undefined,
+  deps: EntityManagementDependencies
+): Promise<{ old_status: EntityStatus; new_status: EntityStatus; cascaded_updates: EntityId[] }> {
+  const oldStatus = entity.status;
+
+  // Validate transition
+  const validation = deps.validateStatusTransition(entity, newStatus);
+  if (!validation.valid) {
+    throw new Error(`Invalid status transition: ${validation.reason}`);
+  }
+
+  // Compute cascade effects if requested
+  let cascadedUpdates: EntityId[] = [];
+  if (cascade) {
+    cascadedUpdates = await deps.computeCascadeEffects(entity, newStatus);
+  }
 
   return {
-    id,
-    entity: entityFull,
-    dependencies_added: depsAdded,
-    dependencies_removed: depsRemoved,
+    old_status: oldStatus,
+    new_status: newStatus,
+    cascaded_updates: cascadedUpdates,
+  };
+}
+
+// =============================================================================
+// Helper: Handle Archive Operation
+// =============================================================================
+
+async function handleArchiveOperation(
+  entity: Entity,
+  options: UpdateEntityInput['archive_options'],
+  deps: EntityManagementDependencies
+): Promise<{ archived: boolean; archive_path?: string; archived_children?: EntityId[] }> {
+  const { force, cascade: archiveCascade, archive_folder, remove_from_canvas, canvas_source } = options || {};
+
+  // For milestones with cascade, archive all children
+  if (entity.type === 'milestone' && archiveCascade) {
+    const archivedChildren: EntityId[] = [];
+
+    // Compute archive path
+    const now = new Date();
+    const quarter = Math.ceil((now.getMonth() + 1) / 3);
+    const archivePath = archive_folder || `archive/${now.getFullYear()}-Q${quarter}`;
+
+    // Get all children (stories)
+    const stories = await deps.getChildren(entity.id);
+    for (const story of stories) {
+      // Get tasks for each story
+      const tasks = await deps.getChildren(story.id);
+      for (const task of tasks) {
+        await deps.moveToArchive(task.id, archivePath);
+        archivedChildren.push(task.id);
+        if (remove_from_canvas && deps.removeFromCanvas && canvas_source) {
+          await deps.removeFromCanvas(task.id, canvas_source);
+        }
+      }
+      await deps.moveToArchive(story.id, archivePath);
+      archivedChildren.push(story.id);
+      if (remove_from_canvas && deps.removeFromCanvas && canvas_source) {
+        await deps.removeFromCanvas(story.id, canvas_source);
+      }
+    }
+
+    // Archive the milestone itself
+    const finalPath = await deps.moveToArchive(entity.id, archivePath);
+    if (remove_from_canvas && deps.removeFromCanvas && canvas_source) {
+      await deps.removeFromCanvas(entity.id, canvas_source);
+    }
+
+    return {
+      archived: true,
+      archive_path: finalPath,
+      archived_children: archivedChildren,
+    };
+  }
+
+  // For non-cascade archive, check for children
+  if (!force) {
+    const children = await deps.getChildren(entity.id);
+    if (children.length > 0) {
+      throw new Error(
+        `Entity has ${children.length} children. Use archive_options.force=true to archive anyway, or archive_options.cascade=true to archive children.`
+      );
+    }
+  }
+
+  // Move to archive
+  const finalPath = await deps.moveToArchive(entity.id, archive_folder);
+
+  // Remove from canvas if requested
+  if (remove_from_canvas && deps.removeFromCanvas && canvas_source) {
+    await deps.removeFromCanvas(entity.id, canvas_source);
+  }
+
+  return {
+    archived: true,
+    archive_path: finalPath,
+  };
+}
+
+// =============================================================================
+// Helper: Handle Restore Operation
+// =============================================================================
+
+async function handleRestoreOperation(
+  entity: Entity,
+  options: UpdateEntityInput['restore_options'],
+  deps: EntityManagementDependencies
+): Promise<{ restored: boolean; restored_children?: EntityId[] }> {
+  const { restore_children, add_to_canvas, canvas_source } = options || {};
+
+  // Restore the entity
+  await deps.restoreFromArchive(entity.id);
+
+  // Add to canvas if requested
+  if (add_to_canvas && deps.addToCanvas && canvas_source) {
+    const restoredEntity = await deps.getEntity(entity.id);
+    if (restoredEntity) {
+      await deps.addToCanvas(restoredEntity, canvas_source);
+    }
+  }
+
+  // Restore children if requested
+  const restoredChildren: EntityId[] = [];
+  if (restore_children) {
+    const children = await deps.getChildren(entity.id);
+    for (const child of children) {
+      await deps.restoreFromArchive(child.id);
+      restoredChildren.push(child.id);
+
+      if (add_to_canvas && deps.addToCanvas && canvas_source) {
+        await deps.addToCanvas(child, canvas_source);
+      }
+
+      // Also restore grandchildren (tasks under stories)
+      const grandchildren = await deps.getChildren(child.id);
+      for (const grandchild of grandchildren) {
+        await deps.restoreFromArchive(grandchild.id);
+        restoredChildren.push(grandchild.id);
+
+        if (add_to_canvas && deps.addToCanvas && canvas_source) {
+          await deps.addToCanvas(grandchild, canvas_source);
+        }
+      }
+    }
+  }
+
+  return {
+    restored: true,
+    restored_children: restoredChildren.length > 0 ? restoredChildren : undefined,
   };
 }
 
 
 // =============================================================================
-// Update Entity Status
+// Update Entity Status (DEPRECATED - use updateEntity with status field)
 // =============================================================================
 
 /**
+ * @deprecated Use updateEntity({ id, status, status_note, cascade }) instead.
  * Dedicated status update with optional note and cascade.
  */
 export async function updateEntityStatus(
@@ -631,10 +841,11 @@ export async function updateEntityStatus(
 }
 
 // =============================================================================
-// Archive Entity
+// Archive Entity (DEPRECATED - use updateEntity with archived: true)
 // =============================================================================
 
 /**
+ * @deprecated Use updateEntity({ id, archived: true, archive_options }) instead.
  * Archive a single entity.
  */
 export async function archiveEntity(
@@ -675,10 +886,11 @@ export async function archiveEntity(
 }
 
 // =============================================================================
-// Archive Milestone
+// Archive Milestone (DEPRECATED - use updateEntity with archived: true, archive_options.cascade: true)
 // =============================================================================
 
 /**
+ * @deprecated Use updateEntity({ id, archived: true, archive_options: { cascade: true } }) instead.
  * Archive a milestone and all its children.
  */
 export async function archiveMilestone(
@@ -742,10 +954,11 @@ export async function archiveMilestone(
 }
 
 // =============================================================================
-// Restore From Archive
+// Restore From Archive (DEPRECATED - use updateEntity with archived: false)
 // =============================================================================
 
 /**
+ * @deprecated Use updateEntity({ id, archived: false, restore_options }) instead.
  * Restore an archived entity.
  */
 export async function restoreFromArchive(
