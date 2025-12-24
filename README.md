@@ -1,13 +1,14 @@
 # Obsidian MCP Server
 
-An MCP (Model Context Protocol) server that enables AI assistants to manage structured project accomplishments in Obsidian. Works alongside the [Canvas Structured Items Plugin](https://bitbucket.org/ostanmarc/obsidian-canvas-structured-items/src/master/) for visual project management.
+An MCP (Model Context Protocol) server that enables AI assistants to manage hierarchical project entities in Obsidian. Works alongside the [Canvas Structured Items Plugin](https://bitbucket.org/ostanmarc/obsidian-canvas-structured-items/src/master/) for visual project management.
 
 ## What This Does
 
 This MCP server lets AI assistants:
-- **Manage accomplishments** — create, update, and track work items with outcomes, acceptance criteria, and tasks
-- **Handle dependencies** — define what blocks what, find blocked items, and identify what's ready to start
-- **Track progress** — see project status, current work, and completion statistics
+- **Manage project entities** — create, update, and track milestones, stories, tasks, decisions, and documents
+- **Handle dependencies** — define relationships between entities, find blocked items, and identify what's ready to start
+- **Track progress** — see project status, workstream health, and completion statistics
+- **Navigate hierarchies** — traverse parent-child relationships and dependency graphs
 - **Read and write documents** — access reference materials organized in workspaces
 
 ```
@@ -65,7 +66,12 @@ Create the required folder structure in your Obsidian vault:
 
 ```
 your-vault/
-├── accomplishments/          # Accomplishment markdown files
+├── milestones/               # Milestone files (M-xxx.md)
+├── stories/                  # Story files (S-xxx.md)
+├── tasks/                    # Task files (T-xxx.md)
+├── decisions/                # Decision files (DEC-xxx.md)
+├── documents/                # Document files (DOC-xxx.md)
+├── archive/                  # Archived entities
 ├── projects/
 │   └── main.canvas           # Your project canvas
 └── workspaces.json           # Workspace configuration (auto-created on first run)
@@ -86,23 +92,6 @@ Using npx (recommended):
       "args": ["-y", "obsidian-accomplishments-mcp@latest"],
       "env": {
         "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
-        "ACCOMPLISHMENTS_FOLDER": "accomplishments",
-        "DEFAULT_CANVAS": "projects/main.canvas"
-      }
-    }
-  }
-}
-```
-
-Using global install:
-```json
-{
-  "mcpServers": {
-    "obsidian": {
-      "command": "obsidian-accomplishments-mcp",
-      "env": {
-        "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
-        "ACCOMPLISHMENTS_FOLDER": "accomplishments",
         "DEFAULT_CANVAS": "projects/main.canvas"
       }
     }
@@ -119,7 +108,6 @@ Using local install:
       "args": ["/path/to/obsidian_mcp/dist/index.js"],
       "env": {
         "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
-        "ACCOMPLISHMENTS_FOLDER": "accomplishments",
         "DEFAULT_CANVAS": "projects/main.canvas"
       }
     }
@@ -132,7 +120,6 @@ Using local install:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `VAULT_PATH` | Yes | Absolute path to your Obsidian vault |
-| `ACCOMPLISHMENTS_FOLDER` | Yes | Folder for accomplishment files (relative to vault) |
 | `DEFAULT_CANVAS` | Yes | Path to your main project canvas file (relative to vault) |
 
 ### Configure Workspaces
@@ -152,116 +139,130 @@ On first run, the server creates a `workspaces.json` file in your vault. Edit th
 }
 ```
 
-Each workspace is a named folder containing markdown files that the AI can read and write.
-
 ---
 
 ## Core Concepts
 
-### Accomplishments
+### Entity Hierarchy
 
-An **accomplishment** is the atomic unit of work. Each accomplishment has:
+The system uses a hierarchical entity model:
 
-- **Title** — A clear name for the work item
-- **Outcome** — What will be true when this is done
-- **Acceptance Criteria** — Checkboxes defining completion
-- **Tasks** — Specific steps to achieve the outcome
-- **Dependencies** — Other accomplishments that must finish first
-- **Status** — Not Started, In Progress, Completed, or Blocked
-- **Effort Type** — Business, Engineering, Infra, or Research
-- **Priority** — Low, Medium, High, or Critical
+```
+Milestone (M-xxx)
+└── Story (S-xxx)
+    └── Task (T-xxx)
 
-Example accomplishment file:
-
-```markdown
----
-type: accomplishment
-title: User Authentication
-id: ACC-001
-effort: Engineering
-status: In Progress
-priority: High
-inProgress: true
-depends_on: ["ACC-000"]
----
-
-# User Authentication (Accomplishment)
-
-## Outcome
-Users can securely log in and maintain sessions.
-
-## Acceptance Criteria
-- [ ] Login form validates credentials
-- [ ] Sessions persist across browser refreshes
-- [ ] Logout clears session completely
-
-## Tasks
-
-### Task 1: Design Auth Flow
-- **Goal:** Document the authentication sequence
-- **Estimate:** 2h
-- **Status:** Complete
-
-### Task 2: Implement Login API
-- **Goal:** Create backend authentication endpoint
-- **Estimate:** 4h
-- **Status:** InProgress
+Decision (DEC-xxx)  ─── can enable/supersede other entities
+Document (DOC-xxx)  ─── can be implemented by stories
 ```
 
-### Canvas as Project Board
+### Entity Types
+
+| Type | ID Format | Description |
+|------|-----------|-------------|
+| **Milestone** | `M-001` | High-level project goals with target dates |
+| **Story** | `S-001` | Deliverable work items under milestones |
+| **Task** | `T-001` | Specific work items under stories |
+| **Decision** | `DEC-001` | Architectural/design decisions with rationale |
+| **Document** | `DOC-001` | Specifications, designs, and reference docs |
+
+### Entity Status
+
+All entities follow a consistent status model:
+
+| Status | Description |
+|--------|-------------|
+| `not_started` | Work hasn't begun |
+| `in_progress` | Currently being worked on |
+| `completed` | Work is finished |
+| `blocked` | Waiting on dependencies |
+| `cancelled` | No longer needed |
+
+Decisions have additional statuses: `pending`, `decided`, `superseded`
+
+### Workstreams
+
+Entities can be organized by workstream (e.g., `engineering`, `business`, `infra`, `research`). This enables:
+- Filtering by team/domain
+- Workstream-specific status views
+- Visual grouping on canvas
+
+### Canvas Integration
 
 The `.canvas` file provides a visual project view:
 
-- **Nodes** = Accomplishments (colored by effort type)
-- **Arrows** = Dependencies (A → B means "B depends on A")
-- **Position** = Workflow stage (left-to-right progression)
-- **Red border** = Currently being worked on (`inProgress: true`)
-
-### Workspaces
-
-Workspaces are named document collections that the AI can access. Configure them in `workspaces.json` to give the AI access to:
-- Project documentation
-- Meeting notes
-- Reference materials
-- Any other markdown files
+- **Nodes** = Entities (styled by CSS classes)
+- **Arrows** = Dependencies and relationships
+- **Position** = Auto-layout by dependency depth and workstream
+- **CSS Classes** = Visual differentiation by type, status, priority, workstream
 
 ---
 
 ## Available Tools
 
-The MCP server provides 14 tools organized by function:
+The MCP server provides 29 tools organized by function:
 
-### Accomplishment Management
-
-| Tool | Description |
-|------|-------------|
-| `manage_accomplishment` | Create, update, or delete accomplishments |
-| `get_accomplishment` | Get full details of a specific accomplishment |
-| `list_accomplishments` | List all accomplishments with optional status filter |
-
-### Task Management
+### Entity Management (6 tools)
 
 | Tool | Description |
 |------|-------------|
-| `manage_task` | Add, update, or remove tasks within an accomplishment |
-| `set_work_focus` | Set which accomplishment/task is currently being worked on |
+| `create_entity` | Create a new entity (milestone, story, task, decision, or document) |
+| `update_entity` | Update entity fields, add/remove dependencies |
+| `update_entity_status` | Change entity status with validation |
+| `archive_entity` | Archive an entity (moves to archive folder) |
+| `archive_milestone` | Archive a milestone and all its children |
+| `restore_from_archive` | Restore an archived entity |
 
-### Dependency Management
-
-| Tool | Description |
-|------|-------------|
-| `manage_dependency` | Add or remove dependencies between accomplishments |
-
-### Project Status
+### Batch Operations (3 tools)
 
 | Tool | Description |
 |------|-------------|
-| `get_project_status` | Get project statistics and overview |
-| `get_current_work` | Get items marked as in-progress |
-| `get_blocked_items` | Get items waiting on incomplete dependencies |
-| `get_ready_to_start` | Get items with all dependencies complete |
+| `batch_operations` | Create multiple entities with dependencies in one call |
+| `batch_update_status` | Update status of multiple entities |
+| `batch_archive` | Archive multiple entities |
 
-### Document Management
+### Project Understanding (3 tools)
+
+| Tool | Description |
+|------|-------------|
+| `get_project_overview` | High-level project status with counts and health metrics |
+| `get_workstream_status` | Status breakdown for a specific workstream |
+| `analyze_project_state` | Deep analysis with blockers, risks, and suggestions |
+
+### Search & Navigation (4 tools)
+
+| Tool | Description |
+|------|-------------|
+| `search_entities` | Full-text search with filters (type, status, workstream) |
+| `get_entity_summary` | Quick entity overview (id, title, status, parent) |
+| `get_entity_full` | Complete entity with all relationships and content |
+| `navigate_hierarchy` | Traverse entity relationships (parent, children, dependencies) |
+
+### Decision & Document Management (5 tools)
+
+| Tool | Description |
+|------|-------------|
+| `create_decision` | Create a decision record with context and rationale |
+| `get_decision_history` | Get decision history for a topic |
+| `supersede_document` | Create new document version based on decision |
+| `get_document_history` | Get document version history |
+| `check_document_freshness` | Check if document is up-to-date with decisions |
+
+### Implementation Handoff (3 tools)
+
+| Tool | Description |
+|------|-------------|
+| `get_ready_for_implementation` | Find stories/specs ready to implement |
+| `generate_implementation_package` | Create implementation context package |
+| `validate_spec_completeness` | Check if spec is ready for implementation |
+
+### Canvas Layout (1 tool)
+
+| Tool | Description |
+|------|-------------|
+| `auto_layout_canvas` | Reposition nodes using dependency-driven horizontal flow with workstream lanes |
+
+### Utility Tools (4 tools)
 
 | Tool | Description |
 |------|-------------|
@@ -278,45 +279,36 @@ Once configured, ask your AI assistant things like:
 
 ### Project Overview
 > "What's the status of my project?"
-> "Show me what's currently in progress"
+> "Show me the engineering workstream status"
 > "What items are blocked?"
-> "What can I start working on?"
+> "Analyze the project and identify risks"
 
-### Managing Accomplishments
-> "Create an accomplishment for building the payment system"
-> "Mark ACC-001 as complete"
-> "Set ACC-005 as my current focus"
-> "What are the details of ACC-003?"
-
-### Managing Tasks
-> "Add a task to ACC-003 for writing unit tests"
-> "Mark task 2 of ACC-001 as complete"
-> "What tasks are left on ACC-002?"
+### Managing Entities
+> "Create a milestone for Q1 launch with target date March 31"
+> "Create a story under M-001 for user authentication"
+> "Add a task to S-003 for writing unit tests"
+> "Mark T-005 as completed"
 
 ### Dependencies
-> "ACC-004 depends on ACC-002 and ACC-003"
-> "Remove the dependency from ACC-005 to ACC-001"
-> "What's blocking ACC-006?"
+> "S-004 depends on S-002 and S-003"
+> "What's blocking S-006?"
+> "Show me the dependency graph for M-001"
+
+### Decisions & Documents
+> "Create a decision about using PostgreSQL vs MongoDB"
+> "What decisions have been made about authentication?"
+> "Create a spec document for the API design"
+> "Is DOC-003 up to date with recent decisions?"
+
+### Implementation
+> "What stories are ready for implementation?"
+> "Generate an implementation package for S-005"
+> "Is the spec for S-003 complete enough to implement?"
 
 ### Documents
 > "What workspaces are available?"
 > "List files in the docs workspace"
 > "Read the architecture document"
-> "Add a section about API design to the architecture doc"
-> "Create a new meeting notes document"
-
----
-
-## Notion Sync (Optional)
-
-The [Canvas Structured Items Plugin](https://bitbucket.org/ostanmarc/obsidian-canvas-structured-items/src/master/) can sync accomplishments to Notion:
-
-1. Configure Notion API key and database ID in the plugin settings
-2. Accomplishments sync automatically when saved
-3. Dependencies become Notion relations
-4. Two-way sync keeps both systems updated
-
-This lets your team see project status in Notion while you manage everything from Obsidian.
 
 ---
 

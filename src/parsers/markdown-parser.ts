@@ -104,7 +104,7 @@ function parseBodySections(body: string): BodySections {
       currentTask = {
         number: parseInt(taskMatch[1], 10),
         name: taskMatch[2],
-        status: 'Open',
+        status: 'Not Started',
       };
       continue;
     }
@@ -161,7 +161,7 @@ function finalizeTask(partial: Partial<Task>, lines: string[]): Task {
     name: partial.name || '',
     goal: '',
     description: '',
-    status: 'Open',
+    status: 'Not Started',
   };
 
   for (const line of lines) {
@@ -169,7 +169,7 @@ function finalizeTask(partial: Partial<Task>, lines: string[]): Task {
     if (match) {
       const [, field, value] = match;
       const fieldLower = field.toLowerCase();
-      
+
       if (fieldLower === 'goal') {
         task.goal = value;
       } else if (fieldLower === 'description') {
@@ -197,15 +197,15 @@ function finalizeTask(partial: Partial<Task>, lines: string[]): Task {
  */
 function parseTaskStatus(value: string): TaskStatus {
   const normalized = value.toLowerCase().replace(/[^a-z]/g, '');
-  
+
   if (normalized.includes('inprogress') || normalized.includes('progress')) {
-    return 'InProgress';
+    return 'In Progress';
   } else if (normalized.includes('complete') || normalized.includes('done')) {
-    return 'Complete';
-  } else if (normalized.includes('hold') || normalized.includes('paused')) {
-    return 'OnHold';
+    return 'Completed';
+  } else if (normalized.includes('hold') || normalized.includes('paused') || normalized.includes('block')) {
+    return 'Blocked';
   }
-  return 'Open';
+  return 'Not Started';
 }
 
 /**

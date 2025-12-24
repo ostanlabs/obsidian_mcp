@@ -1,6 +1,6 @@
 // Enums
 export type AccomplishmentStatus = 'Not Started' | 'In Progress' | 'Completed' | 'Blocked';
-export type TaskStatus = 'Open' | 'InProgress' | 'Complete' | 'OnHold';
+export type TaskStatus = 'Not Started' | 'In Progress' | 'Completed' | 'Blocked';
 export type Effort = 'Business' | 'Infra' | 'Engineering' | 'Research';
 export type Priority = 'Low' | 'Medium' | 'High' | 'Critical';
 
@@ -139,7 +139,6 @@ export interface WorkspaceConfig {
 // Configuration
 export interface Config {
   vaultPath: string;
-  accomplishmentsFolder: string;
   defaultCanvas: string;
   workspaces: Record<string, WorkspaceConfig>; // Map of workspace name to config
 }

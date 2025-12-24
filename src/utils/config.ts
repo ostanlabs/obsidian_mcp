@@ -10,17 +10,13 @@ const WORKSPACES_TEMPLATE = {
 
 export function getConfig(): Config {
   const vaultPath = process.env.VAULT_PATH;
-  const accomplishmentsFolder = process.env.ACCOMPLISHMENTS_FOLDER;
   const defaultCanvas = process.env.DEFAULT_CANVAS;
 
   if (!vaultPath) {
-    throw new Error('VAULT_PATH environment variable is required');
-  }
-  if (!accomplishmentsFolder) {
-    throw new Error('ACCOMPLISHMENTS_FOLDER environment variable is required');
+    throw new Error('VAULT_PATH environment variable is required. Should point to the project folder containing milestones/, stories/, tasks/, decisions/, documents/ subfolders.');
   }
   if (!defaultCanvas) {
-    throw new Error('DEFAULT_CANVAS environment variable is required');
+    throw new Error('DEFAULT_CANVAS environment variable is required. Should be the canvas filename (e.g., "AgentPlatform.canvas").');
   }
 
   // Load workspaces from workspaces.json in vault folder
@@ -64,26 +60,9 @@ export function getConfig(): Config {
 
   return {
     vaultPath,
-    accomplishmentsFolder,
     defaultCanvas,
     workspaces,
   };
-}
-
-export function getAccomplishmentsPath(config: Config): string {
-  return `${config.vaultPath}/${config.accomplishmentsFolder}`;
-}
-
-export function getCanvasPath(config: Config, canvasSource?: string): string {
-  return `${config.vaultPath}/${canvasSource || config.defaultCanvas}`;
-}
-
-export function getAccomplishmentFilePath(config: Config, title: string): string {
-  return `${getAccomplishmentsPath(config)}/${title}.md`;
-}
-
-export function getRelativeAccomplishmentPath(config: Config, title: string): string {
-  return `${config.accomplishmentsFolder}/${title}.md`;
 }
 
 /**
