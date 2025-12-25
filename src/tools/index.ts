@@ -152,61 +152,6 @@ export const entityToolDefinitions: Tool[] = [
       required: ['id'],
     },
   },
-  // DEPRECATED: Use update_entity with status field instead
-  {
-    name: 'update_entity_status',
-    description: '[DEPRECATED: Use update_entity with status field] Update entity status with optional note and cascade.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Entity ID' },
-        status: { type: 'string', description: 'New status' },
-        note: { type: 'string', description: 'Optional note about the status change' },
-        cascade: { type: 'boolean', description: 'Whether to cascade status changes to related entities' },
-      },
-      required: ['id', 'status'],
-    },
-  },
-  // DEPRECATED: Use update_entity with archived: true instead
-  {
-    name: 'archive_entity',
-    description: '[DEPRECATED: Use update_entity with archived: true] Archive a single entity.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Entity ID to archive' },
-        force: { type: 'boolean', description: 'Force archive even if entity has children' },
-      },
-      required: ['id'],
-    },
-  },
-  // DEPRECATED: Use update_entity with archived: true, archive_options.cascade: true instead
-  {
-    name: 'archive_milestone',
-    description: '[DEPRECATED: Use update_entity with archived: true, archive_options.cascade: true] Archive a milestone and all its children (stories, tasks).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        milestone_id: { type: 'string', description: 'Milestone ID to archive' },
-        archive_folder: { type: 'string', description: 'Custom archive folder path' },
-      },
-      required: ['milestone_id'],
-    },
-  },
-  // DEPRECATED: Use update_entity with archived: false instead
-  {
-    name: 'restore_from_archive',
-    description: '[DEPRECATED: Use update_entity with archived: false] Restore an archived entity.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Entity ID to restore' },
-        restore_children: { type: 'boolean', description: 'Whether to restore children as well' },
-      },
-      required: ['id'],
-    },
-  },
-
   // Category 2: Batch Operations
 
   // NEW: Unified batch_update tool with client_id support
@@ -258,107 +203,6 @@ export const entityToolDefinitions: Tool[] = [
     },
   },
 
-  // DEPRECATED: Use batch_update instead
-  {
-    name: 'batch_operations',
-    description: 'DEPRECATED: Use batch_update instead. Create multiple entities with dependencies in a single operation.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        entities: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              type: { type: 'string', enum: ['milestone', 'story', 'task', 'decision', 'document'] },
-              data: {
-                type: 'object',
-                properties: {
-                  title: { type: 'string' },
-                  workstream: { type: 'string' },
-                  depends_on: { type: 'array', items: { type: 'string' }, description: 'IDs of entities this depends on' },
-                  implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs this entity implements (for milestone, story)' },
-                  enables: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this decision enables (for decision only)' },
-                },
-              },
-            },
-            required: ['type', 'data'],
-          },
-          description: 'Entities to create',
-        },
-        dependencies: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              from: { type: 'string' },
-              to: { type: 'string' },
-              type: { type: 'string', enum: ['blocks', 'implements', 'enables'] },
-            },
-          },
-          description: 'Dependencies between entities (use entity_N refs). Type: blocks (depends_on), implements (doc link), enables (decision enables)',
-        },
-        options: {
-          type: 'object',
-          properties: {
-            atomic: { type: 'boolean', description: 'Rollback all on failure' },
-            add_to_canvas: { type: 'boolean' },
-            canvas_source: { type: 'string' },
-          },
-        },
-      },
-      required: ['entities'],
-    },
-  },
-  // DEPRECATED: Use batch_update instead
-  {
-    name: 'batch_update_status',
-    description: 'DEPRECATED: Use batch_update instead. Update status of multiple entities with optional cascading.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        updates: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              status: { type: 'string' },
-              note: { type: 'string' },
-            },
-            required: ['id', 'status'],
-          },
-        },
-        options: {
-          type: 'object',
-          properties: {
-            auto_cascade: { type: 'boolean' },
-          },
-        },
-      },
-      required: ['updates'],
-    },
-  },
-  // DEPRECATED: Use batch_update instead
-  {
-    name: 'batch_archive',
-    description: 'DEPRECATED: Use batch_update instead. Archive multiple entities (milestones with children, or individual entities).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        milestone_ids: { type: 'array', items: { type: 'string' }, description: 'Milestone IDs to archive with children' },
-        entity_ids: { type: 'array', items: { type: 'string' }, description: 'Individual entity IDs to archive' },
-        options: {
-          type: 'object',
-          properties: {
-            archive_folder: { type: 'string' },
-            remove_from_canvas: { type: 'boolean' },
-          },
-        },
-      },
-    },
-  },
-
   // Category 3: Project Understanding
   {
     name: 'get_project_overview',
@@ -374,19 +218,6 @@ export const entityToolDefinitions: Tool[] = [
         // Enhanced: grouping (from get_workstream_status)
         group_by: { type: 'string', enum: ['status', 'type', 'priority'], description: 'Group entities by this field (only used when workstream is specified)' },
       },
-    },
-  },
-  {
-    name: 'get_workstream_status',
-    description: '[DEPRECATED - use get_project_overview with workstream filter] Get detailed status for a specific workstream.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        workstream: { type: 'string', description: 'Workstream identifier' },
-        include_completed: { type: 'boolean' },
-        group_by: { type: 'string', enum: ['status', 'type', 'priority'] },
-      },
-      required: ['workstream'],
     },
   },
   {
@@ -460,46 +291,6 @@ export const entityToolDefinitions: Tool[] = [
       required: ['id'],
     },
   },
-  // Legacy tools (deprecated - use get_entity instead)
-  {
-    name: 'get_entity_summary',
-    description: '[DEPRECATED: Use get_entity instead] Get a quick overview of an entity.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Entity ID' },
-      },
-      required: ['id'],
-    },
-  },
-  {
-    name: 'get_entity_full',
-    description: '[DEPRECATED: Use get_entity with fields parameter instead] Get complete entity with all relationships.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Entity ID' },
-        include_children: { type: 'boolean' },
-        include_dependencies: { type: 'boolean' },
-        depth: { type: 'number' },
-      },
-      required: ['id'],
-    },
-  },
-  {
-    name: 'navigate_hierarchy',
-    description: '[DEPRECATED: Use search_entities with from_id and direction instead] Traverse entity relationships in a given direction.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        from_id: { type: 'string', description: 'Starting entity ID' },
-        direction: { type: 'string', enum: ['up', 'down', 'siblings', 'dependencies'] },
-        depth: { type: 'number', description: 'How many levels to traverse' },
-        include_content: { type: 'boolean' },
-      },
-      required: ['from_id', 'direction'],
-    },
-  },
 
   // Category 5: Decision & Document Management
   {
@@ -525,79 +316,6 @@ export const entityToolDefinitions: Tool[] = [
         change_summary: { type: 'string', description: 'Summary of changes (for supersede_document)' },
       },
       required: ['action'],
-    },
-  },
-  // Legacy tools (deprecated)
-  {
-    name: 'create_decision',
-    description: '[DEPRECATED: Use create_entity with type: "decision" instead] Create a new decision record.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        title: { type: 'string' },
-        context: { type: 'string', description: 'Background context for the decision' },
-        decision: { type: 'string', description: 'The actual decision made' },
-        rationale: { type: 'string', description: 'Why this decision was made' },
-        workstream: { type: 'string' },
-        decided_by: { type: 'string' },
-        enables: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this decision enables' },
-        supersedes: { type: 'string', description: 'Previous decision ID this supersedes' },
-        affects_documents: { type: 'array', items: { type: 'string' }, description: 'Document IDs affected by this decision' },
-      },
-      required: ['title', 'context', 'decision', 'rationale', 'workstream', 'decided_by'],
-    },
-  },
-  {
-    name: 'get_decision_history',
-    description:
-      '[DEPRECATED: Use manage_documents with action: "get_decision_history" instead] Get decision history for a topic or workstream.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        topic: { type: 'string', description: 'Filter by topic keyword' },
-        workstream: { type: 'string' },
-        include_superseded: { type: 'boolean', description: 'Include superseded decisions (default: false)' },
-        include_archived: {
-          type: 'boolean',
-          description: 'Include archived decisions (default: true - most decisions are archived after being decided)',
-        },
-      },
-    },
-  },
-  {
-    name: 'supersede_document',
-    description: '[DEPRECATED: Use manage_documents with action: "supersede_document" instead] Update a document based on a decision.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        document_id: { type: 'string' },
-        decision_id: { type: 'string' },
-        new_content: { type: 'string' },
-        change_summary: { type: 'string' },
-      },
-      required: ['document_id', 'decision_id', 'new_content', 'change_summary'],
-    },
-  },
-  {
-    name: 'get_document_history',
-    description: '[DEPRECATED: Use manage_documents with action: "get_document_history" instead] Get version history for a document.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        document_id: { type: 'string' },
-      },
-      required: ['document_id'],
-    },
-  },
-  {
-    name: 'check_document_freshness',
-    description: '[DEPRECATED: Use manage_documents with action: "check_freshness" instead] Check if a document is up-to-date.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        document_id: { type: 'string' },
-      },
-      required: ['document_id'],
     },
   },
 

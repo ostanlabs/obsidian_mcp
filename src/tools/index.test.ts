@@ -120,20 +120,20 @@ describe('Tools Index Integration Tests', () => {
       expect(entityToolDefinitions.length).toBeGreaterThan(0);
 
       const toolNames = entityToolDefinitions.map((t) => t.name);
-      // Entity management
+      // Entity management (consolidated)
       expect(toolNames).toContain('create_entity');
       expect(toolNames).toContain('update_entity');
-      expect(toolNames).toContain('update_entity_status');
-      expect(toolNames).toContain('archive_entity');
-      // Batch operations
-      expect(toolNames).toContain('batch_operations');
-      expect(toolNames).toContain('batch_update_status');
-      // Search & navigation
+      // Batch operations (consolidated)
+      expect(toolNames).toContain('batch_update');
+      // Project understanding
+      expect(toolNames).toContain('get_project_overview');
+      expect(toolNames).toContain('analyze_project_state');
+      // Search & navigation (consolidated)
       expect(toolNames).toContain('search_entities');
-      expect(toolNames).toContain('get_entity_full');
-      // Decision & document
-      expect(toolNames).toContain('create_decision');
-      // Implementation handoff
+      expect(toolNames).toContain('get_entity');
+      // Decision & document (consolidated)
+      expect(toolNames).toContain('manage_documents');
+      // Implementation handoff (deprecated - low usage, kept for backward compatibility)
       expect(toolNames).toContain('get_ready_for_implementation');
     });
 
