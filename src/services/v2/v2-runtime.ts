@@ -126,14 +126,14 @@ export class V2Runtime {
   /** Scan vault and build indexes */
   private async scanVault(): Promise<void> {
     const folders = this.pathResolver.getAllAbsoluteEntityFolders();
-    console.log(`[V2Runtime] Scanning ${folders.length} entity folders:`, folders);
+    console.error(`[V2Runtime] Scanning ${folders.length} entity folders:`, folders);
 
     let totalEntities = 0;
     for (const folder of folders) {
       const count = await this.scanFolder(folder);
       totalEntities += count;
     }
-    console.log(`[V2Runtime] Scan complete. Found ${totalEntities} entities. Index size: ${this.index.getAll().length}`);
+    console.error(`[V2Runtime] Scan complete. Found ${totalEntities} entities. Index size: ${this.index.getAll().length}`);
   }
 
   /** Recursively scan a folder for entity files */
@@ -153,7 +153,7 @@ export class V2Runtime {
       }
     } catch (err: any) {
       if (err.code === 'ENOENT') {
-        console.log(`[V2Runtime] Folder does not exist (skipping): ${folder}`);
+        console.error(`[V2Runtime] Folder does not exist (skipping): ${folder}`);
       } else {
         console.error(`[V2Runtime] Error scanning folder ${folder}:`, err);
       }
