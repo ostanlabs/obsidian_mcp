@@ -25,36 +25,17 @@ import {
 import {
   createEntity,
   updateEntity,
-  updateEntityStatus,
-  archiveEntity,
-  archiveMilestone,
-  restoreFromArchive,
 } from './tools/entity-management-tools.js';
-import {
-  batchOperations,
-  batchUpdateStatus,
-  batchArchive,
-  batchUpdate,
-} from './tools/batch-operations-tools.js';
+import { batchUpdate } from './tools/batch-operations-tools.js';
 import {
   getProjectOverview,
-  getWorkstreamStatus,
   analyzeProjectState,
 } from './tools/project-understanding-tools.js';
 import {
   searchEntities,
   getEntity,
-  getEntitySummary,
-  getEntityFull,
-  navigateHierarchy,
 } from './tools/search-navigation-tools.js';
-import {
-  createDecision,
-  getDecisionHistory,
-  supersedeDocument,
-  getDocumentHistory,
-  checkDocumentFreshness,
-} from './tools/decision-document-tools.js';
+import { manageDocuments } from './tools/decision-document-tools.js';
 import {
   getReadyForImplementation,
   generateImplementationPackage,
@@ -148,26 +129,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await updateEntity(args as any, runtime.getEntityManagementDeps());
         break;
       }
-      case 'update_entity_status': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await updateEntityStatus(args as any, runtime.getEntityManagementDeps());
-        break;
-      }
-      case 'archive_entity': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await archiveEntity(args as any, runtime.getEntityManagementDeps());
-        break;
-      }
-      case 'archive_milestone': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await archiveMilestone(args as any, runtime.getEntityManagementDeps());
-        break;
-      }
-      case 'restore_from_archive': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await restoreFromArchive(args as any, runtime.getEntityManagementDeps());
-        break;
-      }
 
       // Batch Operations
       case 'batch_update': {
@@ -175,34 +136,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await batchUpdate(args as any, runtime.getBatchOperationsDeps());
         break;
       }
-      // DEPRECATED: Use batch_update instead
-      case 'batch_operations': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await batchOperations(args as any, runtime.getBatchOperationsDeps());
-        break;
-      }
-      // DEPRECATED: Use batch_update instead
-      case 'batch_update_status': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await batchUpdateStatus(args as any, runtime.getBatchOperationsDeps());
-        break;
-      }
-      // DEPRECATED: Use batch_update instead
-      case 'batch_archive': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await batchArchive(args as any, runtime.getBatchOperationsDeps());
-        break;
-      }
 
       // Project Understanding
       case 'get_project_overview': {
         const runtime = await getOrCreateV2Runtime();
         result = await getProjectOverview(args as any, runtime.getProjectUnderstandingDeps());
-        break;
-      }
-      case 'get_workstream_status': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await getWorkstreamStatus(args as any, runtime.getProjectUnderstandingDeps());
         break;
       }
       case 'analyze_project_state': {
@@ -222,51 +160,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await getEntity(args as any, runtime.getSearchNavigationDeps());
         break;
       }
-      // Legacy handlers (deprecated - use get_entity instead)
-      case 'get_entity_summary': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await getEntitySummary(args as any, runtime.getSearchNavigationDeps());
-        break;
-      }
-      case 'get_entity_full': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await getEntityFull(args as any, runtime.getSearchNavigationDeps());
-        break;
-      }
-      case 'navigate_hierarchy': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await navigateHierarchy(args as any, runtime.getSearchNavigationDeps());
-        break;
-      }
 
       // Decision & Document Management
-      case 'create_decision': {
+      case 'manage_documents': {
         const runtime = await getOrCreateV2Runtime();
-        result = await createDecision(args as any, runtime.getDecisionDocumentDeps());
-        break;
-      }
-      case 'get_decision_history': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await getDecisionHistory(args as any, runtime.getDecisionDocumentDeps());
-        break;
-      }
-      case 'supersede_document': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await supersedeDocument(args as any, runtime.getDecisionDocumentDeps());
-        break;
-      }
-      case 'get_document_history': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await getDocumentHistory(args as any, runtime.getDecisionDocumentDeps());
-        break;
-      }
-      case 'check_document_freshness': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await checkDocumentFreshness(args as any, runtime.getDecisionDocumentDeps());
+        result = await manageDocuments(args as any, runtime.getDecisionDocumentDeps());
         break;
       }
 
-      // Implementation Handoff
+      // Implementation Handoff (DEPRECATED - Low usage, will be removed)
       case 'get_ready_for_implementation': {
         const runtime = await getOrCreateV2Runtime();
         result = await getReadyForImplementation(args as any, runtime.getImplementationHandoffDeps());
