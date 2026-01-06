@@ -68,10 +68,10 @@ export class PathResolver {
     return path.join(this.config.vaultPath, this.getEntityPath(id, title));
   }
 
-  /** Generate filename from ID and title */
-  generateFilename(id: EntityId, title: string): string {
+  /** Generate filename from title (ID is stored in frontmatter, not filename) */
+  generateFilename(_id: EntityId, title: string): string {
     const sanitized = this.sanitizeTitle(title);
-    return `${id}_${sanitized}.md`;
+    return `${sanitized}.md`;
   }
 
   /** Sanitize title for use in filename */
@@ -116,11 +116,16 @@ export class PathResolver {
   // Path Parsing
   // ---------------------------------------------------------------------------
 
-  /** Extract entity ID from file path */
-  extractIdFromPath(filePath: VaultPath): EntityId | null {
-    const filename = path.basename(filePath, '.md');
-    const match = filename.match(/^(M-\d+|S-\d+|T-\d+|DEC-\d+|DOC-\d+)/);
-    return match ? (match[1] as EntityId) : null;
+  /**
+   * Extract entity ID from file path.
+   * NOTE: Since IDs are no longer in filenames, this returns null.
+   * Use entity-parser to get ID from frontmatter instead.
+   * @deprecated IDs are stored in frontmatter, not filenames
+   */
+  extractIdFromPath(_filePath: VaultPath): EntityId | null {
+    // IDs are no longer in filenames - they're in frontmatter
+    // This method is kept for backward compatibility but always returns null
+    return null;
   }
 
   /** Check if path is in archive */
@@ -128,11 +133,12 @@ export class PathResolver {
     return filePath.startsWith(this.config.archiveFolder);
   }
 
-  /** Check if path is an entity file */
+  /** Check if path is an entity file (based on folder location) */
   isEntityPath(filePath: VaultPath): boolean {
     if (!filePath.endsWith('.md')) return false;
-    const id = this.extractIdFromPath(filePath);
-    return id !== null;
+    // Check if file is in one of the entity folders
+    const type = this.getTypeFromPath(filePath);
+    return type !== null;
   }
 
   /** Get entity type from path */

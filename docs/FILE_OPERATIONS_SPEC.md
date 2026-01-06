@@ -89,41 +89,40 @@ class PathResolver {
   // Build full path for entity
   getEntityPath(entity: { id: string; type: EntityType; title: string }): string {
     const folder = this.getFolderForType(entity.type);
-    const filename = this.buildFilename(entity.id, entity.title);
+    const filename = this.buildFilename(entity.title);
     return `${folder}/${filename}`;
   }
-  
-  // Build filename from ID and title
-  buildFilename(id: string, title: string): string {
+
+  // Build filename from title (ID is stored in frontmatter, not filename)
+  buildFilename(title: string): string {
     const slug = this.slugify(title);
-    return `${id}_${slug}.md`;
+    return `${slug}.md`;
   }
   
-  // Parse entity info from path
-  parseEntityPath(path: string): { 
-    type: EntityType; 
-    id: string; 
+  // Parse entity type from path (ID must be read from frontmatter)
+  parseEntityPath(path: string): {
+    type: EntityType;
     slug: string;
   } | null {
     const match = path.match(
-      /accomplishments\/(\w+)\/([A-Z]+-\d+)_(.+)\.md$/
+      /accomplishments\/(\w+)\/(.+)\.md$/
     );
-    
+
     if (!match) return null;
-    
-    const [, folder, id, slug] = match;
+
+    const [, folder, slug] = match;
     const type = this.folderToType(folder);
-    
-    return { type, id, slug };
+
+    return { type, slug };
   }
-  
+
   // Get archive path for entity
   getArchivePath(
     entity: EntityBase,
     archiveDate: Date = new Date()
   ): string {
     const quarter = this.getQuarter(archiveDate);
-    const filename = this.buildFilename(entity.id, entity.title);
+    const filename = this.buildFilename(entity.title);
     return `${this.config.archive_root}/${quarter}/${entity.type}s/${filename}`;
   }
   
@@ -175,11 +174,13 @@ class PathResolver {
 
 | Rule | Example | Rationale |
 |------|---------|-----------|
-| ID prefix | `M-001_...` | Sortable, unique |
-| Underscore separator | `M-001_Project_Launch.md` | Safe in all systems |
-| Lowercase slug | `project_launch` | Consistent |
-| Max 50 char slug | Truncated at 50 | Prevent path length issues |
+| Title-based filename | `Project_Launch.md` | Human-readable |
+| ID in frontmatter | `id: M-001` | Unique identifier stored in file content |
+| Underscore separator | `Project_Launch.md` | Safe in all systems |
+| Max 100 char slug | Truncated at 100 | Prevent path length issues |
 | `.md` extension | Always markdown | Obsidian compatibility |
+
+> **Note:** Entity IDs are no longer included in filenames. The ID is stored in the frontmatter `id` field.
 
 ### ID Format Patterns
 

@@ -138,10 +138,11 @@ describe('MCP Integration Tests', () => {
       expect(statusResult.old_status).toBe('Not Started');
       expect(statusResult.new_status).toBe('In Progress');
 
-      // Verify file exists
+      // Verify file exists (filename is based on title, not ID)
       const files = await fs.readdir(path.join(tempDir, 'accomplishments', 'milestones'));
       expect(files.length).toBeGreaterThanOrEqual(1);
-      expect(files.some(f => f.includes('M-001'))).toBe(true);
+      // After update, title is "Q1 Release - Updated" which becomes "Q1_Release_-_Updated.md"
+      expect(files.some(f => f.includes('Q1_Release'))).toBe(true);
     });
 
     it('should create a full hierarchy: milestone → story → task', async () => {
