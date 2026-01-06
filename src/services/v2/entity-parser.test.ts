@@ -26,15 +26,16 @@ status: In Progress
       expect(result.entity.workstream).toBe('engineering');
     });
 
-    it('should extract ID from filename when not in frontmatter', () => {
+    it('should throw error when ID is missing from frontmatter', () => {
       const content = `---
 title: Test
 workstream: engineering
 status: In Progress
 ---
 # Just content`;
-      const result = parser.parse(content, '/vault/M-001.md' as VaultPath);
-      expect(result.entity.id).toBe('M-001');
+      // ID must be in frontmatter - filenames no longer contain IDs
+      expect(() => parser.parse(content, '/vault/milestones/Test.md' as VaultPath))
+        .toThrow('Entity ID not found in frontmatter or filename');
     });
 
     it('should parse arrays in frontmatter', () => {
@@ -643,71 +644,8 @@ This is the main content of the document.`;
     });
   });
 
-  describe('ID Extraction from Filename', () => {
-    it('should extract milestone ID from filename', () => {
-      const content = `---
-title: Test
-workstream: engineering
-status: In Progress
----
-Content`;
-
-      const result = parser.parse(content, '/vault/milestones/M-001 Test.md' as VaultPath);
-      expect(result.entity.id).toBe('M-001');
-    });
-
-    it('should extract story ID from filename', () => {
-      const content = `---
-title: Test
-workstream: engineering
-status: In Progress
-parent: M-001
----
-Content`;
-
-      const result = parser.parse(content, '/vault/stories/S-001 Test.md' as VaultPath);
-      expect(result.entity.id).toBe('S-001');
-    });
-
-    it('should extract task ID from filename', () => {
-      const content = `---
-title: Test
-workstream: engineering
-status: In Progress
-parent: S-001
-goal: Test
----
-Content`;
-
-      const result = parser.parse(content, '/vault/tasks/T-001 Test.md' as VaultPath);
-      expect(result.entity.id).toBe('T-001');
-    });
-
-    it('should extract decision ID from filename', () => {
-      const content = `---
-title: Test
-workstream: engineering
-status: Proposed
----
-Content`;
-
-      const result = parser.parse(content, '/vault/decisions/DEC-001 Test.md' as VaultPath);
-      expect(result.entity.id).toBe('DEC-001');
-    });
-
-    it('should extract document ID from filename', () => {
-      const content = `---
-title: Test
-workstream: engineering
-status: Draft
-doc_type: spec
----
-Content`;
-
-      const result = parser.parse(content, '/vault/documents/DOC-001 Test.md' as VaultPath);
-      expect(result.entity.id).toBe('DOC-001');
-    });
-  });
+  // NOTE: ID Extraction from Filename tests removed - IDs are now required in frontmatter
+  // The filename no longer contains the entity ID (e.g., "Test.md" instead of "M-001_Test.md")
 
   describe('Array Field Handling', () => {
     it('should handle YAML multi-line arrays', () => {

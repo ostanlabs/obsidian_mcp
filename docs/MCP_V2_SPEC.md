@@ -1105,7 +1105,7 @@ vault/
 
 ### Naming Convention
 
-- **Files:** `{ID}_{Title_Underscored}.md`
+- **Files:** `{Title_Underscored}.md` (ID is stored in frontmatter, not filename)
 - **Archive folders:** `{Year}-Q{Quarter}/` or `{Year}-{Month}/`
 - **Milestone archives:** Include all children in milestone subfolder
 

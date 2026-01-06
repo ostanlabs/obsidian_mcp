@@ -237,17 +237,13 @@ export class EntityParser {
   // ID Extraction
   // ---------------------------------------------------------------------------
 
-  /** Extract entity ID from frontmatter or filename */
-  private extractId(frontmatter: FrontmatterData, filePath: VaultPath): EntityId | null {
-    // Try frontmatter first
+  /** Extract entity ID from frontmatter (ID is required in frontmatter) */
+  private extractId(frontmatter: FrontmatterData, _filePath: VaultPath): EntityId | null {
+    // ID must be in frontmatter - filenames no longer contain IDs
     if (frontmatter.id) {
       return frontmatter.id as EntityId;
     }
-
-    // Try filename
-    const filename = filePath.split('/').pop() || '';
-    const match = filename.match(/^(M-\d+|S-\d+|T-\d+|DEC-\d+|DOC-\d+)/);
-    return match ? (match[1] as EntityId) : null;
+    return null;
   }
 
   // ---------------------------------------------------------------------------
