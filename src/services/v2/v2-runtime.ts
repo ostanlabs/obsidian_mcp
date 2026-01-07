@@ -902,7 +902,7 @@ export class V2Runtime {
 
   /** Convert entity to summary */
   toEntitySummary(entity: Entity): EntitySummary {
-    return {
+    const summary: EntitySummary = {
       id: entity.id,
       type: entity.type,
       title: entity.title,
@@ -910,6 +910,17 @@ export class V2Runtime {
       workstream: this.getEntityWorkstream(entity),
       last_updated: entity.updated_at || new Date().toISOString(),
     };
+
+    // Add parent for stories and tasks
+    if ('parent' in entity && entity.parent) {
+      const parentEntity = this.index.get(entity.parent as EntityId);
+      summary.parent = {
+        id: entity.parent as EntityId,
+        title: parentEntity?.title || 'Unknown',
+      };
+    }
+
+    return summary;
   }
 
   /** Convert entity to full representation */
