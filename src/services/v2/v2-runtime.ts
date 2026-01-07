@@ -228,16 +228,25 @@ export class V2Runtime {
     }
   }
 
-  /** Remove entity from index by file path */
+  /** Remove entity from index by file path (safe delete) */
   private removeEntityByPath(absolutePath: string): void {
     const vaultPath = this.pathResolver.toVaultPath(absolutePath) as VaultPath;
     // Find entity by vault_path in ProjectIndex
     const entityId = this.index.getIdByPath(vaultPath);
     if (entityId) {
-      this.searchIndex.remove(entityId);
-      // Remove from ProjectIndex (metadata and relationships)
-      this.removeRelationships(entityId);
-      this.index.delete(entityId);
+      // Safe delete: only remove entity if this path is the canonical path for this ID
+      // This handles the case where duplicate files with the same ID existed
+      const canonicalPath = this.index.getPathById(entityId);
+      if (canonicalPath === vaultPath) {
+        // This is the canonical file - remove the entity entirely
+        this.searchIndex.remove(entityId);
+        this.removeRelationships(entityId);
+        this.index.delete(entityId);
+      } else {
+        // This was a duplicate file - just remove the stale path mapping
+        console.warn(`[V2Runtime] Removing stale path mapping for ${entityId}: ${vaultPath} (canonical: ${canonicalPath})`);
+        this.index.removePathMapping(vaultPath);
+      }
     }
   }
 
@@ -665,6 +674,23 @@ export class V2Runtime {
   async writeEntity(entity: Entity): Promise<void> {
     const filePath = this.pathResolver.getEntityPath(entity.id, entity.title);
     const absolutePath = this.pathResolver.toAbsolutePath(filePath);
+
+    // Check if entity exists at a different path (title change scenario)
+    // If so, delete the old file to prevent duplicates
+    const existingPath = this.index.getPathById(entity.id);
+    if (existingPath && existingPath !== filePath) {
+      const oldAbsolutePath = this.pathResolver.toAbsolutePath(existingPath);
+      try {
+        await fs.unlink(oldAbsolutePath);
+        // Remove old path mapping
+        this.index.removePathMapping(existingPath as VaultPath);
+        console.log(`[V2Runtime] Deleted old file after title change: ${existingPath} -> ${filePath}`);
+      } catch (err: any) {
+        if (err.code !== 'ENOENT') {
+          console.error(`[V2Runtime] Error deleting old file ${oldAbsolutePath}:`, err);
+        }
+      }
+    }
 
     // Set vault_path on entity before serializing
     entity.vault_path = filePath as VaultPath;
