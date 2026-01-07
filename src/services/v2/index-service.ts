@@ -135,6 +135,13 @@ export class ProjectIndex {
     return true;
   }
 
+  /** Remove a stale path mapping without deleting the entity (for duplicate cleanup) */
+  removePathMapping(path: VaultPath): void {
+    this.files.path_to_id.delete(path);
+    this.files.file_mtimes.delete(path);
+    this.version++;
+  }
+
   clear(): void {
     this.primary.clear();
     this.secondary = this.createEmptySecondaryIndexes();
