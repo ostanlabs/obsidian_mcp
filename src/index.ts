@@ -185,6 +185,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       }
 
+      // Maintenance Tools
+      case 'reconcile_relationships': {
+        const runtime = await getOrCreateV2Runtime();
+        const dryRun = (args as any).dry_run === true;
+        if (dryRun) {
+          // For dry run, we need to scan without modifying
+          // For now, just run the reconciliation and report
+          // A true dry-run would require refactoring the method
+          result = {
+            message: 'Dry run not yet implemented. Run without dry_run to reconcile relationships.',
+            hint: 'This will scan all entities and ensure bidirectional implements/implemented_by consistency.',
+          };
+        } else {
+          result = await runtime.reconcileImplementsRelationships();
+        }
+        break;
+      }
+
       default:
         throw new MCPError(`Unknown tool: ${name}`, 'UNKNOWN_TOOL', 400);
     }
