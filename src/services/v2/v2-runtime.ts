@@ -21,7 +21,10 @@ import {
   Task,
   Decision,
   Document,
+  MilestoneId,
+  StoryId,
   DecisionId,
+  DocumentId,
   ISODateTime,
   CanvasPath,
   VaultPath,
@@ -723,6 +726,115 @@ export class V2Runtime {
 
     // Re-index relationships
     this.indexRelationships(entity);
+
+    // Sync bidirectional implements/implemented_by relationships
+    await this.syncImplementsRelationships(entity);
+  }
+
+  /**
+   * Sync bidirectional implements/implemented_by relationships.
+   * When a Story/Milestone has `implements: [DOC-001]`, ensure DOC-001 has `implemented_by: [S-001]`.
+   * When a Document has `implemented_by: [S-001]`, ensure S-001 has `implements: [DOC-001]`.
+   */
+  private async syncImplementsRelationships(entity: Entity): Promise<void> {
+    if (entity.type === 'story' || entity.type === 'milestone') {
+      // Story/Milestone implements Documents
+      const implements_ = (entity as Story | Milestone).implements;
+      if (implements_ && implements_.length > 0) {
+        for (const docId of implements_) {
+          await this.ensureImplementedBy(docId, entity.id as StoryId | MilestoneId);
+        }
+      }
+    } else if (entity.type === 'document') {
+      // Document implemented_by Stories
+      const implementedBy = (entity as Document).implemented_by;
+      if (implementedBy && implementedBy.length > 0) {
+        for (const storyId of implementedBy) {
+          await this.ensureImplements(storyId, entity.id as DocumentId);
+        }
+      }
+    }
+  }
+
+  /**
+   * Ensure a Document's implemented_by includes the given entity ID.
+   * Only updates if the relationship is missing.
+   */
+  private async ensureImplementedBy(docId: DocumentId, implementerId: StoryId | MilestoneId): Promise<void> {
+    const doc = await this.getEntity(docId);
+    if (!doc || doc.type !== 'document') return;
+
+    const document = doc as Document;
+    const currentImplementedBy = document.implemented_by || [];
+
+    // Check if already present
+    if (currentImplementedBy.includes(implementerId as StoryId)) return;
+
+    // Add the implementer and save
+    document.implemented_by = [...currentImplementedBy, implementerId as StoryId];
+    document.updated_at = new Date().toISOString();
+
+    // Write directly to avoid infinite recursion (don't call writeEntity)
+    await this.writeEntityDirect(document);
+    console.log(`[V2Runtime] Synced implemented_by: added ${implementerId} to ${docId}`);
+  }
+
+  /**
+   * Ensure a Story/Milestone's implements includes the given document ID.
+   * Only updates if the relationship is missing.
+   */
+  private async ensureImplements(entityId: StoryId | MilestoneId, docId: DocumentId): Promise<void> {
+    const entity = await this.getEntity(entityId);
+    if (!entity) return;
+
+    if (entity.type === 'story') {
+      const story = entity as Story;
+      const currentImplements = story.implements || [];
+      if (currentImplements.includes(docId)) return;
+
+      story.implements = [...currentImplements, docId];
+      story.updated_at = new Date().toISOString();
+      await this.writeEntityDirect(story);
+      console.log(`[V2Runtime] Synced implements: added ${docId} to ${entityId}`);
+    } else if (entity.type === 'milestone') {
+      const milestone = entity as Milestone;
+      const currentImplements = milestone.implements || [];
+      if (currentImplements.includes(docId)) return;
+
+      milestone.implements = [...currentImplements, docId];
+      milestone.updated_at = new Date().toISOString();
+      await this.writeEntityDirect(milestone);
+      console.log(`[V2Runtime] Synced implements: added ${docId} to ${entityId}`);
+    }
+  }
+
+  /**
+   * Write entity directly without triggering relationship sync (to avoid recursion).
+   */
+  private async writeEntityDirect(entity: Entity): Promise<void> {
+    const filePath = this.pathResolver.getEntityPath(entity.id, entity.title);
+    const absolutePath = this.pathResolver.toAbsolutePath(filePath);
+
+    entity.vault_path = filePath as VaultPath;
+    const content = this.serializer.serialize(entity);
+
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await fs.writeFile(absolutePath, content, 'utf-8');
+
+    // Update indexes
+    this.searchIndex.index(
+      entity.id,
+      entity.title,
+      this.getEntityContent(entity),
+      entity.type,
+      entity.archived || false
+    );
+
+    const stats = await fs.stat(absolutePath);
+    this.removeRelationships(entity.id);
+    const metadata = this.createEntityMetadata(entity, stats.mtimeMs);
+    this.index.set(metadata);
+    this.indexRelationships(entity);
   }
 
   /** Get children of an entity - uses ProjectIndex for O(1) lookup */
@@ -1235,6 +1347,144 @@ export class V2Runtime {
     if (!entity) return false;
     const content = this.getEntityContent(entity);
     return content.toLowerCase().includes(pattern.toLowerCase());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Relationship Reconciliation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Reconcile all implements/implemented_by relationships across the vault.
+   * This scans all entities and ensures bidirectional consistency:
+   * - If Story/Milestone has `implements: [DOC-001]`, ensure DOC-001 has `implemented_by: [S-001]`
+   * - If Document has `implemented_by: [S-001]`, ensure S-001 has `implements: [DOC-001]`
+   *
+   * @returns Summary of reconciliation actions taken
+   */
+  async reconcileImplementsRelationships(): Promise<{
+    scanned: number;
+    updated: number;
+    details: Array<{ entity_id: EntityId; action: string; related_id: EntityId }>;
+  }> {
+    const details: Array<{ entity_id: EntityId; action: string; related_id: EntityId }> = [];
+    let updated = 0;
+
+    // Get all entities
+    const allIds = this.index.getAllIds();
+
+    // First pass: collect all implements relationships from stories/milestones
+    const implementsMap = new Map<DocumentId, Set<StoryId | MilestoneId>>();
+
+    for (const id of allIds) {
+      const entity = await this.getEntity(id);
+      if (!entity) continue;
+
+      if (entity.type === 'story' || entity.type === 'milestone') {
+        const implements_ = (entity as Story | Milestone).implements;
+        if (implements_ && implements_.length > 0) {
+          for (const docId of implements_) {
+            if (!implementsMap.has(docId)) {
+              implementsMap.set(docId, new Set());
+            }
+            implementsMap.get(docId)!.add(id as StoryId | MilestoneId);
+          }
+        }
+      }
+    }
+
+    // Second pass: update documents with missing implemented_by
+    for (const id of allIds) {
+      const entity = await this.getEntity(id);
+      if (!entity || entity.type !== 'document') continue;
+
+      const doc = entity as Document;
+      const expectedImplementers = implementsMap.get(doc.id as DocumentId) || new Set();
+      const currentImplementedBy = new Set(doc.implemented_by || []);
+
+      // Find missing implementers
+      const missingImplementers: (StoryId | MilestoneId)[] = [];
+      for (const implementerId of expectedImplementers) {
+        if (!currentImplementedBy.has(implementerId as StoryId)) {
+          missingImplementers.push(implementerId);
+        }
+      }
+
+      if (missingImplementers.length > 0) {
+        doc.implemented_by = [...(doc.implemented_by || []), ...missingImplementers as StoryId[]];
+        doc.updated_at = new Date().toISOString();
+        await this.writeEntityDirect(doc);
+        updated++;
+
+        for (const implementerId of missingImplementers) {
+          details.push({
+            entity_id: doc.id,
+            action: 'added_implemented_by',
+            related_id: implementerId,
+          });
+        }
+      }
+    }
+
+    // Third pass: collect all implemented_by from documents and update stories/milestones
+    const implementedByMap = new Map<StoryId | MilestoneId, Set<DocumentId>>();
+
+    for (const id of allIds) {
+      const entity = await this.getEntity(id);
+      if (!entity || entity.type !== 'document') continue;
+
+      const doc = entity as Document;
+      if (doc.implemented_by && doc.implemented_by.length > 0) {
+        for (const storyId of doc.implemented_by) {
+          if (!implementedByMap.has(storyId)) {
+            implementedByMap.set(storyId, new Set());
+          }
+          implementedByMap.get(storyId)!.add(doc.id as DocumentId);
+        }
+      }
+    }
+
+    // Fourth pass: update stories/milestones with missing implements
+    for (const id of allIds) {
+      const entity = await this.getEntity(id);
+      if (!entity) continue;
+      if (entity.type !== 'story' && entity.type !== 'milestone') continue;
+
+      const expectedDocs = implementedByMap.get(id as StoryId | MilestoneId) || new Set();
+      const currentImplements = new Set((entity as Story | Milestone).implements || []);
+
+      // Find missing docs
+      const missingDocs: DocumentId[] = [];
+      for (const docId of expectedDocs) {
+        if (!currentImplements.has(docId)) {
+          missingDocs.push(docId);
+        }
+      }
+
+      if (missingDocs.length > 0) {
+        if (entity.type === 'story') {
+          (entity as Story).implements = [...((entity as Story).implements || []), ...missingDocs];
+        } else {
+          (entity as Milestone).implements = [...((entity as Milestone).implements || []), ...missingDocs];
+        }
+        entity.updated_at = new Date().toISOString();
+        await this.writeEntityDirect(entity);
+        updated++;
+
+        for (const docId of missingDocs) {
+          details.push({
+            entity_id: entity.id,
+            action: 'added_implements',
+            related_id: docId,
+          });
+        }
+      }
+    }
+
+    return {
+      scanned: allIds.length,
+      updated,
+      details,
+    };
   }
 
   // ---------------------------------------------------------------------------

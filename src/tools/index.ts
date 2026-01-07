@@ -353,6 +353,18 @@ export const entityToolDefinitions: Tool[] = [
       required: ['spec_id'],
     },
   },
+  // Category 7: Maintenance Tools
+  {
+    name: 'reconcile_relationships',
+    description: 'Reconcile bidirectional implements/implemented_by relationships across all entities. Ensures that if a Story/Milestone has `implements: [DOC-001]`, the Document has `implemented_by: [S-001]` and vice versa. Run this to fix inconsistent relationships in existing documents.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dry_run: { type: 'boolean', description: 'If true, only report what would be changed without making changes', default: false },
+      },
+      required: [],
+    },
+  },
 ];
 
 // All tool definitions combined
