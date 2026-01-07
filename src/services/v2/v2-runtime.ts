@@ -542,26 +542,50 @@ export class V2Runtime {
   }
 
   /**
-   * Get the highest ID number for a given entity type by scanning the vault.
+   * Get the highest ID number for a given entity type by scanning vault files.
    * This ensures we never generate duplicate IDs even if entities were created
    * by the Obsidian plugin while the MCP server was running.
+   *
+   * NOTE: This scans the vault on every call to guarantee accuracy.
+   * The index may be stale if the plugin creates entities.
    */
-  private getHighestIdForType(type: EntityType): number {
+  private async getHighestIdForType(type: EntityType): Promise<number> {
     const prefix = this.idPrefixes.get(type);
     if (!prefix) return 0;
 
     let highest = 0;
-    const allMetadata = this.index.getAll();
+    const folders = this.pathResolver.getAllAbsoluteEntityFolders();
 
-    for (const metadata of allMetadata) {
-      if (metadata.type !== type) continue;
+    for (const folder of folders) {
+      try {
+        const files = await this.getAllMarkdownFilesInFolder(folder);
 
-      // Parse the ID number from the entity ID (e.g., "S-001" -> 1, "DEC-042" -> 42)
-      const match = metadata.id.match(new RegExp(`^${prefix}-(\\d+)$`));
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > highest) {
-          highest = num;
+        for (const filePath of files) {
+          try {
+            const content = await fs.readFile(filePath, 'utf-8');
+            const vaultPath = this.pathResolver.toVaultPath(filePath);
+            const result = this.parser.parse(content, vaultPath);
+
+            // Only consider entities of the target type
+            if (result.entity.type === type) {
+              // Extract numeric part from ID (e.g., "S-042" -> 42)
+              const match = result.entity.id.match(new RegExp(`^${prefix}-(\\d+)$`));
+              if (match) {
+                const num = parseInt(match[1], 10);
+                if (num > highest) {
+                  highest = num;
+                }
+              }
+            }
+          } catch {
+            // Skip files that can't be parsed (not entities)
+            continue;
+          }
+        }
+      } catch (err: unknown) {
+        const error = err as NodeJS.ErrnoException;
+        if (error.code !== 'ENOENT') {
+          console.error(`[V2Runtime] Error scanning folder ${folder}:`, err);
         }
       }
     }
@@ -569,11 +593,41 @@ export class V2Runtime {
     return highest;
   }
 
+  /**
+   * Get all markdown files in a folder (recursively)
+   */
+  private async getAllMarkdownFilesInFolder(folder: string): Promise<string[]> {
+    const files: string[] = [];
+
+    try {
+      const entries = await fs.readdir(folder, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(folder, entry.name);
+
+        if (entry.isDirectory()) {
+          // Recursively scan subdirectories
+          const subFiles = await this.getAllMarkdownFilesInFolder(fullPath);
+          files.push(...subFiles);
+        } else if (entry.isFile() && entry.name.endsWith('.md')) {
+          files.push(fullPath);
+        }
+      }
+    } catch (err: unknown) {
+      const error = err as NodeJS.ErrnoException;
+      if (error.code !== 'ENOENT') {
+        console.error(`[V2Runtime] Error reading folder ${folder}:`, err);
+      }
+    }
+
+    return files;
+  }
+
   /** Get next ID for entity type (zero-padded to 3 digits) */
   async getNextId(type: EntityType): Promise<EntityId> {
     // Scan the vault to find the highest existing ID for this type
     // This prevents ID collisions with entities created by the Obsidian plugin
-    const highest = this.getHighestIdForType(type);
+    const highest = await this.getHighestIdForType(type);
     const next = highest + 1;
 
     const prefix = this.idPrefixes.get(type);
@@ -1068,10 +1122,10 @@ export class V2Runtime {
   }
 
   /** Generate entity ID - uses vault scanning for consistency */
-  generateId(type: 'decision' | 'document'): EntityId {
+  async generateId(type: 'decision' | 'document'): Promise<EntityId> {
     // Scan the vault to find the highest existing ID for this type
     // This prevents ID collisions with entities created by the Obsidian plugin
-    const highest = this.getHighestIdForType(type);
+    const highest = await this.getHighestIdForType(type);
     const next = highest + 1;
 
     const prefix = this.idPrefixes.get(type);
@@ -1275,7 +1329,7 @@ export class V2Runtime {
       updateDocument: (id, data) => this.updateDocument(id, data),
       toEntityFull: (entity) => this.toEntityFull(entity),
       getCurrentTimestamp: () => this.getCurrentTimestamp(),
-      generateId: (type) => this.generateId(type),
+      generateId: async (type) => await this.generateId(type),
       getDecisionsAffectingDocument: (id) => this.getDecisionsAffectingDocument(id),
       searchContent: (id, pattern) => this.searchContent(id, pattern),
       addToCanvas: async (entity, canvasPath) => {

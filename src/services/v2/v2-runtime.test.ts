@@ -664,14 +664,14 @@ archived: true
     it('should generate decision ID', async () => {
       await runtime.initialize();
 
-      const id = runtime.generateId('decision');
+      const id = await runtime.generateId('decision');
       expect(id).toBe('DEC-001');
     });
 
     it('should generate document ID', async () => {
       await runtime.initialize();
 
-      const id = runtime.generateId('document');
+      const id = await runtime.generateId('document');
       expect(id).toBe('DOC-001');
     });
   });

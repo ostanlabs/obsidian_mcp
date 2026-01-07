@@ -79,7 +79,7 @@ export interface DecisionDocumentDependencies {
   getCurrentTimestamp: () => string;
 
   /** Generate next ID */
-  generateId: (type: 'decision' | 'document') => EntityId;
+  generateId: (type: 'decision' | 'document') => Promise<EntityId>;
 
   /** Get decisions that affect a document */
   getDecisionsAffectingDocument: (docId: EntityId) => Promise<Decision[]>;
