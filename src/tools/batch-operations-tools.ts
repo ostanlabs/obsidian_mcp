@@ -53,6 +53,9 @@ export interface BatchOperationsDependencies {
   /** Update entity status */
   updateEntityStatus: (id: EntityId, status: EntityStatus) => Promise<void>;
 
+  /** Write entity to disk */
+  writeEntity: (entity: Entity) => Promise<void>;
+
   /** Archive entity */
   archiveEntity: (id: EntityId, archivePath: string) => Promise<void>;
 
@@ -64,6 +67,9 @@ export interface BatchOperationsDependencies {
 
   /** Compute cascade effects */
   computeCascadeEffects: (entity: Entity, newStatus: EntityStatus) => Promise<EntityId[]>;
+
+  /** Get current timestamp */
+  getCurrentTimestamp: () => string;
 
   /** Add node to canvas */
   addToCanvas?: (entity: Entity, canvasPath: string) => Promise<boolean>;
@@ -518,13 +524,54 @@ export async function batchUpdate(
             throw new Error(`Entity not found: ${op.id}`);
           }
 
-          // Handle status update
-          if (op.payload.status) {
-            const validation = deps.validateStatusTransition(entity, op.payload.status as EntityStatus);
+          // Resolve client_ids in payload
+          const resolvedPayload = resolveClientIds(op.payload);
+
+          // Track what was updated
+          let statusChanged = false;
+          let dependenciesAdded = 0;
+          let fieldsUpdated = 0;
+
+          // Handle status update with validation
+          if (resolvedPayload.status && resolvedPayload.status !== entity.status) {
+            const validation = deps.validateStatusTransition(entity, resolvedPayload.status as EntityStatus);
             if (!validation.valid) {
               throw new Error(validation.reason || 'Invalid status transition');
             }
-            await deps.updateEntityStatus(op.id, op.payload.status as EntityStatus);
+            (entity as any).status = resolvedPayload.status;
+            statusChanged = true;
+          }
+
+          // Handle depends_on - add to existing dependencies
+          if (resolvedPayload.depends_on && Array.isArray(resolvedPayload.depends_on) && 'depends_on' in entity) {
+            const currentDeps = ((entity as any).depends_on as EntityId[]) || [];
+            const newDeps = resolvedPayload.depends_on as EntityId[];
+            const mergedDeps = [...new Set([...currentDeps, ...newDeps])];
+            dependenciesAdded = mergedDeps.length - currentDeps.length;
+            (entity as any).depends_on = mergedDeps;
+          }
+
+          // Handle other field updates (title, priority, effort, content, etc.)
+          const fieldsToUpdate = ['title', 'priority', 'effort', 'content', 'workstream',
+            'target_date', 'owner', 'acceptance_criteria', 'implements', 'enables'];
+          for (const field of fieldsToUpdate) {
+            if (field in resolvedPayload && resolvedPayload[field] !== undefined) {
+              // For array fields like implements/enables, merge with existing
+              if ((field === 'implements' || field === 'enables') && Array.isArray(resolvedPayload[field])) {
+                const current = ((entity as any)[field] as EntityId[]) || [];
+                const newValues = resolvedPayload[field] as EntityId[];
+                (entity as any)[field] = [...new Set([...current, ...newValues])];
+              } else {
+                (entity as any)[field] = resolvedPayload[field];
+              }
+              fieldsUpdated++;
+            }
+          }
+
+          // Update timestamp and write if anything changed
+          if (statusChanged || dependenciesAdded > 0 || fieldsUpdated > 0) {
+            entity.updated_at = deps.getCurrentTimestamp() as any;
+            await deps.writeEntity(entity);
           }
 
           // Store mapping for potential cross-references

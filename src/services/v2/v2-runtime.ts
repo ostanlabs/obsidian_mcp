@@ -1269,10 +1269,12 @@ export class V2Runtime {
         entity.updated_at = this.getCurrentTimestamp() as ISODateTime;
         await this.writeEntity(entity);
       },
+      writeEntity: (entity) => this.writeEntity(entity),
       archiveEntity: (id, path) => this.moveToArchive(id, path).then(() => {}),
       getChildren: (id) => this.getChildren(id),
       validateStatusTransition: (entity, status) => this.validateStatusTransition(entity, status),
       computeCascadeEffects: (entity, status) => this.computeCascadeEffects(entity, status),
+      getCurrentTimestamp: () => this.getCurrentTimestamp(),
       // Canvas operations
       addToCanvas: async (entity, canvasPath) => {
         const nodeId = await this.canvasManager.addNode(
