@@ -410,8 +410,8 @@ export interface Document extends EntityBase {
   /** Implementation context/notes */
   implementation_context?: string;
 
-  /** Stories that implement this document */
-  implemented_by?: StoryId[];
+  /** Stories or Milestones that implement this document */
+  implemented_by?: (StoryId | MilestoneId)[];
 
   /** Previous versions of this document */
   previous_versions?: DocumentId[];
