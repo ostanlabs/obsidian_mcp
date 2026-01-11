@@ -165,6 +165,7 @@ export class EntitySerializer {
       doc_type: entity.doc_type,
       version: entity.version,
       owner: entity.owner,
+      depends_on: entity.depends_on?.length ? entity.depends_on : undefined,
       implemented_by: entity.implemented_by?.length ? entity.implemented_by : undefined,
       previous_versions: entity.previous_versions?.length ? entity.previous_versions : undefined,
     };
