@@ -572,16 +572,19 @@ Premium tier includes: Advanced Analytics, Team Collaboration, Priority Support.
 interface Document extends EntityBase {
   type: 'document';
   status: DocumentStatus;
-  
+
   // === DOCUMENT-SPECIFIC ===
   doc_type: DocumentType;          // spec, adr, vision, guide, research
   version: number;                 // Version number (1, 2, 3...)
   owner?: UserRef;                 // Document owner
-  
+
+  // === DEPENDENCIES ===
+  depends_on?: DecisionId[];       // Decisions this document depends on
+
   // === VERSIONING ===
   supersedes_decision?: DecisionId;  // Decision that triggered this version
   previous_versions?: VersionInfo[];
-  
+
   // === IMPLEMENTATION CONTEXT ===
   // Used by generate_implementation_package()
   implementation_context?: {
@@ -589,9 +592,9 @@ interface Document extends EntityBase {
     reference: DocumentId[];       // Include summary only
     assumes: string[];             // List for awareness, no content
   };
-  
+
   // === RELATIONSHIPS ===
-  implemented_by?: StoryId[];      // Stories implementing this spec
+  implemented_by?: (StoryId | MilestoneId)[];  // Stories/Milestones implementing this spec
   references?: EntityId[];         // Other entities this doc references
 }
 
@@ -613,6 +616,7 @@ interface DocumentFrontmatter {
   workstream: string;
   version: number;
   owner?: string;
+  depends_on?: string[];
   supersedes_decision?: string;
   previous_versions?: Array<{
     version: number;
@@ -718,6 +722,41 @@ canvas_source: projects/main.canvas
 ---
 
 ## Relationships
+
+### Relationship Fields by Entity Type
+
+The following table shows which relationship fields are available on each entity type:
+
+| Field | Milestone | Story | Task | Decision | Document |
+|-------|:---------:|:-----:|:----:|:--------:|:--------:|
+| **`parent`** | ❌ | `MilestoneId` | `StoryId` | ❌ | ❌ |
+| **`depends_on`** | `(MilestoneId \| DecisionId)[]` | `EntityId[]` | `DecisionId[]` | `DecisionId[]` | `DecisionId[]` |
+| **`implements`** | `DocumentId[]` | `DocumentId[]` | ❌ | ❌ | ❌ |
+| **`implemented_by`** | ❌ | ❌ | ❌ | ❌ | `(StoryId \| MilestoneId)[]` |
+| **`enables`** | ❌ | ❌ | ❌ | `EntityId[]` | ❌ |
+| **`supersedes`** | ❌ | ❌ | ❌ | `DecisionId` | ❌ |
+| **`previous_versions`** | ❌ | ❌ | ❌ | ❌ | `DocumentId[]` |
+
+### Relationship Direction Summary
+
+| Relationship | From → To | Bidirectional Sync |
+|--------------|-----------|:------------------:|
+| `parent` / `child_of` | Story → Milestone, Task → Story | ✅ (via index) |
+| `depends_on` / `blocked_by` | Any → Dependencies | ✅ (via index) |
+| `implements` / `implemented_by` | Story/Milestone → Document | ✅ (auto-sync) |
+| `enables` / `enabled_by` | Decision → Entities | ✅ (via index) |
+| `supersedes` / `superseded_by` | Decision → Decision | ✅ (via index) |
+| `previous_versions` | Document → Document | ❌ (not indexed) |
+
+### What Each Entity Can Reference
+
+| Entity | Can Reference |
+|--------|---------------|
+| **Milestone** | Other Milestones (depends_on), Decisions (depends_on), Documents (implements) |
+| **Story** | Milestones (parent), Any entity (depends_on), Documents (implements) |
+| **Task** | Stories (parent), Decisions (depends_on) |
+| **Decision** | Other Decisions (depends_on, supersedes), Any entity (enables) |
+| **Document** | Decisions (depends_on), Stories/Milestones (implemented_by), Other Documents (previous_versions) |
 
 ### Dependency Graph Types
 
