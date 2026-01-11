@@ -407,6 +407,9 @@ export interface Document extends EntityBase {
   /** Document owner */
   owner?: string;
 
+  /** Decisions this document depends on */
+  depends_on?: DecisionId[];
+
   /** Implementation context/notes */
   implementation_context?: string;
 
