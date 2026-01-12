@@ -692,7 +692,7 @@ export class V2Runtime {
         await fs.unlink(oldAbsolutePath);
         // Remove old path mapping
         this.index.removePathMapping(existingPath as VaultPath);
-        console.log(`[V2Runtime] Deleted old file after title change: ${existingPath} -> ${filePath}`);
+        console.error(`[V2Runtime] Deleted old file after title change: ${existingPath} -> ${filePath}`);
       } catch (err: any) {
         if (err.code !== 'ENOENT') {
           console.error(`[V2Runtime] Error deleting old file ${oldAbsolutePath}:`, err);
@@ -871,7 +871,7 @@ export class V2Runtime {
       milestone.children = [...currentChildren, childId as StoryId];
       milestone.updated_at = new Date().toISOString();
       await this.writeEntityDirect(milestone);
-      console.log(`[V2Runtime] Synced children: added ${childId} to ${parentId}`);
+      console.error(`[V2Runtime] Synced children: added ${childId} to ${parentId}`);
     } else if (parent.type === 'story') {
       const story = parent as Story;
       const currentChildren = story.children || [];
@@ -880,7 +880,7 @@ export class V2Runtime {
       story.children = [...currentChildren, childId as TaskId];
       story.updated_at = new Date().toISOString();
       await this.writeEntityDirect(story);
-      console.log(`[V2Runtime] Synced children: added ${childId} to ${parentId}`);
+      console.error(`[V2Runtime] Synced children: added ${childId} to ${parentId}`);
     }
   }
 
@@ -898,7 +898,7 @@ export class V2Runtime {
       story.parent = parentId as MilestoneId;
       story.updated_at = new Date().toISOString();
       await this.writeEntityDirect(story);
-      console.log(`[V2Runtime] Synced parent: set ${parentId} on ${childId}`);
+      console.error(`[V2Runtime] Synced parent: set ${parentId} on ${childId}`);
     } else if (child.type === 'task') {
       const task = child as Task;
       if (task.parent === parentId) return;
@@ -906,7 +906,7 @@ export class V2Runtime {
       task.parent = parentId as StoryId;
       task.updated_at = new Date().toISOString();
       await this.writeEntityDirect(task);
-      console.log(`[V2Runtime] Synced parent: set ${parentId} on ${childId}`);
+      console.error(`[V2Runtime] Synced parent: set ${parentId} on ${childId}`);
     }
   }
 
@@ -923,7 +923,7 @@ export class V2Runtime {
     (blocker as any).blocks = [...currentBlocks, blockedId];
     blocker.updated_at = new Date().toISOString();
     await this.writeEntityDirect(blocker);
-    console.log(`[V2Runtime] Synced blocks: added ${blockedId} to ${blockerId}`);
+    console.error(`[V2Runtime] Synced blocks: added ${blockedId} to ${blockerId}`);
   }
 
   /**
@@ -939,7 +939,7 @@ export class V2Runtime {
     (entity as any).depends_on = [...currentDependsOn, dependencyId];
     entity.updated_at = new Date().toISOString();
     await this.writeEntityDirect(entity);
-    console.log(`[V2Runtime] Synced depends_on: added ${dependencyId} to ${entityId}`);
+    console.error(`[V2Runtime] Synced depends_on: added ${dependencyId} to ${entityId}`);
   }
 
   /**
@@ -955,7 +955,7 @@ export class V2Runtime {
     decision.superseded_by = newDecisionId;
     decision.updated_at = new Date().toISOString();
     await this.writeEntityDirect(decision);
-    console.log(`[V2Runtime] Synced superseded_by: set ${newDecisionId} on ${oldDecisionId}`);
+    console.error(`[V2Runtime] Synced superseded_by: set ${newDecisionId} on ${oldDecisionId}`);
   }
 
   /**
@@ -971,7 +971,7 @@ export class V2Runtime {
     decision.supersedes = oldDecisionId;
     decision.updated_at = new Date().toISOString();
     await this.writeEntityDirect(decision);
-    console.log(`[V2Runtime] Synced supersedes: set ${oldDecisionId} on ${newDecisionId}`);
+    console.error(`[V2Runtime] Synced supersedes: set ${oldDecisionId} on ${newDecisionId}`);
   }
 
   /**
@@ -987,7 +987,7 @@ export class V2Runtime {
     document.next_version = newDocId;
     document.updated_at = new Date().toISOString();
     await this.writeEntityDirect(document);
-    console.log(`[V2Runtime] Synced next_version: set ${newDocId} on ${oldDocId}`);
+    console.error(`[V2Runtime] Synced next_version: set ${newDocId} on ${oldDocId}`);
   }
 
   /**
@@ -1003,7 +1003,7 @@ export class V2Runtime {
     document.previous_version = oldDocId;
     document.updated_at = new Date().toISOString();
     await this.writeEntityDirect(document);
-    console.log(`[V2Runtime] Synced previous_version: set ${oldDocId} on ${newDocId}`);
+    console.error(`[V2Runtime] Synced previous_version: set ${oldDocId} on ${newDocId}`);
   }
 
   private async ensureImplementedBy(docId: DocumentId, implementerId: StoryId | MilestoneId): Promise<void> {
@@ -1022,7 +1022,7 @@ export class V2Runtime {
 
     // Write directly to avoid infinite recursion (don't call writeEntity)
     await this.writeEntityDirect(document);
-    console.log(`[V2Runtime] Synced implemented_by: added ${implementerId} to ${docId}`);
+    console.error(`[V2Runtime] Synced implemented_by: added ${implementerId} to ${docId}`);
   }
 
   /**
@@ -1041,7 +1041,7 @@ export class V2Runtime {
       story.implements = [...currentImplements, docId];
       story.updated_at = new Date().toISOString();
       await this.writeEntityDirect(story);
-      console.log(`[V2Runtime] Synced implements: added ${docId} to ${entityId}`);
+      console.error(`[V2Runtime] Synced implements: added ${docId} to ${entityId}`);
     } else if (entity.type === 'milestone') {
       const milestone = entity as Milestone;
       const currentImplements = milestone.implements || [];
@@ -1050,7 +1050,7 @@ export class V2Runtime {
       milestone.implements = [...currentImplements, docId];
       milestone.updated_at = new Date().toISOString();
       await this.writeEntityDirect(milestone);
-      console.log(`[V2Runtime] Synced implements: added ${docId} to ${entityId}`);
+      console.error(`[V2Runtime] Synced implements: added ${docId} to ${entityId}`);
     }
   }
 
