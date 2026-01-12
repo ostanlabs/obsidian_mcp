@@ -117,7 +117,12 @@ export class EntitySerializer {
       target_date: entity.target_date,
       owner: entity.owner,
       priority: entity.priority,
+      // Hierarchy
+      children: entity.children?.length ? entity.children : undefined,
+      // Dependencies
       depends_on: entity.depends_on?.length ? entity.depends_on : undefined,
+      blocks: entity.blocks?.length ? entity.blocks : undefined,
+      // Implementation
       implements: entity.implements?.length ? entity.implements : undefined,
       success_criteria: entity.success_criteria?.length ? entity.success_criteria : undefined,
     };
@@ -128,8 +133,13 @@ export class EntitySerializer {
     return {
       effort: entity.effort,
       priority: entity.priority,
+      // Hierarchy
       parent: entity.parent,
+      children: entity.children?.length ? entity.children : undefined,
+      // Dependencies
       depends_on: entity.depends_on?.length ? entity.depends_on : undefined,
+      blocks: entity.blocks?.length ? entity.blocks : undefined,
+      // Implementation
       implements: entity.implements?.length ? entity.implements : undefined,
       acceptance_criteria: entity.acceptance_criteria?.length ? entity.acceptance_criteria : undefined,
       tasks: entity.tasks?.length ? this.serializeInlineTasks(entity.tasks) : undefined,
@@ -139,8 +149,12 @@ export class EntitySerializer {
   /** Get task-specific frontmatter */
   private getTaskFrontmatter(entity: Task): Record<string, any> {
     return {
+      // Hierarchy
       parent: entity.parent,
+      // Dependencies
       depends_on: entity.depends_on?.length ? entity.depends_on : undefined,
+      blocks: entity.blocks?.length ? entity.blocks : undefined,
+      // Task-specific
       goal: entity.goal,
       estimate_hrs: entity.estimate_hrs,
       actual_hrs: entity.actual_hrs,
@@ -153,8 +167,12 @@ export class EntitySerializer {
     return {
       decided_by: entity.decided_by,
       decided_on: entity.decided_on,
+      // Dependencies
+      depends_on: entity.depends_on?.length ? entity.depends_on : undefined,
+      blocks: entity.blocks?.length ? entity.blocks : undefined,
+      // Supersession
       supersedes: entity.supersedes,
-      enables: entity.enables?.length ? entity.enables : undefined,
+      superseded_by: entity.superseded_by,
       alternatives: entity.alternatives?.length ? entity.alternatives : undefined,
     };
   }
@@ -165,9 +183,14 @@ export class EntitySerializer {
       doc_type: entity.doc_type,
       version: entity.version,
       owner: entity.owner,
+      // Dependencies
       depends_on: entity.depends_on?.length ? entity.depends_on : undefined,
+      blocks: entity.blocks?.length ? entity.blocks : undefined,
+      // Implementation
       implemented_by: entity.implemented_by?.length ? entity.implemented_by : undefined,
-      previous_versions: entity.previous_versions?.length ? entity.previous_versions : undefined,
+      // Versioning
+      previous_version: entity.previous_version,
+      next_version: entity.next_version,
     };
   }
 

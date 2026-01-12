@@ -163,11 +163,14 @@ interface Milestone extends EntityBase {
   owner?: UserRef;                 // Accountable person
   
   // === HIERARCHY ===
-  // Milestones don't have parents (they are top-level)
-  // Children are tracked via Story.parent
+  children?: StoryId[];            // Stories in this milestone (auto-synced from Story.parent)
   
   // === DEPENDENCIES ===
-  depends_on: MilestoneId[];       // Other milestones this depends on
+  depends_on?: (MilestoneId | DecisionId)[];  // Milestones or decisions this depends on
+  blocks?: EntityId[];             // Entities blocked by this milestone (auto-synced)
+  
+  // === IMPLEMENTATION ===
+  implements?: DocumentId[];       // Specs this milestone implements
 }
 
 // Frontmatter representation
@@ -180,7 +183,10 @@ interface MilestoneFrontmatter {
   priority: Priority;
   target_date?: string;
   owner?: string;
-  depends_on: string[];
+  children?: string[];
+  depends_on?: string[];
+  blocks?: string[];
+  implements?: string[];
   cssclasses: string[];
   created_at: string;
   updated_at: string;
@@ -201,7 +207,13 @@ workstream: engineering
 priority: Critical
 target_date: 2025-03-31
 owner: "@founder"
+children:
+  - S-001
+  - S-002
 depends_on: []
+blocks: []
+implements:
+  - DOC-001
 cssclasses:
   - canvas-milestone
   - canvas-status-not-started
@@ -243,19 +255,21 @@ interface Story extends EntityBase {
   
   // === HIERARCHY ===
   parent?: MilestoneId;            // Parent milestone (optional for orphan stories)
+  children?: TaskId[];             // Tasks in this story (auto-synced from Task.parent)
   
   // === DEPENDENCIES ===
-  depends_on: (StoryId | DecisionId)[];  // Stories or decisions this depends on
+  depends_on?: EntityId[];         // Entities this depends on
+  blocks?: EntityId[];             // Entities blocked by this story (auto-synced)
   
   // === IMPLEMENTATION ===
-  implements?: DocumentId[];        // Specs this story implements
+  implements?: DocumentId[];       // Specs this story implements
   
   // === INLINE TASKS ===
   // Tasks are stored in the markdown body, not frontmatter
   // See InlineTask interface below
   
   // === ACCEPTANCE CRITERIA ===
-  acceptance_criteria?: string[];   // Stored in frontmatter for easy querying
+  acceptance_criteria?: string[];  // Stored in frontmatter for easy querying
 }
 
 // Inline task (stored in markdown body, not frontmatter)
@@ -280,7 +294,9 @@ interface StoryFrontmatter {
   priority: Priority;
   workstream: string;
   parent?: string;
-  depends_on: string[];
+  children?: string[];
+  depends_on?: string[];
+  blocks?: string[];
   implements?: string[];
   acceptance_criteria?: string[];
   cssclasses: string[];
@@ -303,9 +319,13 @@ effort: Engineering
 priority: High
 workstream: engineering
 parent: M-001
+children:
+  - T-042
+  - T-043
 depends_on:
   - DEC-001
   - S-012
+blocks: []
 implements:
   - DOC-005
 acceptance_criteria:
@@ -381,7 +401,8 @@ interface Task extends EntityBase {
   parent?: StoryId;                // Parent story (optional)
   
   // === DEPENDENCIES ===
-  depends_on?: TaskId[];           // Other tasks this depends on
+  depends_on?: DecisionId[];       // Decisions this depends on
+  blocks?: EntityId[];             // Entities blocked by this task (auto-synced)
 }
 
 // Frontmatter representation
@@ -399,6 +420,7 @@ interface TaskFrontmatter {
   assignee?: string;
   parent?: string;
   depends_on?: string[];
+  blocks?: string[];
   cssclasses: string[];
   created_at: string;
   updated_at: string;
@@ -420,7 +442,9 @@ goal: PostgreSQL database running locally and in staging
 estimate_hrs: 4
 assignee: "@jane"
 parent: S-015
-depends_on: []
+depends_on:
+  - DEC-001
+blocks: []
 cssclasses:
   - canvas-task
   - canvas-effort-engineering
@@ -466,10 +490,13 @@ interface Decision extends EntityBase {
   decided_by?: UserRef;            // Who made the decision
   decided_on?: ISODateTime;        // When it was decided
   
-  // === RELATIONSHIPS ===
-  enables?: EntityId[];            // What this decision unblocks
+  // === DEPENDENCIES ===
+  depends_on?: DecisionId[];       // Other decisions this depends on
+  blocks?: EntityId[];             // Entities blocked by this decision (auto-synced)
+  
+  // === SUPERSESSION ===
   supersedes?: DecisionId;         // Previous decision this replaces
-  affects_documents?: DocumentId[]; // Documents that may need updating
+  superseded_by?: DecisionId;      // Decision that replaced this one (auto-synced)
   
   // === ALTERNATIVES ===
   alternatives_considered?: Alternative[];
@@ -492,9 +519,10 @@ interface DecisionFrontmatter {
   workstream: string;
   decided_by?: string;
   decided_on?: string;
-  enables?: string[];
+  depends_on?: string[];
+  blocks?: string[];
   supersedes?: string;
-  affects_documents?: string[];
+  superseded_by?: string;
   cssclasses: string[];
   created_at: string;
   updated_at: string;
@@ -514,12 +542,12 @@ status: Decided
 workstream: business
 decided_by: "@founder"
 decided_on: 2024-12-10T00:00:00Z
-enables:
+depends_on: []
+blocks:
   - S-015
   - DOC-005
-  - MKT-003
 supersedes: null
-affects_documents: []
+superseded_by: null
 cssclasses:
   - canvas-decision
   - canvas-status-decided
@@ -575,35 +603,22 @@ interface Document extends EntityBase {
 
   // === DOCUMENT-SPECIFIC ===
   doc_type: DocumentType;          // spec, adr, vision, guide, research
-  version: number;                 // Version number (1, 2, 3...)
+  version?: string;                // Version string
   owner?: UserRef;                 // Document owner
 
   // === DEPENDENCIES ===
   depends_on?: DecisionId[];       // Decisions this document depends on
+  blocks?: EntityId[];             // Entities blocked by this document (auto-synced)
 
   // === VERSIONING ===
-  supersedes_decision?: DecisionId;  // Decision that triggered this version
-  previous_versions?: VersionInfo[];
+  previous_version?: DocumentId;   // Previous version of this document
+  next_version?: DocumentId;       // Next version of this document (auto-synced)
 
   // === IMPLEMENTATION CONTEXT ===
-  // Used by generate_implementation_package()
-  implementation_context?: {
-    required: DocumentId[];        // Must include full content
-    reference: DocumentId[];       // Include summary only
-    assumes: string[];             // List for awareness, no content
-  };
+  implementation_context?: string; // Context for implementation
 
   // === RELATIONSHIPS ===
   implemented_by?: (StoryId | MilestoneId)[];  // Stories/Milestones implementing this spec
-  references?: EntityId[];         // Other entities this doc references
-}
-
-interface VersionInfo {
-  version: number;
-  date: ISODateTime;
-  superseded_by?: DecisionId;
-  change_summary?: string;
-  git_ref?: string;                // Git commit hash for retrieval
 }
 
 // Frontmatter representation
@@ -614,23 +629,14 @@ interface DocumentFrontmatter {
   title: string;
   status: DocumentStatus;
   workstream: string;
-  version: number;
+  version?: string;
   owner?: string;
   depends_on?: string[];
-  supersedes_decision?: string;
-  previous_versions?: Array<{
-    version: number;
-    date: string;
-    superseded_by?: string;
-    change_summary?: string;
-  }>;
-  implementation_context?: {
-    required: string[];
-    reference: string[];
-    assumes: string[];
-  };
+  blocks?: string[];
+  previous_version?: string;
+  next_version?: string;
+  implementation_context?: string;
   implemented_by?: string[];
-  references?: string[];
   cssclasses: string[];
   created_at: string;
   updated_at: string;
@@ -649,28 +655,18 @@ doc_type: spec
 title: Premium Features Technical Spec
 status: Approved
 workstream: engineering
-version: 2
+version: "2.0"
 owner: "@tech-lead"
-supersedes_decision: DEC-015
-previous_versions:
-  - version: 1
-    date: 2024-11-15T00:00:00Z
-    superseded_by: DEC-015
-    change_summary: Initial spec - custom auth approach
-implementation_context:
-  required:
-    - DOC-001
-    - DEC-001
-  reference:
-    - DOC-002
-  assumes:
-    - AUTH-SPEC
+depends_on:
+  - DEC-001
+  - DEC-015
+blocks: []
+previous_version: DOC-004
+next_version: null
+implementation_context: "Requires understanding of Stripe API and feature flags"
 implemented_by:
   - S-015
   - S-016
-references:
-  - DEC-001
-  - DEC-012
 cssclasses:
   - canvas-document
   - canvas-status-approved
@@ -682,9 +678,9 @@ canvas_source: projects/main.canvas
 
 # DOC-005: Premium Features Technical Spec
 
-> **Version:** 2  
+> **Version:** 2.0  
 > **Status:** Approved  
-> **Note:** This version supersedes v1 per [DEC-015](../decisions/DEC-015.md)
+> **Previous Version:** [DOC-004](../documents/DOC-004.md)
 
 ## Overview
 
@@ -723,90 +719,97 @@ canvas_source: projects/main.canvas
 
 ## Relationships
 
-### Relationship Fields by Entity Type
+### Design Philosophy
 
-The following table shows which relationship fields are available on each entity type:
+All relationships are **fully symmetric** - every forward relationship has a corresponding reverse field that is auto-synced. This ensures:
+- Bidirectional navigation in Obsidian (Dataview queries work both ways)
+- No orphaned references
+- Clear relationship semantics
+
+### Relationship Types
+
+| Relationship | Semantic | Forward Field | Reverse Field | Auto-Sync |
+|--------------|----------|---------------|---------------|:---------:|
+| **Hierarchy** | "is part of" | `parent` | `children` | ✅ |
+| **Dependency** | "must happen first" | `depends_on` | `blocks` | ✅ |
+| **Implementation** | "delivers this spec" | `implements` | `implemented_by` | ✅ |
+| **Supersession** | "replaces" | `supersedes` | `superseded_by` | ✅ |
+| **Versioning** | "evolved into" | `previous_version` | `next_version` | ✅ |
+
+### Relationship Fields by Entity Type
 
 | Field | Milestone | Story | Task | Decision | Document |
 |-------|:---------:|:-----:|:----:|:--------:|:--------:|
-| **`parent`** | ❌ | `MilestoneId` | `StoryId` | ❌ | ❌ |
-| **`depends_on`** | `(MilestoneId \| DecisionId)[]` | `EntityId[]` | `DecisionId[]` | `DecisionId[]` | `DecisionId[]` |
-| **`implements`** | `DocumentId[]` | `DocumentId[]` | ❌ | ❌ | ❌ |
-| **`implemented_by`** | ❌ | ❌ | ❌ | ❌ | `(StoryId \| MilestoneId)[]` |
-| **`enables`** | ❌ | ❌ | ❌ | `EntityId[]` | ❌ |
-| **`supersedes`** | ❌ | ❌ | ❌ | `DecisionId` | ❌ |
-| **`previous_versions`** | ❌ | ❌ | ❌ | ❌ | `DocumentId[]` |
+| **Hierarchy** |||||
+| `parent` | ❌ | `MilestoneId?` | `StoryId?` | ❌ | ❌ |
+| `children` | `StoryId[]` | `TaskId[]` | ❌ | ❌ | ❌ |
+| **Dependency** |||||
+| `depends_on` | `(MilestoneId\|DecisionId)[]` | `EntityId[]` | `DecisionId[]` | `DecisionId[]` | `DecisionId[]` |
+| `blocks` | `EntityId[]` | `EntityId[]` | `EntityId[]` | `EntityId[]` | `EntityId[]` |
+| **Implementation** |||||
+| `implements` | `DocumentId[]` | `DocumentId[]` | ❌ | ❌ | ❌ |
+| `implemented_by` | ❌ | ❌ | ❌ | ❌ | `(StoryId\|MilestoneId)[]` |
+| **Supersession** |||||
+| `supersedes` | ❌ | ❌ | ❌ | `DecisionId?` | ❌ |
+| `superseded_by` | ❌ | ❌ | ❌ | `DecisionId?` | ❌ |
+| **Versioning** |||||
+| `previous_version` | ❌ | ❌ | ❌ | ❌ | `DocumentId?` |
+| `next_version` | ❌ | ❌ | ❌ | ❌ | `DocumentId?` |
 
-### Relationship Direction Summary
+### Auto-Sync Rules
 
-| Relationship | From → To | Bidirectional Sync |
-|--------------|-----------|:------------------:|
-| `parent` / `child_of` | Story → Milestone, Task → Story | ✅ (via index) |
-| `depends_on` / `blocked_by` | Any → Dependencies | ✅ (via index) |
-| `implements` / `implemented_by` | Story/Milestone → Document | ✅ (auto-sync) |
-| `enables` / `enabled_by` | Decision → Entities | ✅ (via index) |
-| `supersedes` / `superseded_by` | Decision → Decision | ✅ (via index) |
-| `previous_versions` | Document → Document | ❌ (not indexed) |
+When a forward relationship is set, the reverse is automatically updated:
+
+| When This Changes | Auto-Update |
+|-------------------|-------------|
+| `Story.parent = M-001` | Add `S-xxx` to `M-001.children` |
+| `Task.parent = S-001` | Add `T-xxx` to `S-001.children` |
+| `*.depends_on` includes `X` | Add `*` to `X.blocks` |
+| `Story.implements = [DOC-001]` | Add `S-xxx` to `DOC-001.implemented_by` |
+| `Decision.supersedes = DEC-001` | Set `DEC-001.superseded_by = DEC-xxx` |
+| `Document.previous_version = DOC-001` | Set `DOC-001.next_version = DOC-xxx` |
+
+### Relationship Semantics
+
+#### Hierarchy (`parent` / `children`)
+- **Purpose:** Containment - "what's in this milestone/story?"
+- **Example:** `S-001.parent = M-001` → S-001 is part of milestone M-001
+- **Query:** "Show all stories in M-001" → `M-001.children`
+
+#### Dependency (`depends_on` / `blocks`)
+- **Purpose:** Prerequisites/sequencing - "what must happen first?"
+- **Example:** `S-002.depends_on = [DEC-001, S-001]` → S-002 can't start until DEC-001 is decided and S-001 is done
+- **Query:** "What's blocking S-002?" → `S-002.depends_on`
+- **Query:** "What does DEC-001 block?" → `DEC-001.blocks`
+- **Use cases:**
+  - Cross-hierarchy dependencies (story in M-002 depends on story in M-001)
+  - Decision prerequisites (work waiting for a decision)
+  - Sequential work within same parent
+
+#### Implementation (`implements` / `implemented_by`)
+- **Purpose:** Specification delivery - "what work delivers this spec?"
+- **Example:** `S-015.implements = [DOC-005]` → S-015 implements the spec in DOC-005
+- **Query:** "What implements DOC-005?" → `DOC-005.implemented_by`
+
+#### Supersession (`supersedes` / `superseded_by`)
+- **Purpose:** Replacement - "what replaced this decision?"
+- **Example:** `DEC-015.supersedes = DEC-001` → DEC-015 replaces DEC-001
+- **Query:** "Was DEC-001 superseded?" → `DEC-001.superseded_by`
+
+#### Versioning (`previous_version` / `next_version`)
+- **Purpose:** Document evolution - "what's the version history?"
+- **Example:** `DOC-005.previous_version = DOC-004` → DOC-005 is the next version of DOC-004
+- **Query:** "What came after DOC-004?" → `DOC-004.next_version`
 
 ### What Each Entity Can Reference
 
 | Entity | Can Reference |
 |--------|---------------|
-| **Milestone** | Other Milestones (depends_on), Decisions (depends_on), Documents (implements) |
-| **Story** | Milestones (parent), Any entity (depends_on), Documents (implements) |
+| **Milestone** | Other Milestones (depends_on), Decisions (depends_on), Documents (implements), Stories (children) |
+| **Story** | Milestones (parent), Any entity (depends_on), Documents (implements), Tasks (children) |
 | **Task** | Stories (parent), Decisions (depends_on) |
-| **Decision** | Other Decisions (depends_on, supersedes), Any entity (enables) |
-| **Document** | Decisions (depends_on), Stories/Milestones (implemented_by), Other Documents (previous_versions) |
-
-### Dependency Graph Types
-
-```typescript
-// Edge in the dependency graph
-interface DependencyEdge {
-  from_id: EntityId;               // Blocker
-  to_id: EntityId;                 // Blocked
-  type: DependencyType;
-  created_at: ISODateTime;
-}
-
-// Resolved dependency with entity details
-interface ResolvedDependency {
-  entity: EntitySummary;
-  type: DependencyType;
-  is_blocking: boolean;            // True if blocker is not complete
-}
-
-// Entity summary (for listings, not full content)
-interface EntitySummary {
-  id: EntityId;
-  type: EntityType;
-  title: string;
-  status: EntityStatus;
-  workstream: string;
-  parent?: {
-    id: EntityId;
-    title: string;
-  };
-  last_updated: ISODateTime;
-}
-```
-
-### Hierarchy Types
-
-```typescript
-// Parent-child relationship
-interface HierarchyNode {
-  entity: EntitySummary;
-  children: HierarchyNode[];
-  depth: number;
-}
-
-// Flatten hierarchy to list
-interface HierarchyPath {
-  path: EntitySummary[];           // [Milestone, Story, Task]
-  depth: number;
-}
-```
+| **Decision** | Other Decisions (depends_on, supersedes, superseded_by) |
+| **Document** | Decisions (depends_on), Stories/Milestones (implemented_by), Other Documents (previous_version, next_version) |
 
 ## Canvas Integration
 

@@ -106,11 +106,11 @@ export interface UpdateEntityInput {
   remove_dependencies?: EntityId[];
   add_to?: {
     implements?: EntityId[];
-    enables?: EntityId[];
+    blocks?: EntityId[];
   };
   remove_from?: {
     implements?: EntityId[];
-    enables?: EntityId[];
+    blocks?: EntityId[];
   };
   // Enhanced: Status update with cascade (replaces update_entity_status)
   status?: EntityStatus;
@@ -707,7 +707,7 @@ export interface CreateDecisionInput {
   rationale: string;
   workstream: Workstream;
   decided_by: string;
-  enables?: EntityId[];
+  blocks?: EntityId[];
   supersedes?: EntityId;
   affects_documents?: EntityId[];
   add_to_canvas?: boolean;
@@ -717,7 +717,7 @@ export interface CreateDecisionInput {
 export interface CreateDecisionOutput {
   id: EntityId;
   decision: EntityFull;
-  enabled_count: number;
+  blocked_count: number;
   stale_documents: EntityId[];
 }
 
@@ -735,7 +735,7 @@ export interface GetDecisionHistoryOutput {
     title: string;
     status: string;
     decided_on: string;
-    enables: EntityId[];
+    blocks: EntityId[];
     superseded_by?: EntityId;
   }>;
   decision_chains: Array<{

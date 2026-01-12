@@ -281,7 +281,7 @@ export class LifecycleManager {
       case 'has_replacement_version': {
         const doc = entity as Document;
         return {
-          met: !!(doc.previous_versions && doc.previous_versions.length > 0),
+          met: !!(doc.previous_version && doc.previous_version.length > 0),
           reason: 'No replacement version specified',
         };
       }

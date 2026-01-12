@@ -363,13 +363,13 @@ supersedes: DEC-001
       expect(decision.supersedes).toBe('DEC-001');
     });
 
-    it('should parse decision with enables array', () => {
+    it('should parse decision with blocks array', () => {
       const content = `---
 id: DEC-001
 title: Use React
 workstream: engineering
 status: Decided
-enables:
+blocks:
   - DOC-001
   - S-001
 ---
@@ -378,7 +378,7 @@ enables:
       const result = parser.parse(content, '/vault/decisions/DEC-001.md' as VaultPath);
       const decision = result.entity as Decision;
 
-      expect(decision.enables).toEqual(['DOC-001', 'S-001']);
+      expect(decision.blocks).toEqual(['DOC-001', 'S-001']);
     });
   });
 
@@ -417,7 +417,7 @@ title: API Spec v3
 workstream: engineering
 status: Draft
 doc_type: spec
-previous_versions:
+previous_version:
   - DOC-001
   - DOC-002
 ---
@@ -426,7 +426,7 @@ previous_versions:
       const result = parser.parse(content, '/vault/documents/DOC-003.md' as VaultPath);
       const doc = result.entity as Document;
 
-      expect(doc.previous_versions).toEqual(['DOC-001', 'DOC-002']);
+      expect(doc.previous_version).toEqual(['DOC-001', 'DOC-002']);
     });
 
     it('should parse document with implemented_by array', () => {

@@ -23,6 +23,7 @@ import {
   Document,
   MilestoneId,
   StoryId,
+  TaskId,
   DecisionId,
   DocumentId,
   ISODateTime,
@@ -320,20 +321,24 @@ export class V2Runtime {
       this.index.addRelationship(entity.id, 'supersedes', (entity as Decision).supersedes!);
     }
 
-    // Enables relationships (Decision enables Entity)
-    if (entity.type === 'decision' && (entity as Decision).enables) {
-      for (const enabledId of (entity as Decision).enables!) {
-        this.index.addRelationship(entity.id, 'enables', enabledId);
-      }
+    // Versioning relationships (Document previous_version -> next_version)
+    if (entity.type === 'document' && (entity as Document).previous_version) {
+      this.index.addRelationship(entity.id, 'previous_version', (entity as Document).previous_version!);
     }
   }
 
   /**
-   * Remove all relationships for an entity from ProjectIndex.
-   * Called before re-indexing or when entity is deleted.
+   * Remove forward relationships for an entity from ProjectIndex.
+   * Called before re-indexing an entity's relationships.
+   *
+   * Excludes `parent_of` and `blocks` relationships because those are "owned" by
+   * other entities (children and dependents respectively), not by this entity.
+   * - `parent_of` is indexed when a child sets its `parent` field
+   * - `blocks` is indexed when a dependent sets its `depends_on` field
    */
   private removeRelationships(entityId: EntityId): void {
-    this.index.delete(entityId);
+    // Exclude parent_of and blocks - these are indexed by children/dependents
+    this.index.removeForwardRelationships(entityId, ['parent_of', 'blocks']);
   }
 
   /**
@@ -728,17 +733,83 @@ export class V2Runtime {
     this.indexRelationships(entity);
 
     // Sync bidirectional implements/implemented_by relationships
-    await this.syncImplementsRelationships(entity);
+    await this.syncBidirectionalRelationships(entity);
   }
 
   /**
-   * Sync bidirectional implements/implemented_by relationships.
-   * When a Story/Milestone has `implements: [DOC-001]`, ensure DOC-001 has `implemented_by: [S-001]`.
-   * When a Document has `implemented_by: [S-001]`, ensure S-001 has `implements: [DOC-001]`.
+   * Sync all bidirectional relationships.
+   * Ensures consistency across all symmetric relationship pairs:
+   * - parent ↔ children
+   * - depends_on ↔ blocks
+   * - implements ↔ implemented_by
+   * - supersedes ↔ superseded_by
+   * - previous_version ↔ next_version
    */
-  private async syncImplementsRelationships(entity: Entity): Promise<void> {
+  private async syncBidirectionalRelationships(entity: Entity): Promise<void> {
+    // 1. Hierarchy: parent ↔ children
+    await this.syncParentChildRelationship(entity);
+
+    // 2. Dependencies: depends_on ↔ blocks
+    await this.syncDependencyRelationship(entity);
+
+    // 3. Implementation: implements ↔ implemented_by
+    await this.syncImplementsRelationship(entity);
+
+    // 4. Supersession: supersedes ↔ superseded_by (Decision only)
+    await this.syncSupersedesRelationship(entity);
+
+    // 5. Versioning: previous_version ↔ next_version (Document only)
+    await this.syncVersioningRelationship(entity);
+  }
+
+  /**
+   * Sync parent ↔ children relationship.
+   */
+  private async syncParentChildRelationship(entity: Entity): Promise<void> {
+    if (entity.type === 'story') {
+      const story = entity as Story;
+      if (story.parent) {
+        await this.ensureChildInParent(story.parent, story.id);
+      }
+    } else if (entity.type === 'task') {
+      const task = entity as Task;
+      if (task.parent) {
+        await this.ensureChildInParent(task.parent, task.id);
+      }
+    } else if (entity.type === 'milestone') {
+      const milestone = entity as Milestone;
+      if (milestone.children && milestone.children.length > 0) {
+        for (const childId of milestone.children) {
+          await this.ensureParentInChild(childId, milestone.id);
+        }
+      }
+    }
+  }
+
+  /**
+   * Sync depends_on ↔ blocks relationship.
+   */
+  private async syncDependencyRelationship(entity: Entity): Promise<void> {
+    const dependsOn = (entity as any).depends_on as EntityId[] | undefined;
+    if (dependsOn && dependsOn.length > 0) {
+      for (const depId of dependsOn) {
+        await this.ensureBlocks(depId, entity.id);
+      }
+    }
+
+    const blocks = (entity as any).blocks as EntityId[] | undefined;
+    if (blocks && blocks.length > 0) {
+      for (const blockedId of blocks) {
+        await this.ensureDependsOn(blockedId, entity.id);
+      }
+    }
+  }
+
+  /**
+   * Sync implements ↔ implemented_by relationship.
+   */
+  private async syncImplementsRelationship(entity: Entity): Promise<void> {
     if (entity.type === 'story' || entity.type === 'milestone') {
-      // Story/Milestone implements Documents
       const implements_ = (entity as Story | Milestone).implements;
       if (implements_ && implements_.length > 0) {
         for (const docId of implements_) {
@@ -746,7 +817,6 @@ export class V2Runtime {
         }
       }
     } else if (entity.type === 'document') {
-      // Document implemented_by Stories
       const implementedBy = (entity as Document).implemented_by;
       if (implementedBy && implementedBy.length > 0) {
         for (const storyId of implementedBy) {
@@ -757,9 +827,185 @@ export class V2Runtime {
   }
 
   /**
-   * Ensure a Document's implemented_by includes the given entity ID.
-   * Only updates if the relationship is missing.
+   * Sync supersedes ↔ superseded_by relationship (Decision only).
    */
+  private async syncSupersedesRelationship(entity: Entity): Promise<void> {
+    if (entity.type !== 'decision') return;
+
+    const decision = entity as Decision;
+    if (decision.supersedes) {
+      await this.ensureSupersededBy(decision.supersedes, decision.id);
+    }
+    if (decision.superseded_by) {
+      await this.ensureSupersedes(decision.superseded_by, decision.id);
+    }
+  }
+
+  /**
+   * Sync previous_version ↔ next_version relationship (Document only).
+   */
+  private async syncVersioningRelationship(entity: Entity): Promise<void> {
+    if (entity.type !== 'document') return;
+
+    const document = entity as Document;
+    if (document.previous_version) {
+      await this.ensureNextVersion(document.previous_version, document.id);
+    }
+    if (document.next_version) {
+      await this.ensurePreviousVersion(document.next_version, document.id);
+    }
+  }
+
+  /**
+   * Ensure a parent entity's children array includes the given child ID.
+   */
+  private async ensureChildInParent(parentId: EntityId, childId: EntityId): Promise<void> {
+    const parent = await this.getEntity(parentId);
+    if (!parent) return;
+
+    if (parent.type === 'milestone') {
+      const milestone = parent as Milestone;
+      const currentChildren = milestone.children || [];
+      if (currentChildren.includes(childId as StoryId)) return;
+
+      milestone.children = [...currentChildren, childId as StoryId];
+      milestone.updated_at = new Date().toISOString();
+      await this.writeEntityDirect(milestone);
+      console.log(`[V2Runtime] Synced children: added ${childId} to ${parentId}`);
+    } else if (parent.type === 'story') {
+      const story = parent as Story;
+      const currentChildren = story.children || [];
+      if (currentChildren.includes(childId as TaskId)) return;
+
+      story.children = [...currentChildren, childId as TaskId];
+      story.updated_at = new Date().toISOString();
+      await this.writeEntityDirect(story);
+      console.log(`[V2Runtime] Synced children: added ${childId} to ${parentId}`);
+    }
+  }
+
+  /**
+   * Ensure a child entity's parent field is set to the given parent ID.
+   */
+  private async ensureParentInChild(childId: EntityId, parentId: EntityId): Promise<void> {
+    const child = await this.getEntity(childId);
+    if (!child) return;
+
+    if (child.type === 'story') {
+      const story = child as Story;
+      if (story.parent === parentId) return;
+
+      story.parent = parentId as MilestoneId;
+      story.updated_at = new Date().toISOString();
+      await this.writeEntityDirect(story);
+      console.log(`[V2Runtime] Synced parent: set ${parentId} on ${childId}`);
+    } else if (child.type === 'task') {
+      const task = child as Task;
+      if (task.parent === parentId) return;
+
+      task.parent = parentId as StoryId;
+      task.updated_at = new Date().toISOString();
+      await this.writeEntityDirect(task);
+      console.log(`[V2Runtime] Synced parent: set ${parentId} on ${childId}`);
+    }
+  }
+
+  /**
+   * Ensure an entity's blocks array includes the given blocked ID.
+   */
+  private async ensureBlocks(blockerId: EntityId, blockedId: EntityId): Promise<void> {
+    const blocker = await this.getEntity(blockerId);
+    if (!blocker) return;
+
+    const currentBlocks = (blocker as any).blocks || [];
+    if (currentBlocks.includes(blockedId)) return;
+
+    (blocker as any).blocks = [...currentBlocks, blockedId];
+    blocker.updated_at = new Date().toISOString();
+    await this.writeEntityDirect(blocker);
+    console.log(`[V2Runtime] Synced blocks: added ${blockedId} to ${blockerId}`);
+  }
+
+  /**
+   * Ensure an entity's depends_on array includes the given dependency ID.
+   */
+  private async ensureDependsOn(entityId: EntityId, dependencyId: EntityId): Promise<void> {
+    const entity = await this.getEntity(entityId);
+    if (!entity) return;
+
+    const currentDependsOn = (entity as any).depends_on || [];
+    if (currentDependsOn.includes(dependencyId)) return;
+
+    (entity as any).depends_on = [...currentDependsOn, dependencyId];
+    entity.updated_at = new Date().toISOString();
+    await this.writeEntityDirect(entity);
+    console.log(`[V2Runtime] Synced depends_on: added ${dependencyId} to ${entityId}`);
+  }
+
+  /**
+   * Ensure a decision's superseded_by field is set.
+   */
+  private async ensureSupersededBy(oldDecisionId: DecisionId, newDecisionId: DecisionId): Promise<void> {
+    const oldDecision = await this.getEntity(oldDecisionId);
+    if (!oldDecision || oldDecision.type !== 'decision') return;
+
+    const decision = oldDecision as Decision;
+    if (decision.superseded_by === newDecisionId) return;
+
+    decision.superseded_by = newDecisionId;
+    decision.updated_at = new Date().toISOString();
+    await this.writeEntityDirect(decision);
+    console.log(`[V2Runtime] Synced superseded_by: set ${newDecisionId} on ${oldDecisionId}`);
+  }
+
+  /**
+   * Ensure a decision's supersedes field is set.
+   */
+  private async ensureSupersedes(newDecisionId: DecisionId, oldDecisionId: DecisionId): Promise<void> {
+    const newDecision = await this.getEntity(newDecisionId);
+    if (!newDecision || newDecision.type !== 'decision') return;
+
+    const decision = newDecision as Decision;
+    if (decision.supersedes === oldDecisionId) return;
+
+    decision.supersedes = oldDecisionId;
+    decision.updated_at = new Date().toISOString();
+    await this.writeEntityDirect(decision);
+    console.log(`[V2Runtime] Synced supersedes: set ${oldDecisionId} on ${newDecisionId}`);
+  }
+
+  /**
+   * Ensure a document's next_version field is set.
+   */
+  private async ensureNextVersion(oldDocId: DocumentId, newDocId: DocumentId): Promise<void> {
+    const oldDoc = await this.getEntity(oldDocId);
+    if (!oldDoc || oldDoc.type !== 'document') return;
+
+    const document = oldDoc as Document;
+    if (document.next_version === newDocId) return;
+
+    document.next_version = newDocId;
+    document.updated_at = new Date().toISOString();
+    await this.writeEntityDirect(document);
+    console.log(`[V2Runtime] Synced next_version: set ${newDocId} on ${oldDocId}`);
+  }
+
+  /**
+   * Ensure a document's previous_version field is set.
+   */
+  private async ensurePreviousVersion(newDocId: DocumentId, oldDocId: DocumentId): Promise<void> {
+    const newDoc = await this.getEntity(newDocId);
+    if (!newDoc || newDoc.type !== 'document') return;
+
+    const document = newDoc as Document;
+    if (document.previous_version === oldDocId) return;
+
+    document.previous_version = oldDocId;
+    document.updated_at = new Date().toISOString();
+    await this.writeEntityDirect(document);
+    console.log(`[V2Runtime] Synced previous_version: set ${oldDocId} on ${newDocId}`);
+  }
+
   private async ensureImplementedBy(docId: DocumentId, implementerId: StoryId | MilestoneId): Promise<void> {
     const doc = await this.getEntity(docId);
     if (!doc || doc.type !== 'document') return;
@@ -1214,7 +1460,7 @@ export class V2Runtime {
     rationale: string;
     workstream: string;
     decided_by: string;
-    enables?: EntityId[];
+    blocks?: EntityId[];
     supersedes?: EntityId;
   }): Promise<Decision> {
     const id = await this.getNextId('decision') as DecisionId;
@@ -1231,7 +1477,7 @@ export class V2Runtime {
       decided_by: data.decided_by,
       decided_on: now,
       status: 'Decided',
-      enables: data.enables || [],
+      blocks: data.blocks || [],
       supersedes: data.supersedes as DecisionId | undefined,
       archived: false,
       created_at: now,
@@ -1267,7 +1513,7 @@ export class V2Runtime {
     const decisions = await this.getAllDecisions({ includeSuperseded: true });
     // For now, return decisions that reference this document
     // This would need more sophisticated tracking in a real implementation
-    return decisions.filter(d => d.enables?.includes(docId));
+    return decisions.filter(d => d.blocks?.includes(docId));
   }
 
   /** Generate entity ID - uses vault scanning for consistency */
@@ -1293,7 +1539,7 @@ export class V2Runtime {
   /** Get related decisions for an entity */
   async getRelatedDecisions(entityId: EntityId): Promise<Decision[]> {
     const decisions = await this.getAllDecisions();
-    return decisions.filter(d => d.enables?.includes(entityId));
+    return decisions.filter(d => d.blocks?.includes(entityId));
   }
 
   /** Get blocking entities */

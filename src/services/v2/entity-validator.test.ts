@@ -328,11 +328,11 @@ describe('EntityValidator', () => {
     });
   });
 
-  describe('Decision enables Validation', () => {
-    it('should pass for decision enabling story', () => {
+  describe('Decision blocks Validation', () => {
+    it('should pass for decision blocking story', () => {
       const decision = createDecision('DEC-001');
       const story = createStory('S-001');
-      (decision as any).enables = ['S-001'];
+      (decision as any).blocks = ['S-001'];
       entities.set(decision.id, decision);
       entities.set(story.id, story);
 
@@ -340,10 +340,10 @@ describe('EntityValidator', () => {
       expect(result.valid).toBe(true);
     });
 
-    it('should pass for decision enabling task', () => {
+    it('should pass for decision blocking task', () => {
       const decision = createDecision('DEC-001');
       const task = createTask('T-001');
-      (decision as any).enables = ['T-001'];
+      (decision as any).blocks = ['T-001'];
       entities.set(decision.id, decision);
       entities.set(task.id, task);
 
@@ -351,10 +351,10 @@ describe('EntityValidator', () => {
       expect(result.valid).toBe(true);
     });
 
-    it('should pass for decision enabling document', () => {
+    it('should pass for decision blocking document', () => {
       const decision = createDecision('DEC-001');
       const doc = createDocument('DOC-001');
-      (decision as any).enables = ['DOC-001'];
+      (decision as any).blocks = ['DOC-001'];
       entities.set(decision.id, decision);
       entities.set(doc.id, doc);
 
@@ -362,26 +362,26 @@ describe('EntityValidator', () => {
       expect(result.valid).toBe(true);
     });
 
-    it('should fail for decision enabling milestone', () => {
+    it('should fail for decision blocking milestone', () => {
       const decision = createDecision('DEC-001');
       const milestone = createMilestone('M-001');
-      (decision as any).enables = ['M-001'];
+      (decision as any).blocks = ['M-001'];
       entities.set(decision.id, decision);
       entities.set(milestone.id, milestone);
 
       const result = validator.validate(decision);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.field === 'enables')).toBe(true);
+      expect(result.errors.some(e => e.field === 'blocks')).toBe(true);
     });
 
-    it('should fail for decision enabling non-existent entity', () => {
+    it('should fail for decision blocking non-existent entity', () => {
       const decision = createDecision('DEC-001');
-      (decision as any).enables = ['S-999'];
+      (decision as any).blocks = ['S-999'];
       entities.set(decision.id, decision);
 
       const result = validator.validate(decision);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.field === 'enables')).toBe(true);
+      expect(result.errors.some(e => e.field === 'blocks')).toBe(true);
     });
   });
 
@@ -566,14 +566,14 @@ describe('EntityValidator', () => {
       expect(result.errors.some(e => e.field === 'implements' && e.message.includes('invalid'))).toBe(true);
     });
 
-    it('should fail when enables contains non-string element', () => {
+    it('should fail when blocks contains non-string element', () => {
       const decision = createDecision('DEC-001');
-      (decision as any).enables = [123, 'S-001'];
+      (decision as any).blocks = [123, 'S-001'];
       entities.set(decision.id, decision);
 
       const result = validator.validate(decision);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.field === 'enables' && e.message.includes('non-string'))).toBe(true);
+      expect(result.errors.some(e => e.field === 'blocks' && e.message.includes('non-string'))).toBe(true);
     });
   });
 

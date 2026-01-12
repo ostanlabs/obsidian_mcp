@@ -40,9 +40,9 @@ export interface SecondaryIndexes {
 export type RelationshipType =
   | 'blocks' | 'blocked_by'
   | 'implements' | 'implemented_by'
-  | 'enables' | 'enabled_by'
   | 'supersedes' | 'superseded_by'
-  | 'parent_of' | 'child_of';
+  | 'parent_of' | 'child_of'
+  | 'previous_version' | 'next_version';
 
 export interface RelationshipGraph {
   forward: Map<EntityId, Map<RelationshipType, Set<EntityId>>>;
@@ -219,13 +219,46 @@ export class ProjectIndex {
     }
   }
 
+  /**
+   * Remove only forward relationships for an entity (relationships where this entity is the source).
+   * This is used when re-indexing an entity's relationships without losing relationships
+   * where this entity is the target (e.g., parent_of relationships from children).
+   *
+   * @param excludeTypes - Relationship types to exclude from removal. Use this to preserve
+   *                       relationships that are "owned" by other entities (e.g., parent_of
+   *                       is owned by children, not parents).
+   */
+  removeForwardRelationships(id: EntityId, excludeTypes?: RelationshipType[]): void {
+    const forwardRels = this.relationships.forward.get(id);
+    if (forwardRels) {
+      const excludeSet = new Set(excludeTypes || []);
+      for (const [relType, targets] of forwardRels) {
+        // Skip excluded relationship types
+        if (excludeSet.has(relType)) continue;
+
+        for (const target of targets) {
+          const reverseRels = this.relationships.reverse.get(target);
+          if (reverseRels) {
+            const reverseType = this.getReverseRelationType(relType);
+            reverseRels.get(reverseType)?.delete(id);
+          }
+        }
+        forwardRels.delete(relType);
+      }
+      // Only delete the forward map if it's empty
+      if (forwardRels.size === 0) {
+        this.relationships.forward.delete(id);
+      }
+    }
+  }
+
   private getReverseRelationType(type: RelationshipType): RelationshipType {
     const reverseMap: Record<RelationshipType, RelationshipType> = {
       'blocks': 'blocked_by', 'blocked_by': 'blocks',
       'implements': 'implemented_by', 'implemented_by': 'implements',
-      'enables': 'enabled_by', 'enabled_by': 'enables',
       'supersedes': 'superseded_by', 'superseded_by': 'supersedes',
       'parent_of': 'child_of', 'child_of': 'parent_of',
+      'previous_version': 'next_version', 'next_version': 'previous_version',
     };
     return reverseMap[type];
   }

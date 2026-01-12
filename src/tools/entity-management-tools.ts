@@ -44,10 +44,10 @@ import { generateCssClasses } from '../services/v2/entity-serializer.js';
 // =============================================================================
 
 /**
- * Valid target types for Decision.enables field.
- * Decisions can enable: documents, stories, tasks (NOT milestones)
+ * Valid target types for Decision.blocks field.
+ * Decisions can block: documents, stories, tasks (NOT milestones)
  */
-const DECISION_ENABLES_VALID_TYPES: EntityType[] = ['document', 'story', 'task'];
+const DECISION_BLOCKS_VALID_TYPES: EntityType[] = ['document', 'story', 'task'];
 
 /**
  * Valid target types for Document.implemented_by field.
@@ -219,24 +219,24 @@ export function validateRelationships(
     }
   }
 
-  // Validate enables references (for decisions)
+  // Validate blocks references (for decisions)
   if (type === 'decision') {
-    const enables = data.enables as EntityId[] | undefined;
-    if (enables && enables.length > 0) {
-      for (const enabledId of enables) {
-        if (!idExists(enabledId)) {
+    const blocks = data.blocks as EntityId[] | undefined;
+    if (blocks && blocks.length > 0) {
+      for (const blockedId of blocks) {
+        if (!idExists(blockedId)) {
           errors.push({
-            field: 'enables',
-            message: `Entity '${enabledId}' does not exist`,
-            invalidId: enabledId,
+            field: 'blocks',
+            message: `Entity '${blockedId}' does not exist`,
+            invalidId: blockedId,
           });
         } else {
-          const enabledType = getType(enabledId);
-          if (enabledType && !DECISION_ENABLES_VALID_TYPES.includes(enabledType)) {
+          const blockedType = getType(blockedId);
+          if (blockedType && !DECISION_BLOCKS_VALID_TYPES.includes(blockedType)) {
             errors.push({
-              field: 'enables',
-              message: `Decision cannot enable ${enabledType} '${enabledId}'. Valid types: ${DECISION_ENABLES_VALID_TYPES.join(', ')}`,
-              invalidId: enabledId,
+              field: 'blocks',
+              message: `Decision cannot block ${blockedType} '${blockedId}'. Valid types: ${DECISION_BLOCKS_VALID_TYPES.join(', ')}`,
+              invalidId: blockedId,
             });
           }
         }
@@ -452,8 +452,9 @@ function buildDecision(
     decided_by: data.decided_by as string,
     decided_on: data.decided_on as string,
     supersedes: data.supersedes as DecisionId,
-    enables: (data.enables as EntityId[]) || [],
-  } as Decision;
+    blocks: (data.blocks as EntityId[]) || [],
+    depends_on: (data.depends_on as DecisionId[]) || [],
+  } as unknown as Decision;
 
   // Auto-generate cssclasses if not provided
   entity.cssclasses = (data.cssclasses as string[]) || generateCssClasses(entity);
@@ -473,7 +474,7 @@ function buildDocument(
     owner: data.owner as string,
     implementation_context: data.implementation_context as string,
     implemented_by: (data.implemented_by as StoryId[]) || [],
-    previous_versions: (data.previous_versions as DocumentId[]) || [],
+    previous_version: (data.previous_version as DocumentId[]) || [],
     content: data.content as string,
   } as unknown as Document;
 
@@ -580,15 +581,15 @@ export async function updateEntity(
     }
   }
 
-  // Handle relationship additions (implements, enables)
+  // Handle relationship additions (implements, blocks)
   if (add_to) {
     if (add_to.implements && 'implements' in updatedEntity) {
       const current = (updatedEntity as Story).implements || [];
       (updatedEntity as Story).implements = [...new Set([...current, ...add_to.implements as DocumentId[]])];
     }
-    if (add_to.enables && 'enables' in updatedEntity) {
-      const current = (updatedEntity as Decision).enables || [];
-      (updatedEntity as Decision).enables = [...new Set([...current, ...add_to.enables])];
+    if (add_to.blocks && 'blocks' in updatedEntity) {
+      const current = (updatedEntity as Decision).blocks || [];
+      (updatedEntity as Decision).blocks = [...new Set([...current, ...add_to.blocks])];
     }
   }
 
@@ -600,10 +601,10 @@ export async function updateEntity(
         (i) => !remove_from.implements!.includes(i)
       );
     }
-    if (remove_from.enables && 'enables' in updatedEntity) {
-      const current = (updatedEntity as Decision).enables || [];
-      (updatedEntity as Decision).enables = current.filter(
-        (e) => !remove_from.enables!.includes(e)
+    if (remove_from.blocks && 'blocks' in updatedEntity) {
+      const current = (updatedEntity as Decision).blocks || [];
+      (updatedEntity as Decision).blocks = current.filter(
+        (e: EntityId) => !remove_from.blocks!.includes(e)
       );
     }
   }

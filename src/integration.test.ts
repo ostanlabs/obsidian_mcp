@@ -10,7 +10,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 
-import { getV2Runtime, V2Runtime } from './services/v2/v2-runtime.js';
+import { getV2Runtime, V2Runtime, resetV2Runtime } from './services/v2/v2-runtime.js';
 import type { V2Config } from './models/v2-types.js';
 import type { EntityId, EntityType } from './models/v2-types.js';
 
@@ -56,6 +56,9 @@ describe('MCP Integration Tests', () => {
   let config: V2Config;
 
   beforeEach(async () => {
+    // Reset the runtime singleton to ensure clean state between tests
+    resetV2Runtime();
+
     // Create temp directory structure
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcp-integration-test-'));
 
@@ -344,11 +347,11 @@ describe('MCP Integration Tests', () => {
         rationale: 'Redis is fast and well-supported',
         workstream: 'engineering',
         decided_by: 'Engineering Team',
-        enables: [story.id],
+        blocks: [story.id],
       }, decisionDeps);
 
       expect(decision.decision.title).toBe('Use Redis for caching');
-      expect(decision.enabled_count).toBe(1);
+      expect(decision.blocked_count).toBe(1);
     });
   });
 
@@ -842,7 +845,7 @@ describe('MCP Integration Tests', () => {
         data: { title: 'Story to Enable', workstream: 'decisions' },
       }, deps);
 
-      // Create decision that enables the story
+      // Create decision that blocks the story
       const decision = await createDecision({
         title: 'Enable Story Decision',
         context: 'We need to decide on the approach',
@@ -850,12 +853,12 @@ describe('MCP Integration Tests', () => {
         rationale: 'It is simpler',
         workstream: 'decisions',
         decided_by: 'team',
-        enables: [story.id],
+        blocks: [story.id],
       }, decisionDeps);
 
       expect(decision.id).toMatch(/^DEC-\d{3}$/);
       // The decision output contains the full decision entity
-      expect(decision.enabled_count).toBe(1);
+      expect(decision.blocked_count).toBe(1);
     });
 
     it('should get decision history by workstream', async () => {
