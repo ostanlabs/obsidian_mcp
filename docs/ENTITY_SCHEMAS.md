@@ -57,7 +57,7 @@ type DefaultEffortType = 'Engineering' | 'Business' | 'Infra' | 'Research' | 'De
 type DocumentType = 'spec' | 'adr' | 'vision' | 'guide' | 'research';
 
 // === RELATIONSHIP TYPES ===
-type DependencyType = 'blocks' | 'implements' | 'enables' | 'references' | 'supersedes';
+type DependencyType = 'blocks' | 'implements' | 'references' | 'supersedes';
 ```
 
 ### ID Formats
@@ -856,7 +856,7 @@ interface CanvasEdge {
   toNode: string;                  // Node ID
   fromSide: 'top' | 'right' | 'bottom' | 'left';
   toSide: 'top' | 'right' | 'bottom' | 'left';
-  label?: string;                  // "blocks", "enables", etc.
+  label?: string;                  // "blocks", "depends_on", etc.
 }
 
 // Full canvas structure
