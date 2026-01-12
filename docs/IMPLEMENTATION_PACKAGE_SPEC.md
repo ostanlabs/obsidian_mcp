@@ -712,25 +712,25 @@ async function checkOpenItems(
 async function findPendingDecisionsThatAffect(entityId: EntityId): Promise<EntityMetadata[]> {
   // Find decisions that:
   // 1. Are in Pending status
-  // 2. Have this entity in their enables list
+  // 2. Have this entity in their blocks list
   // 3. Or affect documents that this entity implements
-  
+
   const pending: EntityMetadata[] = [];
   const pendingDecisions = index.secondary.query({
     type: 'decision',
     status: 'Pending',
   });
-  
+
   for (const decId of pendingDecisions) {
     const dec = index.primary.get(decId);
     if (!dec) continue;
-    
-    const enables = index.graph.enables.get(decId as DecisionId) ?? new Set();
-    if (enables.has(entityId)) {
+
+    const blocks = index.graph.blocks.get(decId as DecisionId) ?? new Set();
+    if (blocks.has(entityId)) {
       pending.push(dec);
     }
   }
-  
+
   return pending;
 }
 ```

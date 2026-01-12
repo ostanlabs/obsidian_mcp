@@ -75,9 +75,8 @@ The MCP Server needs fast access to entity metadata, relationships, and search w
 │  │  blocked_by:  Map<EntityId, Set<EntityId>>  (B blocked by A)│
 │  │  implements:  Map<DocumentId, Set<StoryId>>              │  │
 │  │  implemented_by: Map<StoryId, Set<DocumentId>>           │  │
-│  │  enables:     Map<DecisionId, Set<EntityId>>             │  │
-│  │  enabled_by:  Map<EntityId, Set<DecisionId>>             │  │
 │  │  supersedes:  Map<EntityId, EntityId>                    │  │
+│  │  superseded_by: Map<EntityId, EntityId>                  │  │
 │  └──────────────────────────────────────────────────────────┘  │
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────────┐  │
@@ -378,11 +377,7 @@ class RelationshipGraph {
   // Implementation relationships
   private implements: Map<StoryId, Set<DocumentId>> = new Map();
   private implemented_by: Map<DocumentId, Set<StoryId>> = new Map();
-  
-  // Enable relationships (decisions → entities)
-  private enables: Map<DecisionId, Set<EntityId>> = new Map();
-  private enabled_by: Map<EntityId, Set<DecisionId>> = new Map();
-  
+
   // Supersedes relationships
   private supersedes: Map<EntityId, EntityId> = new Map();      // new → old
   private superseded_by: Map<EntityId, EntityId> = new Map();   // old → new
@@ -437,21 +432,7 @@ class RelationshipGraph {
     }
     this.implemented_by.get(docId)!.add(storyId);
   }
-  
-  // === ENABLE OPERATIONS ===
-  
-  addEnables(decisionId: DecisionId, entityId: EntityId): void {
-    if (!this.enables.has(decisionId)) {
-      this.enables.set(decisionId, new Set());
-    }
-    this.enables.get(decisionId)!.add(entityId);
-    
-    if (!this.enabled_by.has(entityId)) {
-      this.enabled_by.set(entityId, new Set());
-    }
-    this.enabled_by.get(entityId)!.add(decisionId);
-  }
-  
+
   // === GRAPH ALGORITHMS ===
   
   // Get all entities transitively blocked by this entity
@@ -914,7 +895,7 @@ interface SerializedEntity {
 }
 
 interface SerializedRelationship {
-  type: 'blocks' | 'implements' | 'enables' | 'supersedes';
+  type: 'blocks' | 'implements' | 'supersedes';
   from: string;
   to: string;
 }

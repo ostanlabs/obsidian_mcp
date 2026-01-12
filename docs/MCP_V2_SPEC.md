@@ -54,10 +54,11 @@ V2 transforms the MCP from a simple accomplishment tracker into a comprehensive 
 │                                                                     │
 │  DEPENDENCY (blocker → blocked)                                     │
 │    Any ─blocks─▶ Any  (cross-type, cross-workstream allowed)       │
+│    Any ─depends_on─▶ Any  (reverse of blocks)                      │
 │                                                                     │
 │  IMPLEMENTATION (spec → work)                                       │
 │    Document ─implemented_by─▶ Story                                 │
-│    Decision ─enables─▶ Story | Document                             │
+│    Story/Milestone ─implements─▶ Document                          │
 │                                                                     │
 │  VERSIONING (old → new)                                            │
 │    Document ─superseded_by─▶ Document                               │
@@ -221,7 +222,7 @@ workstream: business
 decided_by: "@founder"
 decided_on: 2024-12-10
 supersedes: null              # Previous decision ID if any
-enables:                      # What this decision unblocks
+blocks:                       # What this decision blocks (entities waiting on this)
   - S-015
   - DOC-005
   - MKT-003
@@ -331,10 +332,10 @@ create_entity({
     title: string,
     workstream: string,
     // Type-specific fields...
-    parent?: string,              // Parent entity ID (hierarchy)
-    depends_on?: string[],        // Blocker IDs (creates edges)
-    implements?: string[],        // Document IDs (for stories)
-    enables?: string[],           // Entity IDs (for decisions)
+    parent?: string,              // Parent entity ID (hierarchy, auto-syncs children)
+    depends_on?: string[],        // Blocker IDs (auto-syncs blocks on target)
+    implements?: string[],        // Document IDs (auto-syncs implemented_by)
+    blocks?: string[],            // Entity IDs this blocks (auto-syncs depends_on)
   },
   options?: {
     canvas_source?: string,       // Default: env.DEFAULT_CANVAS
@@ -353,7 +354,7 @@ create_entity({
 
 #### `update_entity`
 
-Update entity fields and/or modify relationships.
+Update entity fields and/or modify relationships. All bidirectional relationships auto-sync.
 
 ```typescript
 update_entity({
@@ -363,15 +364,15 @@ update_entity({
     status?: string,
     // Any field updates...
   },
-  add_dependencies?: string[],    // Add new blockers
+  add_dependencies?: string[],    // Add new blockers (auto-syncs blocks on target)
   remove_dependencies?: string[], // Remove blockers
   add_to?: {                      // Add relationships
-    implements?: string[],
-    enables?: string[],
+    implements?: string[],        // Auto-syncs implemented_by
+    blocks?: string[],            // Auto-syncs depends_on on target
   },
   remove_from?: {                 // Remove relationships
     implements?: string[],
-    enables?: string[],
+    blocks?: string[],
   },
 })
 
@@ -823,8 +824,8 @@ create_decision({
   rationale: string,
   workstream: string,
   decided_by: string,
-  enables?: string[],             // What this unblocks
-  supersedes?: string,            // Previous decision ID
+  blocks?: string[],              // What this blocks (entities waiting on this)
+  supersedes?: string,            // Previous decision ID (auto-syncs superseded_by)
   affects_documents?: string[],   // Documents that may need updating
 })
 
@@ -832,7 +833,7 @@ create_decision({
 {
   id: string,
   decision: DecisionFull,
-  enabled_count: number,
+  blocked_count: number,
   stale_documents: string[],      // Docs that reference old decisions
 }
 ```
@@ -857,7 +858,7 @@ get_decision_history({
       title: string,
       status: string,
       decided_on: string,
-      enables: string[],
+      blocks: string[],
       superseded_by?: string,
     }
   ],

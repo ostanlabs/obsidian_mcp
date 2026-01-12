@@ -646,10 +646,10 @@ async function supersedeDecision(
   oldDecision.updated_at = new Date().toISOString();
   await updateEntity(oldDecision);
   
-  // 3. Transfer enables relationships
-  const enabled = index.graph.enables.get(oldDecisionId) ?? new Set();
-  for (const entityId of enabled) {
-    index.graph.addEnables(newId, entityId);
+  // 3. Transfer blocks relationships
+  const blocked = index.graph.blocks.get(oldDecisionId) ?? new Set();
+  for (const entityId of blocked) {
+    index.graph.addBlocks(newId, entityId);
   }
   
   // 4. Mark affected documents as potentially stale
