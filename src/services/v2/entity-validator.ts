@@ -72,10 +72,10 @@ const VALID_PARENT_TYPES: Record<EntityType, EntityType | null> = {
 // =============================================================================
 
 /**
- * Valid target types for Decision.enables field.
- * Decisions can enable: documents, stories, tasks (NOT milestones)
+ * Valid target types for Decision.blocks field.
+ * Decisions can block: documents, stories, tasks (NOT milestones)
  */
-const DECISION_ENABLES_VALID_TYPES: EntityType[] = ['document', 'story', 'task'];
+const DECISION_BLOCKS_VALID_TYPES: EntityType[] = ['document', 'story', 'task'];
 
 /**
  * Valid target types for Document.implemented_by field.
@@ -220,10 +220,10 @@ export class EntityValidator {
       validate: (entity) => this.validateBlockersExist(entity),
     });
 
-    // Decision enables relationship rule
+    // Decision blocks relationship rule
     this.rules.push({
-      name: 'decision_enables_types',
-      validate: (entity) => this.validateDecisionEnables(entity),
+      name: 'decision_blocks_types',
+      validate: (entity) => this.validateDecisionBlocks(entity),
     });
 
     // Document implemented_by relationship rule
@@ -406,8 +406,8 @@ export class EntityValidator {
     return errors;
   }
 
-  /** Validate Decision.enables targets only valid entity types */
-  private validateDecisionEnables(entity: Entity): ValidationError[] {
+  /** Validate Decision.blocks targets only valid entity types */
+  private validateDecisionBlocks(entity: Entity): ValidationError[] {
     const errors: ValidationError[] = [];
 
     if (entity.type !== 'decision') {
@@ -415,16 +415,16 @@ export class EntityValidator {
     }
 
     const decision = entity as Decision;
-    if (!decision.enables || decision.enables.length === 0) {
+    if (!decision.blocks || decision.blocks.length === 0) {
       return errors;
     }
 
-    for (const enabledId of decision.enables) {
-      const enabled = this.context.getEntity(enabledId);
-      if (enabled && !DECISION_ENABLES_VALID_TYPES.includes(enabled.type)) {
+    for (const blockedId of decision.blocks) {
+      const blocked = this.context.getEntity(blockedId);
+      if (blocked && !DECISION_BLOCKS_VALID_TYPES.includes(blocked.type)) {
         errors.push({
-          field: 'enables',
-          message: `Decision cannot enable ${enabled.type} '${enabledId}'. Valid types: ${DECISION_ENABLES_VALID_TYPES.join(', ')}`,
+          field: 'blocks',
+          message: `Decision cannot block ${blocked.type} '${blockedId}'. Valid types: ${DECISION_BLOCKS_VALID_TYPES.join(', ')}`,
           severity: 'error',
         });
       }
@@ -514,7 +514,7 @@ export class EntityValidator {
   /** Validate array fields have proper format (not strings, not corrupted) */
   private validateArrayFieldFormat(entity: Entity): ValidationError[] {
     const errors: ValidationError[] = [];
-    const arrayFields = ['depends_on', 'blocked_by', 'implements', 'enables', 'implemented_by'];
+    const arrayFields = ['depends_on', 'blocked_by', 'implements', 'blocks', 'implemented_by'];
     const idPattern = /^(M-\d{3}|S-\d{3}|T-\d{3}|DEC-\d{3}|DOC-\d{3})$/;
 
     for (const field of arrayFields) {
@@ -596,15 +596,15 @@ export class EntityValidator {
       }
     }
 
-    // Check enables (for decisions)
+    // Check blocks (for decisions)
     if (entity.type === 'decision') {
       const decision = entity as Decision;
-      if (decision.enables) {
-        for (const enabledId of decision.enables) {
-          if (!this.context.getEntity(enabledId)) {
+      if (decision.blocks) {
+        for (const blockedId of decision.blocks) {
+          if (!this.context.getEntity(blockedId)) {
             errors.push({
-              field: 'enables',
-              message: `Referenced entity '${enabledId}' not found`,
+              field: 'blocks',
+              message: `Referenced entity '${blockedId}' not found`,
               severity: 'error',
             });
           }

@@ -78,10 +78,12 @@ export const entityToolDefinitions: Tool[] = [
           properties: {
             title: { type: 'string', description: 'Entity title' },
             workstream: { type: 'string', description: 'Workstream identifier' },
-            parent: { type: 'string', description: 'Parent entity ID (optional)' },
-            depends_on: { type: 'array', items: { type: 'string' }, description: 'IDs of entities this depends on. Milestone: MilestoneId|DecisionId. Story: any EntityId. Task: DecisionId only.' },
-            implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs this entity implements (for milestone, story)' },
-            enables: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this decision enables (for decision only)' },
+            parent: { type: 'string', description: 'Parent entity ID. Story: MilestoneId. Task: StoryId. Auto-syncs children on parent.' },
+            depends_on: { type: 'array', items: { type: 'string' }, description: 'IDs of entities this depends on. Auto-syncs blocks on target. Milestone: MilestoneId|DecisionId. Story: any EntityId. Task: DecisionId only.' },
+            blocks: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this entity blocks (auto-syncs depends_on on target)' },
+            implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs this entity implements (milestone, story). Auto-syncs implemented_by on document.' },
+            supersedes: { type: 'string', description: 'Decision ID this supersedes (decision only). Auto-syncs superseded_by on target.' },
+            previous_version: { type: 'string', description: 'Document ID of previous version (document only). Auto-syncs next_version on target.' },
           },
           required: ['title', 'workstream'],
         },
@@ -98,19 +100,19 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'update_entity',
-    description: 'Update entity fields, status, relationships, or archive/restore. Consolidates update_entity_status, archive_entity, archive_milestone, restore_from_archive.',
+    description: 'Update entity fields, status, relationships, or archive/restore. All bidirectional relationships auto-sync: parent↔children, depends_on↔blocks, implements↔implemented_by, supersedes↔superseded_by, previous_version↔next_version.',
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string', description: 'Entity ID to update' },
-        data: { type: 'object', description: 'Fields to update' },
-        add_dependencies: { type: 'array', items: { type: 'string' }, description: 'Dependencies to add. Milestone: MilestoneId|DecisionId. Story: any EntityId. Task: DecisionId only.' },
+        data: { type: 'object', description: 'Fields to update. Relationship fields auto-sync their reverse.' },
+        add_dependencies: { type: 'array', items: { type: 'string' }, description: 'Dependencies to add (auto-syncs blocks on target). Milestone: MilestoneId|DecisionId. Story: any EntityId. Task: DecisionId only.' },
         remove_dependencies: { type: 'array', items: { type: 'string' }, description: 'Dependencies to remove' },
         add_to: {
           type: 'object',
           properties: {
-            implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs to add to implements (for milestone, story)' },
-            enables: { type: 'array', items: { type: 'string' }, description: 'Entity IDs to add to enables (for decision)' },
+            implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs to add to implements (auto-syncs implemented_by on document)' },
+            blocks: { type: 'array', items: { type: 'string' }, description: 'Entity IDs to add to blocks (auto-syncs depends_on on target)' },
           },
           description: 'Add to array fields',
         },
@@ -118,7 +120,7 @@ export const entityToolDefinitions: Tool[] = [
           type: 'object',
           properties: {
             implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs to remove from implements' },
-            enables: { type: 'array', items: { type: 'string' }, description: 'Entity IDs to remove from enables' },
+            blocks: { type: 'array', items: { type: 'string' }, description: 'Entity IDs to remove from blocks' },
           },
           description: 'Remove from array fields',
         },
@@ -157,7 +159,7 @@ export const entityToolDefinitions: Tool[] = [
   // NEW: Unified batch_update tool with client_id support
   {
     name: 'batch_update',
-    description: 'Unified batch operation for create, update, and archive. Supports client_id for idempotency and cross-referencing within the batch.',
+    description: 'Unified batch operation for create, update, and archive. Supports client_id for idempotency and cross-referencing within the batch. All bidirectional relationships auto-sync.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -175,10 +177,12 @@ export const entityToolDefinitions: Tool[] = [
                 properties: {
                   title: { type: 'string', description: 'Entity title (for create)' },
                   workstream: { type: 'string', description: 'Workstream (for create)' },
-                  parent: { type: 'string', description: 'Parent ID or client_id (for create)' },
-                  depends_on: { type: 'array', items: { type: 'string' }, description: 'Dependency IDs or client_ids' },
-                  implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs this implements' },
-                  enables: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this enables (for decisions)' },
+                  parent: { type: 'string', description: 'Parent ID or client_id (auto-syncs children on parent)' },
+                  depends_on: { type: 'array', items: { type: 'string' }, description: 'Dependency IDs or client_ids (auto-syncs blocks on target)' },
+                  blocks: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this blocks (auto-syncs depends_on on target)' },
+                  implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs this implements (auto-syncs implemented_by)' },
+                  supersedes: { type: 'string', description: 'Decision ID this supersedes (auto-syncs superseded_by)' },
+                  previous_version: { type: 'string', description: 'Document ID of previous version (auto-syncs next_version)' },
                   status: { type: 'string', description: 'New status (for update)' },
                   archived: { type: 'boolean', description: 'Archive flag (for archive)' },
                   cascade: { type: 'boolean', description: 'Archive children too (for archive)' },
@@ -356,7 +360,7 @@ export const entityToolDefinitions: Tool[] = [
   // Category 7: Maintenance Tools
   {
     name: 'reconcile_relationships',
-    description: 'Reconcile bidirectional implements/implemented_by relationships across all entities. Ensures that if a Story/Milestone has `implements: [DOC-001]`, the Document has `implemented_by: [S-001]` and vice versa. Run this to fix inconsistent relationships in existing documents.',
+    description: 'Reconcile all bidirectional relationships across entities. Syncs: parent↔children, depends_on↔blocks, implements↔implemented_by, supersedes↔superseded_by, previous_version↔next_version. Run this to fix inconsistent relationships in existing documents.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -52,7 +52,7 @@ export interface DecisionDocumentDependencies {
     rationale: string;
     workstream: Workstream;
     decided_by: string;
-    enables?: EntityId[];
+    blocks?: EntityId[];
     supersedes?: EntityId;
   }) => Promise<Decision>;
 
@@ -175,7 +175,7 @@ export async function createDecision(
     rationale,
     workstream,
     decided_by,
-    enables,
+    blocks,
     supersedes,
     affects_documents,
     add_to_canvas,
@@ -190,7 +190,7 @@ export async function createDecision(
     rationale,
     workstream,
     decided_by,
-    enables,
+    blocks,
     supersedes,
   });
 
@@ -215,7 +215,7 @@ export async function createDecision(
   return {
     id: newDecision.id,
     decision: decisionFull,
-    enabled_count: enables?.length || 0,
+    blocked_count: blocks?.length || 0,
     stale_documents: staleDocuments,
   };
 }
@@ -254,7 +254,7 @@ export async function getDecisionHistory(
     title: d.title,
     status: d.status,
     decided_on: d.decided_on || d.created_at,
-    enables: d.enables || [],
+    blocks: d.blocks || [],
     superseded_by: undefined as EntityId | undefined, // Would need reverse lookup
   }));
 
@@ -328,14 +328,13 @@ export async function supersedeDocument(
   // Update the document
   // Note: We store the decision reference in implementation_context since
   // Document doesn't have a supersedes_decision field
+  // Note: previous_version is now a single DocumentId (not an array)
+  // The old document's next_version will be auto-synced by the runtime
   await deps.updateDocument(document_id, {
     content: new_content,
     version: String(newVersion),
     implementation_context: `Updated per decision ${decision_id}: ${change_summary}`,
-    previous_versions: [
-      ...(document.previous_versions || []),
-      document.id, // Reference to previous version
-    ],
+    previous_version: document.id, // Reference to previous version (single ID)
   });
 
   return {
@@ -381,10 +380,10 @@ export async function getDocumentHistory(
   });
 
   // Previous versions (simplified - would need more metadata in real impl)
-  if (document.previous_versions) {
-    for (let i = document.previous_versions.length - 1; i >= 0; i--) {
+  if (document.previous_version) {
+    for (let i = document.previous_version.length - 1; i >= 0; i--) {
       history.push({
-        version: currentVersion - (document.previous_versions.length - i),
+        version: currentVersion - (document.previous_version.length - i),
         date: document.created_at, // Would need actual dates
         change_summary: 'Previous version',
       });

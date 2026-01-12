@@ -229,9 +229,18 @@ export interface Milestone extends EntityBase {
   /** Priority level */
   priority: Priority;
 
-  /** IDs of milestones or decisions this depends on */
-  depends_on: (MilestoneId | DecisionId)[];
+  // === HIERARCHY ===
+  /** Child stories in this milestone (auto-synced from Story.parent) */
+  children?: StoryId[];
 
+  // === DEPENDENCIES ===
+  /** IDs of milestones or decisions this depends on */
+  depends_on?: (MilestoneId | DecisionId)[];
+
+  /** Entities blocked by this milestone (auto-synced from *.depends_on) */
+  blocks?: EntityId[];
+
+  // === IMPLEMENTATION ===
   /** Document IDs this milestone implements or is guided by */
   implements?: DocumentId[];
 
@@ -282,12 +291,21 @@ export interface Story extends EntityBase {
   /** Priority level */
   priority: Priority;
 
+  // === HIERARCHY ===
   /** Parent milestone ID */
   parent?: MilestoneId;
 
-  /** IDs of entities this depends on (stories, decisions) */
-  depends_on: EntityId[];
+  /** Child tasks in this story (auto-synced from Task.parent) */
+  children?: TaskId[];
 
+  // === DEPENDENCIES ===
+  /** IDs of entities this depends on (stories, decisions) */
+  depends_on?: EntityId[];
+
+  /** Entities blocked by this story (auto-synced from *.depends_on) */
+  blocks?: EntityId[];
+
+  // === IMPLEMENTATION ===
   /** Document IDs this story implements */
   implements?: DocumentId[];
 
@@ -317,11 +335,16 @@ export interface Task extends EntityBase {
   id: TaskId;
   status: TaskStatus;
 
+  // === HIERARCHY ===
   /** Parent story ID */
   parent?: StoryId;
 
+  // === DEPENDENCIES ===
   /** IDs of decisions this task depends on */
   depends_on?: DecisionId[];
+
+  /** Entities blocked by this task (auto-synced from *.depends_on) */
+  blocks?: EntityId[];
 
   /** Goal/outcome of the task */
   goal: string;
@@ -378,11 +401,19 @@ export interface Decision extends EntityBase {
   /** Date decision was made */
   decided_on?: ISODateTime;
 
+  // === DEPENDENCIES ===
+  /** IDs of decisions this depends on */
+  depends_on?: DecisionId[];
+
+  /** Entities blocked by this decision (auto-synced from *.depends_on) */
+  blocks?: EntityId[];
+
+  // === SUPERSESSION ===
   /** Previous decision this supersedes */
   supersedes?: DecisionId;
 
-  /** Entities this decision enables */
-  enables?: EntityId[];
+  /** Decision that superseded this one (auto-synced from Decision.supersedes) */
+  superseded_by?: DecisionId;
 }
 
 // =============================================================================
@@ -407,17 +438,26 @@ export interface Document extends EntityBase {
   /** Document owner */
   owner?: string;
 
+  // === DEPENDENCIES ===
   /** Decisions this document depends on */
   depends_on?: DecisionId[];
 
-  /** Implementation context/notes */
-  implementation_context?: string;
+  /** Entities blocked by this document (auto-synced from *.depends_on) */
+  blocks?: EntityId[];
 
+  // === IMPLEMENTATION ===
   /** Stories or Milestones that implement this document */
   implemented_by?: (StoryId | MilestoneId)[];
 
-  /** Previous versions of this document */
-  previous_versions?: DocumentId[];
+  // === VERSIONING ===
+  /** Previous version of this document */
+  previous_version?: DocumentId;
+
+  /** Next version of this document (auto-synced from Document.previous_version) */
+  next_version?: DocumentId;
+
+  /** Implementation context/notes */
+  implementation_context?: string;
 
   /** Document content (markdown) */
   content?: string;

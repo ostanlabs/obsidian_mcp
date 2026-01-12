@@ -327,59 +327,59 @@ describe('validateRelationships', () => {
     });
   });
 
-  describe('Decision enables Validation', () => {
-    it('should pass for decision enabling story', () => {
+  describe('Decision blocks Validation', () => {
+    it('should pass for decision blocking story', () => {
       const entities = new Map<EntityId, EntityType>([
         ['S-001' as EntityId, 'story'],
       ]);
       const deps = createMockDeps(entities);
 
-      const errors = validateRelationships('decision', { enables: ['S-001'] }, deps);
+      const errors = validateRelationships('decision', { blocks: ['S-001'] }, deps);
       expect(errors).toHaveLength(0);
     });
 
-    it('should pass for decision enabling task', () => {
+    it('should pass for decision blocking task', () => {
       const entities = new Map<EntityId, EntityType>([
         ['T-001' as EntityId, 'task'],
       ]);
       const deps = createMockDeps(entities);
 
-      const errors = validateRelationships('decision', { enables: ['T-001'] }, deps);
+      const errors = validateRelationships('decision', { blocks: ['T-001'] }, deps);
       expect(errors).toHaveLength(0);
     });
 
-    it('should pass for decision enabling document', () => {
+    it('should pass for decision blocking document', () => {
       const entities = new Map<EntityId, EntityType>([
         ['DOC-001' as EntityId, 'document'],
       ]);
       const deps = createMockDeps(entities);
 
-      const errors = validateRelationships('decision', { enables: ['DOC-001'] }, deps);
+      const errors = validateRelationships('decision', { blocks: ['DOC-001'] }, deps);
       expect(errors).toHaveLength(0);
     });
 
-    it('should fail for decision enabling milestone', () => {
+    it('should fail for decision blocking milestone', () => {
       const entities = new Map<EntityId, EntityType>([
         ['M-001' as EntityId, 'milestone'],
       ]);
       const deps = createMockDeps(entities);
 
-      const errors = validateRelationships('decision', { enables: ['M-001'] }, deps);
+      const errors = validateRelationships('decision', { blocks: ['M-001'] }, deps);
       expect(errors).toHaveLength(1);
-      expect(errors[0].field).toBe('enables');
-      expect(errors[0].message).toContain('cannot enable milestone');
+      expect(errors[0].field).toBe('blocks');
+      expect(errors[0].message).toContain('cannot block milestone');
     });
 
-    it('should fail for decision enabling non-existent entity', () => {
+    it('should fail for decision blocking non-existent entity', () => {
       const deps = createMockDeps(new Map());
 
-      const errors = validateRelationships('decision', { enables: ['S-999'] }, deps);
+      const errors = validateRelationships('decision', { blocks: ['S-999'] }, deps);
       expect(errors).toHaveLength(1);
-      expect(errors[0].field).toBe('enables');
+      expect(errors[0].field).toBe('blocks');
       expect(errors[0].message).toContain('does not exist');
     });
 
-    it('should pass for decision enabling multiple valid entities', () => {
+    it('should pass for decision blocking multiple valid entities', () => {
       const entities = new Map<EntityId, EntityType>([
         ['S-001' as EntityId, 'story'],
         ['T-001' as EntityId, 'task'],
@@ -387,18 +387,18 @@ describe('validateRelationships', () => {
       ]);
       const deps = createMockDeps(entities);
 
-      const errors = validateRelationships('decision', { enables: ['S-001', 'T-001', 'DOC-001'] }, deps);
+      const errors = validateRelationships('decision', { blocks: ['S-001', 'T-001', 'DOC-001'] }, deps);
       expect(errors).toHaveLength(0);
     });
 
-    it('should ignore enables field for non-decision entities', () => {
+    it('should ignore blocks field for non-decision entities', () => {
       const entities = new Map<EntityId, EntityType>([
         ['M-001' as EntityId, 'milestone'],
       ]);
       const deps = createMockDeps(entities);
 
-      // enables field should be ignored for story type
-      const errors = validateRelationships('story', { enables: ['M-001'] }, deps);
+      // blocks field should be ignored for story type
+      const errors = validateRelationships('story', { blocks: ['M-001'] }, deps);
       expect(errors).toHaveLength(0);
     });
   });
