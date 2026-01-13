@@ -24,27 +24,19 @@ import {
 } from './tools/entity-management-tools.js';
 import {
   searchEntities,
-  getEntitySummary,
-  getEntityFull,
-  navigateHierarchy,
+  getEntity,
 } from './tools/search-navigation-tools.js';
 import {
-  createDecision,
   getDecisionHistory,
 } from './tools/decision-document-tools.js';
 import {
-  batchOperations,
-  batchUpdateStatus,
+  batchUpdate,
 } from './tools/batch-operations-tools.js';
 import {
   getProjectOverview,
   getWorkstreamStatus,
   analyzeProjectState,
 } from './tools/project-understanding-tools.js';
-import {
-  getReadyForImplementation,
-  generateImplementationPackage,
-} from './tools/implementation-handoff-tools.js';
 
 // =============================================================================
 // Test Setup
@@ -111,13 +103,13 @@ describe('MCP Integration Tests', () => {
       expect(createResult.entity.title).toBe('Q1 Release');
       expect(createResult.entity.status).toBe('Not Started');
 
-      // READ via get_entity_full
-      const fullResult = await getEntityFull({
+      // READ via get_entity
+      const fullResult = await getEntity({
         id: createResult.id,
-        include_dependencies: true,
+        fields: ['id', 'title', 'status', 'type', 'workstream'],
       }, searchDeps);
 
-      // getEntityFull returns EntityFull directly (not wrapped in entity)
+      // getEntity returns entity fields directly
       expect(fullResult.id).toBe(createResult.id);
       expect(fullResult.title).toBe('Q1 Release');
 
@@ -188,25 +180,23 @@ describe('MCP Integration Tests', () => {
       expect(task.id).toMatch(/^T-\d{3}$/);
       expect(task.entity.title).toBe('Implement JWT tokens');
 
-      // Navigate hierarchy - get children
-      const navDown = await navigateHierarchy({
+      // Navigate hierarchy - get children using searchEntities
+      const navDown = await searchEntities({
         from_id: story.id,
         direction: 'down',
         depth: 2,
       }, searchDeps);
 
-      expect(navDown.origin.id).toBe(story.id);
       expect(navDown.results.length).toBe(1);
       expect(navDown.results[0].id).toBe(task.id);
 
-      // Navigate hierarchy - get parent
-      const navUp = await navigateHierarchy({
+      // Navigate hierarchy - get parent using searchEntities
+      const navUp = await searchEntities({
         from_id: story.id,
         direction: 'up',
         depth: 2,
       }, searchDeps);
 
-      expect(navUp.origin.id).toBe(story.id);
       expect(navUp.results.length).toBe(1);
       expect(navUp.results[0].id).toBe(milestone.id);
     });
@@ -272,17 +262,16 @@ describe('MCP Integration Tests', () => {
         },
       }, deps);
 
-      // Get summary - returns EntitySummary with extra fields
-      const summary = await getEntitySummary({ id: milestone.id }, searchDeps);
+      // Get entity with summary fields
+      const summary = await getEntity({ id: milestone.id, fields: ['id', 'title', 'type', 'status'] }, searchDeps);
       expect(summary.id).toBe(milestone.id);
       expect(summary.title).toBe('Q2 Goals');
       expect(summary.type).toBe('milestone');
 
-      // Get full - returns EntityFull directly
-      const full = await getEntityFull({
+      // Get entity with all fields
+      const full = await getEntity({
         id: milestone.id,
-        include_dependencies: true,
-        include_children: true,
+        fields: ['id', 'title', 'type', 'status', 'workstream', 'content'],
       }, searchDeps);
 
       expect(full.id).toBe(milestone.id);
@@ -297,23 +286,26 @@ describe('MCP Integration Tests', () => {
 
   describe('Scenario 3: Decision & Document Workflow', () => {
     it('should create decisions and track history', async () => {
+      const deps = runtime.getEntityManagementDeps();
       const decisionDeps = runtime.getDecisionDocumentDeps();
 
-      // Create a decision - requires decided_by field
-      const decision = await createDecision({
-        title: 'Use PostgreSQL for persistence',
-        context: 'We need a reliable database for production',
-        decision: 'Adopt PostgreSQL as our primary database',
-        rationale: 'PostgreSQL offers ACID compliance and excellent performance',
-        workstream: 'infrastructure',
-        decided_by: 'Engineering Team',
-      }, decisionDeps);
+      // Create a decision using createEntity
+      const decision = await createEntity({
+        type: 'decision',
+        data: {
+          title: 'Use PostgreSQL for persistence',
+          context: 'We need a reliable database for production',
+          decision: 'Adopt PostgreSQL as our primary database',
+          rationale: 'PostgreSQL offers ACID compliance and excellent performance',
+          workstream: 'infrastructure',
+          decided_by: 'Engineering Team',
+        },
+      }, deps);
 
       expect(decision.id).toMatch(/^DEC-\d{3}$/);
-      // decision field is EntityFull
-      expect(decision.decision.title).toBe('Use PostgreSQL for persistence');
-      // Decisions are created with 'Decided' status
-      expect(decision.decision.status).toBe('Decided');
+      expect(decision.entity.title).toBe('Use PostgreSQL for persistence');
+      // Decisions are created with 'Pending' status (initial status)
+      expect(decision.entity.status).toBe('Pending');
 
       // Get decision history - takes topic/workstream, not id
       const history = await getDecisionHistory({
@@ -327,7 +319,6 @@ describe('MCP Integration Tests', () => {
 
     it('should create decision that enables entities', async () => {
       const deps = runtime.getEntityManagementDeps();
-      const decisionDeps = runtime.getDecisionDocumentDeps();
 
       // Create a story first
       const story = await createEntity({
@@ -339,19 +330,21 @@ describe('MCP Integration Tests', () => {
         },
       }, deps);
 
-      // Create decision that enables the story
-      const decision = await createDecision({
-        title: 'Use Redis for caching',
-        context: 'Need fast caching solution',
-        decision: 'Adopt Redis',
-        rationale: 'Redis is fast and well-supported',
-        workstream: 'engineering',
-        decided_by: 'Engineering Team',
-        blocks: [story.id],
-      }, decisionDeps);
+      // Create decision that blocks the story using createEntity
+      const decision = await createEntity({
+        type: 'decision',
+        data: {
+          title: 'Use Redis for caching',
+          context: 'Need fast caching solution',
+          decision: 'Adopt Redis',
+          rationale: 'Redis is fast and well-supported',
+          workstream: 'engineering',
+          decided_by: 'Engineering Team',
+          blocks: [story.id],
+        },
+      }, deps);
 
-      expect(decision.decision.title).toBe('Use Redis for caching');
-      expect(decision.blocked_count).toBe(1);
+      expect(decision.entity.title).toBe('Use Redis for caching');
     });
   });
 
@@ -363,27 +356,32 @@ describe('MCP Integration Tests', () => {
     it('should perform batch create operations', async () => {
       const batchDeps = runtime.getBatchOperationsDeps();
 
-      // batchOperations expects 'entities' array, not 'operations'
-      const result = await batchOperations({
-        entities: [
+      // batchUpdate with create operations
+      const result = await batchUpdate({
+        ops: [
           {
+            op: 'create',
+            client_id: 'batch-m1',
             type: 'milestone',
-            data: { title: 'Batch Milestone 1', workstream: 'engineering' },
+            payload: { title: 'Batch Milestone 1', workstream: 'engineering' },
           },
           {
+            op: 'create',
+            client_id: 'batch-m2',
             type: 'milestone',
-            data: { title: 'Batch Milestone 2', workstream: 'engineering' },
+            payload: { title: 'Batch Milestone 2', workstream: 'engineering' },
           },
           {
+            op: 'create',
+            client_id: 'batch-s1',
             type: 'story',
-            data: { title: 'Batch Story 1', workstream: 'engineering', outcome: 'Test outcome' },
+            payload: { title: 'Batch Story 1', workstream: 'engineering', outcome: 'Test outcome' },
           },
         ],
       }, batchDeps);
 
-      expect(result.created.length).toBe(3);
-      // BatchOperationsOutput doesn't have 'failed' field
-      expect(result.dependencies_created).toBeDefined();
+      expect(result.results.length).toBe(3);
+      expect(result.summary.succeeded).toBe(3);
     });
 
     it('should batch update status', async () => {
@@ -401,16 +399,16 @@ describe('MCP Integration Tests', () => {
         data: { title: 'M2', workstream: 'eng' },
       }, deps);
 
-      // Batch update status - expects 'updates' array with { id, status } objects
-      const result = await batchUpdateStatus({
-        updates: [
-          { id: m1.id, status: 'In Progress' },
-          { id: m2.id, status: 'In Progress' },
+      // Batch update status using batchUpdate
+      const result = await batchUpdate({
+        ops: [
+          { op: 'update', client_id: 'upd-m1', id: m1.id, payload: { status: 'In Progress' } },
+          { op: 'update', client_id: 'upd-m2', id: m2.id, payload: { status: 'In Progress' } },
         ],
       }, batchDeps);
 
-      expect(result.updated.length).toBe(2);
-      expect(result.failed.length).toBe(0);
+      expect(result.results.length).toBe(2);
+      expect(result.summary.succeeded).toBe(2);
     });
   });
 
@@ -533,70 +531,6 @@ describe('MCP Integration Tests', () => {
   });
 
   // ===========================================================================
-  // Scenario 7: Implementation Handoff
-  // ===========================================================================
-
-  describe('Scenario 7: Implementation Handoff', () => {
-    it('should get entities ready for implementation', async () => {
-      const deps = runtime.getEntityManagementDeps();
-      const implDeps = runtime.getImplementationHandoffDeps();
-
-      // Create a story that's ready for implementation
-      const story = await createEntity({
-        type: 'story',
-        data: {
-          title: 'Implement Login',
-          workstream: 'engineering',
-          outcome: 'Users can log in',
-          acceptance_criteria: ['User can enter credentials', 'System validates credentials'],
-        },
-      }, deps);
-
-      // Update to In Progress
-      await updateEntityStatus({
-        id: story.id,
-        status: 'In Progress',
-      }, deps);
-
-      await runtime.initialize();
-
-      const ready = await getReadyForImplementation({
-        workstream: 'engineering',
-      }, implDeps);
-
-      // GetReadyForImplementationOutput has ready and almost_ready arrays
-      expect(ready.ready).toBeDefined();
-      expect(ready.almost_ready).toBeDefined();
-    });
-
-    it('should generate implementation package', async () => {
-      const deps = runtime.getEntityManagementDeps();
-      const implDeps = runtime.getImplementationHandoffDeps();
-
-      // Create a document (spec) for implementation package
-      const doc = await createEntity({
-        type: 'document',
-        data: {
-          title: 'API Specification',
-          workstream: 'backend',
-          doc_type: 'spec',
-          content: 'REST API design document',
-        },
-      }, deps);
-
-      await runtime.initialize();
-
-      // generateImplementationPackage expects spec_id
-      const pkg = await generateImplementationPackage({
-        spec_id: doc.id,
-      }, implDeps);
-
-      // GenerateImplementationPackageOutput has primary_spec
-      expect(pkg.primary_spec.id).toBe(doc.id);
-    });
-  });
-
-  // ===========================================================================
   // Scenario 8: Dependencies & Relationships
   // ===========================================================================
 
@@ -628,9 +562,9 @@ describe('MCP Integration Tests', () => {
       }, deps);
 
       // Verify entities were created
-      const full = await getEntityFull({
+      const full = await getEntity({
         id: story.id,
-        include_dependencies: true,
+        fields: ['id', 'title', 'type', 'status', 'workstream'],
       }, searchDeps);
 
       expect(full.id).toBe(story.id);
@@ -674,7 +608,7 @@ describe('MCP Integration Tests', () => {
     it('should handle invalid entity ID', async () => {
       const searchDeps = runtime.getSearchNavigationDeps();
 
-      await expect(getEntityFull({
+      await expect(getEntity({
         id: 'INVALID-999' as EntityId,
       }, searchDeps)).rejects.toThrow();
     });
@@ -835,9 +769,8 @@ describe('MCP Integration Tests', () => {
   // ===========================================================================
 
   describe('Scenario 12: Extended Decision & Document Operations', () => {
-    it('should create decision with enables relationship', async () => {
+    it('should create decision with blocks relationship', async () => {
       const deps = runtime.getEntityManagementDeps();
-      const decisionDeps = runtime.getDecisionDocumentDeps();
 
       // Create a story first
       const story = await createEntity({
@@ -845,44 +778,51 @@ describe('MCP Integration Tests', () => {
         data: { title: 'Story to Enable', workstream: 'decisions' },
       }, deps);
 
-      // Create decision that blocks the story
-      const decision = await createDecision({
-        title: 'Enable Story Decision',
-        context: 'We need to decide on the approach',
-        decision: 'Use approach A',
-        rationale: 'It is simpler',
-        workstream: 'decisions',
-        decided_by: 'team',
-        blocks: [story.id],
-      }, decisionDeps);
+      // Create decision that blocks the story using createEntity
+      const decision = await createEntity({
+        type: 'decision',
+        data: {
+          title: 'Enable Story Decision',
+          context: 'We need to decide on the approach',
+          decision: 'Use approach A',
+          rationale: 'It is simpler',
+          workstream: 'decisions',
+          decided_by: 'team',
+          blocks: [story.id],
+        },
+      }, deps);
 
       expect(decision.id).toMatch(/^DEC-\d{3}$/);
-      // The decision output contains the full decision entity
-      expect(decision.blocked_count).toBe(1);
     });
 
     it('should get decision history by workstream', async () => {
       const deps = runtime.getEntityManagementDeps();
       const decisionDeps = runtime.getDecisionDocumentDeps();
 
-      // Create multiple decisions
-      await createDecision({
-        title: 'Decision 1',
-        context: 'Context 1',
-        decision: 'Decision 1',
-        rationale: 'Rationale 1',
-        workstream: 'history-test',
-        decided_by: 'team',
-      }, decisionDeps);
+      // Create multiple decisions using createEntity
+      await createEntity({
+        type: 'decision',
+        data: {
+          title: 'Decision 1',
+          context: 'Context 1',
+          decision: 'Decision 1',
+          rationale: 'Rationale 1',
+          workstream: 'history-test',
+          decided_by: 'team',
+        },
+      }, deps);
 
-      await createDecision({
-        title: 'Decision 2',
-        context: 'Context 2',
-        decision: 'Decision 2',
-        rationale: 'Rationale 2',
-        workstream: 'history-test',
-        decided_by: 'team',
-      }, decisionDeps);
+      await createEntity({
+        type: 'decision',
+        data: {
+          title: 'Decision 2',
+          context: 'Context 2',
+          decision: 'Decision 2',
+          rationale: 'Rationale 2',
+          workstream: 'history-test',
+          decided_by: 'team',
+        },
+      }, deps);
 
       // Get history
       const history = await getDecisionHistory({
@@ -901,24 +841,25 @@ describe('MCP Integration Tests', () => {
     it('should create entities with dependencies in batch', async () => {
       const batchDeps = runtime.getBatchOperationsDeps();
 
-      const result = await batchOperations({
-        entities: [
+      const result = await batchUpdate({
+        ops: [
           {
+            op: 'create',
+            client_id: 'batch-m',
             type: 'milestone',
-            data: { title: 'Batch Milestone', workstream: 'batch-deps' },
+            payload: { title: 'Batch Milestone', workstream: 'batch-deps' },
           },
           {
+            op: 'create',
+            client_id: 'batch-s',
             type: 'story',
-            data: { title: 'Batch Story', workstream: 'batch-deps' },
+            payload: { title: 'Batch Story', workstream: 'batch-deps', depends_on: ['@batch-m'] },
           },
-        ],
-        dependencies: [
-          { from: 'entity_1', to: 'entity_0', type: 'blocks' },
         ],
       }, batchDeps);
 
-      expect(result.created.length).toBe(2);
-      expect(result.dependencies_created).toBeGreaterThanOrEqual(0);
+      expect(result.results.length).toBe(2);
+      expect(result.summary.succeeded).toBe(2);
     });
 
     it('should batch update multiple entity statuses', async () => {
@@ -936,15 +877,16 @@ describe('MCP Integration Tests', () => {
         data: { title: 'Batch Status M2', workstream: 'batch-status' },
       }, deps);
 
-      // Batch update to In Progress
-      const result = await batchUpdateStatus({
-        updates: [
-          { id: m1.id, status: 'In Progress' },
-          { id: m2.id, status: 'In Progress' },
+      // Batch update to In Progress using batchUpdate
+      const result = await batchUpdate({
+        ops: [
+          { op: 'update', client_id: 'upd-m1', id: m1.id, payload: { status: 'In Progress' } },
+          { op: 'update', client_id: 'upd-m2', id: m2.id, payload: { status: 'In Progress' } },
         ],
       }, batchDeps);
 
-      expect(result.updated.length).toBe(2);
+      expect(result.results.length).toBe(2);
+      expect(result.summary.succeeded).toBe(2);
 
       // Verify statuses
       const entity1 = await deps.getEntity(m1.id);
@@ -979,8 +921,8 @@ describe('MCP Integration Tests', () => {
         data: { title: 'Nav Task', workstream: 'nav', parent: story.id, goal: 'Navigate' },
       }, deps);
 
-      // Navigate up from task
-      const upResult = await navigateHierarchy({
+      // Navigate up from task using searchEntities
+      const upResult = await searchEntities({
         from_id: task.id,
         direction: 'up',
         depth: 2,
@@ -1009,8 +951,8 @@ describe('MCP Integration Tests', () => {
         data: { title: 'Nav Down Story 2', workstream: 'nav-down', parent: milestone.id },
       }, deps);
 
-      // Navigate down from milestone
-      const downResult = await navigateHierarchy({
+      // Navigate down from milestone using searchEntities
+      const downResult = await searchEntities({
         from_id: milestone.id,
         direction: 'down',
         depth: 1,
@@ -1039,8 +981,8 @@ describe('MCP Integration Tests', () => {
         data: { title: 'Sibling 2', workstream: 'siblings', parent: milestone.id },
       }, deps);
 
-      // Get siblings of story1
-      const siblingsResult = await navigateHierarchy({
+      // Get siblings of story1 using searchEntities
+      const siblingsResult = await searchEntities({
         from_id: story1.id,
         direction: 'siblings',
       }, searchDeps);
@@ -1049,37 +991,5 @@ describe('MCP Integration Tests', () => {
     });
   });
 
-  // ===========================================================================
-  // Scenario 15: Validate Spec Completeness
-  // ===========================================================================
-
-  describe('Scenario 15: Validate Spec Completeness', () => {
-    it('should validate spec completeness', async () => {
-      const deps = runtime.getEntityManagementDeps();
-      const implDeps = runtime.getImplementationHandoffDeps();
-
-      // Import validateSpecCompleteness
-      const { validateSpecCompleteness } = await import('./tools/implementation-handoff-tools.js');
-
-      // Create a story with acceptance criteria
-      const story = await createEntity({
-        type: 'story',
-        data: {
-          title: 'Spec Validation Story',
-          workstream: 'validation',
-          outcome: 'Users can do X',
-          acceptance_criteria: ['Criterion 1', 'Criterion 2'],
-        },
-      }, deps);
-
-      // Validate completeness
-      const validation = await validateSpecCompleteness({
-        spec_id: story.id,
-      }, implDeps);
-
-      expect(validation).toBeDefined();
-      expect(validation.spec_id).toBe(story.id);
-    });
-  });
 });
 

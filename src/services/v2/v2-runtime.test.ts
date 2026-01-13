@@ -836,13 +836,5 @@ This task involves implementing OAuth2 authentication.`;
       expect(deps.getAllDecisions).toBeDefined();
     });
 
-    it('should provide implementation handoff deps', async () => {
-      await runtime.initialize();
-
-      const deps = runtime.getImplementationHandoffDeps();
-      expect(deps.getAllStories).toBeDefined();
-      expect(deps.getRelatedDecisions).toBeDefined();
-    });
-
   });
 });

@@ -21,11 +21,13 @@ import {
   Task,
   Decision,
   Document,
+  Feature,
   MilestoneId,
   StoryId,
   TaskId,
   DecisionId,
   DocumentId,
+  FeatureId,
   ISODateTime,
   CanvasPath,
   VaultPath,
@@ -45,10 +47,9 @@ import { CanvasManager } from './canvas-manager.js';
 
 import type { EntityManagementDependencies } from '../../tools/entity-management-tools.js';
 import type { BatchOperationsDependencies } from '../../tools/batch-operations-tools.js';
-import type { ProjectUnderstandingDependencies } from '../../tools/project-understanding-tools.js';
+import type { ProjectUnderstandingDependencies, FeatureCoverageDependencies } from '../../tools/project-understanding-tools.js';
 import type { SearchNavigationDependencies } from '../../tools/search-navigation-tools.js';
 import type { DecisionDocumentDependencies } from '../../tools/decision-document-tools.js';
-import type { ImplementationHandoffDependencies } from '../../tools/implementation-handoff-tools.js';
 import type { EntitySummary, EntityFull, Workstream } from '../../tools/tool-types.js';
 
 import { getConfig } from '../../utils/config.js';
@@ -143,6 +144,7 @@ export class V2Runtime {
     ['task', 'T'],
     ['decision', 'DEC'],
     ['document', 'DOC'],
+    ['feature', 'F'],
   ]);
 
   // Track duplicate IDs (id -> array of file paths)
@@ -439,7 +441,7 @@ export class V2Runtime {
    * Check if an entity is in progress.
    */
   private isEntityInProgress(entity: Entity): boolean {
-    if (entity.type === 'milestone' || entity.type === 'story' || entity.type === 'task') {
+    if (entity.type === 'milestone' || entity.type === 'story' || entity.type === 'task' || entity.type === 'feature') {
       return entity.status === 'In Progress';
     }
     return false;
@@ -874,8 +876,14 @@ export class V2Runtime {
     if (entity.type === 'story' || entity.type === 'milestone') {
       const implements_ = (entity as Story | Milestone).implements;
       if (implements_ && implements_.length > 0) {
-        for (const docId of implements_) {
-          await this.ensureImplementedBy(docId, entity.id as StoryId | MilestoneId);
+        for (const targetId of implements_) {
+          // Check if it's a document or feature ID
+          const targetType = getEntityTypeFromId(targetId);
+          if (targetType === 'document') {
+            await this.ensureImplementedBy(targetId as DocumentId, entity.id as StoryId | MilestoneId);
+          } else if (targetType === 'feature') {
+            await this.ensureFeatureImplementedBy(targetId as FeatureId, entity.id as StoryId | MilestoneId);
+          }
         }
       }
     } else if (entity.type === 'document') {
@@ -883,6 +891,13 @@ export class V2Runtime {
       if (implementedBy && implementedBy.length > 0) {
         for (const storyId of implementedBy) {
           await this.ensureImplements(storyId, entity.id as DocumentId);
+        }
+      }
+    } else if (entity.type === 'feature') {
+      const implementedBy = (entity as Feature).implemented_by;
+      if (implementedBy && implementedBy.length > 0) {
+        for (const implementerId of implementedBy) {
+          await this.ensureImplementsFeature(implementerId, entity.id as FeatureId);
         }
       }
     }
@@ -1113,6 +1128,55 @@ export class V2Runtime {
       milestone.updated_at = new Date().toISOString();
       await this.writeEntityDirect(milestone);
       console.error(`[V2Runtime] Synced implements: added ${docId} to ${entityId}`);
+    }
+  }
+
+  /**
+   * Ensure a Feature's implemented_by includes the given story/milestone ID.
+   */
+  private async ensureFeatureImplementedBy(featureId: FeatureId, implementerId: StoryId | MilestoneId): Promise<void> {
+    const feat = await this.getEntity(featureId);
+    if (!feat || feat.type !== 'feature') return;
+
+    const feature = feat as Feature;
+    const currentImplementedBy = feature.implemented_by || [];
+
+    // Check if already present
+    if (currentImplementedBy.includes(implementerId as StoryId)) return;
+
+    // Add the implementer and save
+    feature.implemented_by = [...currentImplementedBy, implementerId as StoryId];
+    feature.updated_at = new Date().toISOString();
+
+    await this.writeEntityDirect(feature);
+    console.error(`[V2Runtime] Synced implemented_by: added ${implementerId} to ${featureId}`);
+  }
+
+  /**
+   * Ensure a Story/Milestone's implements includes the given feature ID.
+   */
+  private async ensureImplementsFeature(entityId: StoryId | MilestoneId, featureId: FeatureId): Promise<void> {
+    const entity = await this.getEntity(entityId);
+    if (!entity) return;
+
+    if (entity.type === 'story') {
+      const story = entity as Story;
+      const currentImplements = story.implements || [];
+      if (currentImplements.includes(featureId)) return;
+
+      story.implements = [...currentImplements, featureId];
+      story.updated_at = new Date().toISOString();
+      await this.writeEntityDirect(story);
+      console.error(`[V2Runtime] Synced implements: added ${featureId} to ${entityId}`);
+    } else if (entity.type === 'milestone') {
+      const milestone = entity as Milestone;
+      const currentImplements = milestone.implements || [];
+      if (currentImplements.includes(featureId)) return;
+
+      milestone.implements = [...currentImplements, featureId];
+      milestone.updated_at = new Date().toISOString();
+      await this.writeEntityDirect(milestone);
+      console.error(`[V2Runtime] Synced implements: added ${featureId} to ${entityId}`);
     }
   }
 
@@ -1520,6 +1584,37 @@ export class V2Runtime {
     return stories;
   }
 
+  /** Get all features */
+  async getAllFeatures(options?: {
+    workstream?: string;
+    tier?: string;
+    phase?: string;
+    includeDeferred?: boolean;
+  }): Promise<Feature[]> {
+    const entities = await this.getAllEntities({
+      includeArchived: false,
+      includeCompleted: true,
+      types: ['feature'],
+      workstream: options?.workstream,
+    });
+
+    let features = entities as Feature[];
+
+    if (options?.tier) {
+      features = features.filter(f => f.tier === options.tier);
+    }
+
+    if (options?.phase) {
+      features = features.filter(f => f.phase === options.phase);
+    }
+
+    if (!options?.includeDeferred) {
+      features = features.filter(f => f.status !== 'Deferred');
+    }
+
+    return features;
+  }
+
   /** Create a decision */
   async createDecision(data: {
     title: string;
@@ -1687,7 +1782,9 @@ export class V2Runtime {
     const allIds = this.index.getAllIds();
 
     // First pass: collect all implements relationships from stories/milestones
-    const implementsMap = new Map<DocumentId, Set<StoryId | MilestoneId>>();
+    // Separate maps for documents and features since they have different ID types
+    const docImplementsMap = new Map<DocumentId, Set<StoryId | MilestoneId>>();
+    const featureImplementsMap = new Map<FeatureId, Set<StoryId | MilestoneId>>();
 
     for (const id of allIds) {
       const entity = await this.getEntity(id);
@@ -1696,11 +1793,21 @@ export class V2Runtime {
       if (entity.type === 'story' || entity.type === 'milestone') {
         const implements_ = (entity as Story | Milestone).implements;
         if (implements_ && implements_.length > 0) {
-          for (const docId of implements_) {
-            if (!implementsMap.has(docId)) {
-              implementsMap.set(docId, new Set());
+          for (const targetId of implements_) {
+            const targetType = getEntityTypeFromId(targetId);
+            if (targetType === 'document') {
+              const docId = targetId as DocumentId;
+              if (!docImplementsMap.has(docId)) {
+                docImplementsMap.set(docId, new Set());
+              }
+              docImplementsMap.get(docId)!.add(id as StoryId | MilestoneId);
+            } else if (targetType === 'feature') {
+              const featureId = targetId as FeatureId;
+              if (!featureImplementsMap.has(featureId)) {
+                featureImplementsMap.set(featureId, new Set());
+              }
+              featureImplementsMap.get(featureId)!.add(id as StoryId | MilestoneId);
             }
-            implementsMap.get(docId)!.add(id as StoryId | MilestoneId);
           }
         }
       }
@@ -1712,7 +1819,7 @@ export class V2Runtime {
       if (!entity || entity.type !== 'document') continue;
 
       const doc = entity as Document;
-      const expectedImplementers = implementsMap.get(doc.id as DocumentId) || new Set();
+      const expectedImplementers = docImplementsMap.get(doc.id as DocumentId) || new Set();
       const currentImplementedBy = new Set(doc.implemented_by || []);
 
       // Find missing implementers
@@ -1732,6 +1839,39 @@ export class V2Runtime {
         for (const implementerId of missingImplementers) {
           details.push({
             entity_id: doc.id,
+            action: 'added_implemented_by',
+            related_id: implementerId,
+          });
+        }
+      }
+    }
+
+    // Second pass (features): update features with missing implemented_by
+    for (const id of allIds) {
+      const entity = await this.getEntity(id);
+      if (!entity || entity.type !== 'feature') continue;
+
+      const feature = entity as Feature;
+      const expectedImplementers = featureImplementsMap.get(feature.id as FeatureId) || new Set();
+      const currentImplementedBy = new Set(feature.implemented_by || []);
+
+      // Find missing implementers
+      const missingImplementers: (StoryId | MilestoneId)[] = [];
+      for (const implementerId of expectedImplementers) {
+        if (!currentImplementedBy.has(implementerId as StoryId)) {
+          missingImplementers.push(implementerId);
+        }
+      }
+
+      if (missingImplementers.length > 0) {
+        feature.implemented_by = [...(feature.implemented_by || []), ...missingImplementers as StoryId[]];
+        feature.updated_at = new Date().toISOString();
+        await this.writeEntityDirect(feature);
+        updated++;
+
+        for (const implementerId of missingImplementers) {
+          details.push({
+            entity_id: feature.id,
             action: 'added_implemented_by',
             related_id: implementerId,
           });
@@ -1947,21 +2087,12 @@ export class V2Runtime {
     };
   }
 
-  /** Get implementation handoff dependencies */
-  getImplementationHandoffDeps(): ImplementationHandoffDependencies {
+  /** Get feature coverage dependencies */
+  getFeatureCoverageDeps(): FeatureCoverageDependencies {
     return {
-      getAllStories: (options) => this.getAllStories(options),
-      getAllDocuments: (options) => this.getAllDocuments(options),
+      getAllFeatures: (options) => this.getAllFeatures(options),
       getEntity: (id) => this.getEntity(id),
-      getEntityPath: (id) => this.getEntityPath(id),
-      getRelatedDecisions: (id) => this.getRelatedDecisions(id),
-      getBlockingEntities: (id) => this.getBlockingEntities(id),
-      getDependencies: (id) => this.getDependencies(id),
-      hasOpenTodos: (id) => this.hasOpenTodos(id),
-      getAcceptanceCriteria: (id) => this.getAcceptanceCriteria(id),
-      getImplementationContext: (id) => this.getImplementationContext(id),
-      getRelatedDocuments: (id) => this.getRelatedDocuments(id),
-      searchContent: (id, pattern) => this.searchContent(id, pattern),
+      getAllDocuments: (options) => this.getAllDocuments(options),
     };
   }
 }

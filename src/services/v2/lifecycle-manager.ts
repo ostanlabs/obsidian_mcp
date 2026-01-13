@@ -14,11 +14,13 @@ import {
   TaskStatus,
   DecisionStatus,
   DocumentStatus,
+  FeatureStatus,
   Milestone,
   Story,
   Task,
   Decision,
   Document,
+  Feature,
 } from '../../models/v2-types.js';
 
 // =============================================================================
@@ -90,6 +92,15 @@ const DOCUMENT_TRANSITIONS: TransitionRule[] = [
   { from: 'Approved', to: 'Draft', action: 'revise' },
 ];
 
+const FEATURE_TRANSITIONS: TransitionRule[] = [
+  { from: 'Planned', to: 'In Progress', action: 'start', side_effects: ['check_implementing_entities'] },
+  { from: 'Planned', to: 'Deferred', action: 'defer' },
+  { from: 'In Progress', to: 'Complete', action: 'complete', conditions: ['all_implementations_complete'] },
+  { from: 'In Progress', to: 'Deferred', action: 'defer' },
+  { from: 'Deferred', to: 'Planned', action: 'reactivate' },
+  { from: 'Complete', to: 'In Progress', action: 'reopen' },
+];
+
 // =============================================================================
 // Lifecycle Manager Class
 // =============================================================================
@@ -112,6 +123,7 @@ export class LifecycleManager {
       ['task', TASK_TRANSITIONS],
       ['decision', DECISION_TRANSITIONS],
       ['document', DOCUMENT_TRANSITIONS],
+      ['feature', FEATURE_TRANSITIONS],
     ]);
   }
 
@@ -286,6 +298,17 @@ export class LifecycleManager {
         };
       }
 
+      case 'all_implementations_complete': {
+        // For features, check if all implementing milestones/stories are complete
+        const feature = entity as Feature;
+        if (!feature.implemented_by || feature.implemented_by.length === 0) {
+          return { met: true }; // No implementations required
+        }
+        // Note: This would need access to the runtime to check actual entity statuses
+        // For now, we allow the transition and let the caller verify
+        return { met: true };
+      }
+
       default:
         return { met: true };
     }
@@ -333,6 +356,14 @@ export class LifecycleManager {
         results.push(`Document ${entity.id} approved - implementing stories enabled`);
         break;
       }
+
+      case 'check_implementing_entities': {
+        const feature = entity as Feature;
+        if (feature.implemented_by && feature.implemented_by.length > 0) {
+          results.push(`Feature ${entity.id} started - ${feature.implemented_by.length} implementing entities`);
+        }
+        break;
+      }
     }
 
     return results;
@@ -349,7 +380,7 @@ export class LifecycleManager {
 
   /** Check if a status is considered complete */
   isComplete(status: EntityStatus): boolean {
-    return ['Completed', 'Decided', 'Approved'].includes(status);
+    return ['Completed', 'Decided', 'Approved', 'Complete'].includes(status);
   }
 
   /** Get the initial status for an entity type */
@@ -363,6 +394,8 @@ export class LifecycleManager {
         return 'Pending';
       case 'document':
         return 'Draft';
+      case 'feature':
+        return 'Planned';
     }
   }
 }

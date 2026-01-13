@@ -20,8 +20,6 @@ import type {
 } from '../models/v2-types.js';
 
 import type {
-  CreateDecisionInput,
-  CreateDecisionOutput,
   GetDecisionHistoryInput,
   GetDecisionHistoryOutput,
   SupersedeDocumentInput,
@@ -155,71 +153,6 @@ export async function manageDocuments(
 }
 
 // =============================================================================
-// Create Decision (DEPRECATED)
-// =============================================================================
-
-/**
- * Create a new decision record.
- *
- * @deprecated Use `create_entity` with `type: 'decision'` instead.
- * Example: `create_entity({ type: 'decision', data: { title: '...', workstream: '...', ... } })`
- */
-export async function createDecision(
-  input: CreateDecisionInput,
-  deps: DecisionDocumentDependencies
-): Promise<CreateDecisionOutput> {
-  const {
-    title,
-    context,
-    decision,
-    rationale,
-    workstream,
-    decided_by,
-    blocks,
-    supersedes,
-    affects_documents,
-    add_to_canvas,
-    canvas_source,
-  } = input;
-
-  // Create the decision
-  const newDecision = await deps.createDecision({
-    title,
-    context,
-    decision,
-    rationale,
-    workstream,
-    decided_by,
-    blocks,
-    supersedes,
-  });
-
-  // Add to canvas if requested
-  if (add_to_canvas && deps.addToCanvas && canvas_source) {
-    await deps.addToCanvas(newDecision, canvas_source);
-  }
-
-  // Mark affected documents as potentially stale
-  const staleDocuments: EntityId[] = [];
-  if (affects_documents) {
-    for (const docId of affects_documents) {
-      const doc = await deps.getEntity(docId);
-      if (doc && doc.type === 'document') {
-        staleDocuments.push(docId);
-      }
-    }
-  }
-
-  const decisionFull = await deps.toEntityFull(newDecision);
-
-  return {
-    id: newDecision.id,
-    decision: decisionFull,
-    blocked_count: blocks?.length || 0,
-    stale_documents: staleDocuments,
-  };
-}
-
 // =============================================================================
 // Get Decision History
 // =============================================================================

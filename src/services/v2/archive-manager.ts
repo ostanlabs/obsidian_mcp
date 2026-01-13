@@ -252,6 +252,8 @@ export class ArchiveManager {
         return `${this.basePath}/decisions`;
       case 'document':
         return `${this.basePath}/documents`;
+      case 'feature':
+        return `${this.basePath}/features`;
     }
   }
 

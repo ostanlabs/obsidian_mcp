@@ -12,6 +12,7 @@ import {
   Task,
   Decision,
   Document,
+  Feature,
   InlineTask,
 } from '../../models/v2-types.js';
 
@@ -81,6 +82,9 @@ export class EntitySerializer {
         break;
       case 'document':
         specific = this.getDocumentFrontmatter(entity);
+        break;
+      case 'feature':
+        specific = this.getFeatureFrontmatter(entity);
         break;
     }
 
@@ -174,6 +178,8 @@ export class EntitySerializer {
       supersedes: entity.supersedes,
       superseded_by: entity.superseded_by,
       alternatives: entity.alternatives?.length ? entity.alternatives : undefined,
+      // Feature relationships
+      affects: entity.affects?.length ? entity.affects : undefined,
     };
   }
 
@@ -188,9 +194,26 @@ export class EntitySerializer {
       blocks: entity.blocks?.length ? entity.blocks : undefined,
       // Implementation
       implemented_by: entity.implemented_by?.length ? entity.implemented_by : undefined,
+      // Feature relationships
+      documents: entity.documents?.length ? entity.documents : undefined,
       // Versioning
       previous_version: entity.previous_version,
       next_version: entity.next_version,
+    };
+  }
+
+  /** Get feature-specific frontmatter */
+  private getFeatureFrontmatter(entity: Feature): Record<string, any> {
+    return {
+      user_story: entity.user_story,
+      tier: entity.tier,
+      phase: entity.phase,
+      // Relationships (auto-synced)
+      implemented_by: entity.implemented_by?.length ? entity.implemented_by : undefined,
+      documented_by: entity.documented_by?.length ? entity.documented_by : undefined,
+      decided_by: entity.decided_by?.length ? entity.decided_by : undefined,
+      // Test references
+      test_refs: entity.test_refs?.length ? entity.test_refs : undefined,
     };
   }
 
@@ -211,6 +234,8 @@ export class EntitySerializer {
         return this.buildDecisionContent(entity);
       case 'document':
         return this.buildDocumentContent(entity);
+      case 'feature':
+        return this.buildFeatureContent(entity);
     }
   }
 
@@ -304,6 +329,20 @@ export class EntitySerializer {
     return sections.join('\n\n');
   }
 
+  /** Build feature content */
+  private buildFeatureContent(entity: Feature): string {
+    const sections: string[] = [];
+
+    if (entity.content) {
+      sections.push(entity.content);
+    }
+
+    // Add Dataview queries for related items
+    sections.push(this.buildFeatureRelatedSection(entity.id));
+
+    return sections.join('\n\n');
+  }
+
   /** Build related section with Dataview queries for milestone/story/task */
   private buildRelatedSection(entityId: string, entityType: 'milestone' | 'story' | 'task'): string {
     const sections: string[] = [];
@@ -383,6 +422,36 @@ TABLE title as "Decision", status as "Status", decided_at as "Date"
 FROM "decisions"
 WHERE contains(affects_documents, "${documentId}")
 SORT decided_at DESC
+\`\`\``;
+  }
+
+  /** Build related section for features */
+  private buildFeatureRelatedSection(featureId: string): string {
+    return `## 🔗 Implemented By
+
+\`\`\`dataview
+TABLE title as "Entity", type as "Type", status as "Status"
+FROM ""
+WHERE contains(implements, "${featureId}")
+SORT type ASC, title ASC
+\`\`\`
+
+## 📄 Documentation
+
+\`\`\`dataview
+TABLE title as "Document", doc_type as "Type", status as "Status"
+FROM "documents"
+WHERE contains(documents, "${featureId}")
+SORT title ASC
+\`\`\`
+
+## 🎯 Related Decisions
+
+\`\`\`dataview
+TABLE title as "Decision", status as "Status", decided_on as "Date"
+FROM "decisions"
+WHERE contains(affects, "${featureId}")
+SORT decided_on DESC
 \`\`\``;
   }
 
@@ -575,6 +644,7 @@ function getEffortFromEntity(entity: Entity): string | null {
     case 'milestone':
     case 'decision':
     case 'document':
+    case 'feature':
       return entity.workstream;
   }
 }

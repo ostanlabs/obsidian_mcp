@@ -243,6 +243,8 @@ export class ProgressComputer {
         return entity.status === 'Decided' || entity.status === 'Superseded';
       case 'document':
         return entity.status === 'Approved' || entity.status === 'Superseded';
+      case 'feature':
+        return entity.status === 'Complete';
     }
   }
 

@@ -53,6 +53,7 @@ const REQUIRED_FIELDS: Record<EntityType, string[]> = {
   task: ['id', 'title', 'status', 'type'],
   decision: ['id', 'title', 'status', 'type'],
   document: ['id', 'title', 'status', 'type'],
+  feature: ['id', 'title', 'status', 'type', 'user_story'],
 };
 
 // =============================================================================
@@ -65,6 +66,7 @@ const VALID_PARENT_TYPES: Record<EntityType, EntityType | null> = {
   task: 'story',
   decision: null,
   document: null,
+  feature: null,
 };
 
 // =============================================================================
@@ -98,6 +100,7 @@ const DEPENDS_ON_VALID_TYPES: Record<EntityType, EntityType[]> = {
   task: ['task', 'decision'],
   decision: ['decision'],
   document: ['document', 'decision'],
+  feature: ['feature', 'decision'],
 };
 
 // =============================================================================
@@ -318,6 +321,7 @@ export class EntityValidator {
       task: 'T-',
       decision: 'DEC-',
       document: 'DOC-',
+      feature: 'F-',
     };
 
     const expectedPrefix = prefixes[entity.type];
@@ -340,6 +344,7 @@ export class EntityValidator {
       task: ['Not Started', 'In Progress', 'Completed', 'Blocked'],
       decision: ['Pending', 'Decided', 'Superseded'],
       document: ['Draft', 'Review', 'Approved', 'Superseded'],
+      feature: ['Planned', 'In Progress', 'Complete', 'Deferred'],
     };
 
     const valid = validStatuses[entity.type];

@@ -34,17 +34,13 @@ import { batchUpdate } from './tools/batch-operations-tools.js';
 import {
   getProjectOverview,
   analyzeProjectState,
+  getFeatureCoverage,
 } from './tools/project-understanding-tools.js';
 import {
   searchEntities,
   getEntity,
 } from './tools/search-navigation-tools.js';
 import { manageDocuments } from './tools/decision-document-tools.js';
-import {
-  getReadyForImplementation,
-  generateImplementationPackage,
-  validateSpecCompleteness,
-} from './tools/implementation-handoff-tools.js';
 
 // Create server instance
 const server = new Server(
@@ -277,6 +273,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await analyzeProjectState(args as any, runtime.getProjectUnderstandingDeps());
         break;
       }
+      case 'get_feature_coverage': {
+        const runtime = await getOrCreateV2Runtime();
+        result = await getFeatureCoverage(args as any, runtime.getFeatureCoverageDeps());
+        break;
+      }
 
       // Search & Navigation
       case 'search_entities': {
@@ -294,23 +295,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'manage_documents': {
         const runtime = await getOrCreateV2Runtime();
         result = await manageDocuments(args as any, runtime.getDecisionDocumentDeps());
-        break;
-      }
-
-      // Implementation Handoff (DEPRECATED - Low usage, will be removed)
-      case 'get_ready_for_implementation': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await getReadyForImplementation(args as any, runtime.getImplementationHandoffDeps());
-        break;
-      }
-      case 'generate_implementation_package': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await generateImplementationPackage(args as any, runtime.getImplementationHandoffDeps());
-        break;
-      }
-      case 'validate_spec_completeness': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await validateSpecCompleteness(args as any, runtime.getImplementationHandoffDeps());
         break;
       }
 
