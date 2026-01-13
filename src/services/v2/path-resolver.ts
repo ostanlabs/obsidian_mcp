@@ -24,6 +24,7 @@ const TYPE_FOLDERS: Record<EntityType, string> = {
   task: 'tasks',
   decision: 'decisions',
   document: 'documents',
+  feature: 'features',
 };
 
 /** Archive folder structure */

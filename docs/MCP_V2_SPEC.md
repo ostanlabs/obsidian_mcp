@@ -1,9 +1,11 @@
 # Obsidian Project Management MCP - V2 Specification
 
-> **Version:** 2.0 (Draft)
-> **Date:** December 2024
-> **Status:** Design Complete, Pending Implementation
+> **Version:** 2.0
+> **Date:** December 2024 (Updated: January 2026)
+> **Status:** ✅ IMPLEMENTED
 > **Supersedes:** MCP_TECHNICAL_SPEC.md (V1)
+>
+> **Note:** Some tools documented below have been consolidated or deprecated. See [Tool Consolidation](#tool-consolidation) section for details.
 
 ---
 
@@ -1071,6 +1073,71 @@ validate_spec_completeness({
   ],
 }
 ```
+
+---
+
+## Tool Consolidation
+
+> **Updated:** January 2026
+
+The following tools have been consolidated or deprecated to simplify the API:
+
+### Deprecated Tools → Replacements
+
+| Deprecated Tool | Replacement | Notes |
+|-----------------|-------------|-------|
+| `batch_operations` | `batch_update` | Use `ops` array with `op: 'create'` |
+| `batch_update_status` | `batch_update` | Use `ops` array with `op: 'update'` and `payload: { status: ... }` |
+| `batch_archive` | `batch_update` | Use `ops` array with `op: 'archive'` |
+| `get_entity_summary` | `get_entity` | Use `fields` parameter to select summary fields |
+| `get_entity_full` | `get_entity` | Use `fields` parameter to select all fields |
+| `navigate_hierarchy` | `search_entities` | Use `from_id` and `direction` parameters |
+| `create_decision` | `create_entity` | Use `type: 'decision'` |
+| `get_workstream_status` | `get_project_overview` | Consolidated into project overview |
+
+### Removed Tools (Category 6: Implementation Handoff)
+
+The following tools were removed as the full implementation handoff algorithm was not completed:
+
+- `get_ready_for_implementation` - REMOVED
+- `generate_implementation_package` - REMOVED
+- `validate_spec_completeness` - REMOVED
+
+See `IMPLEMENTATION_PACKAGE_SPEC.md` for the original design if this functionality is needed in the future.
+
+### Current Active Tools
+
+**Category 1: Entity Management**
+- `create_entity` - Create any entity type
+- `update_entity` - Update entity fields and relationships
+- `update_entity_status` - Dedicated status update
+- `archive_milestone` - Archive milestone with children
+- `archive_entity` - Archive single entity
+- `restore_from_archive` - Restore archived entity
+
+**Category 2: Batch Operations**
+- `batch_update` - Unified batch operations (create, update, archive)
+
+**Category 3: Project Understanding**
+- `get_project_overview` - High-level project status
+- `analyze_project_state` - Comprehensive analysis with blockers
+
+**Category 4: Search & Navigation**
+- `search_entities` - Full-text search with filters and hierarchy navigation
+- `get_entity` - Get entity with configurable field selection
+
+**Category 5: Decision & Document Management**
+- `get_decision_history` - Query decisions by topic
+- `supersede_document` - Replace document with new version
+- `get_document_history` - Get version history
+- `check_document_freshness` - Check if document needs updating
+- `manage_documents` - Consolidated document management operations
+
+**Utility Tools**
+- `read_docs` - Read documentation files
+- `update_doc` - Update documentation files
+- `list_workspaces` - List available workspaces
+- `list_files` - List files in a directory
 
 ---
 

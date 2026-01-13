@@ -133,8 +133,8 @@ describe('Tools Index Integration Tests', () => {
       expect(toolNames).toContain('get_entity');
       // Decision & document (consolidated)
       expect(toolNames).toContain('manage_documents');
-      // Implementation handoff (deprecated - low usage, kept for backward compatibility)
-      expect(toolNames).toContain('get_ready_for_implementation');
+      // Feature coverage
+      expect(toolNames).toContain('get_feature_coverage');
     });
 
     it('should have valid inputSchema for each tool definition', () => {

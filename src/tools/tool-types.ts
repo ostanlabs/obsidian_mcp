@@ -221,86 +221,6 @@ export interface RestoreFromArchiveOutput {
 // Category 2: Batch Operations
 // =============================================================================
 
-// batch_operations
-export interface BatchOperationsInput {
-  entities: Array<{
-    type: EntityType;
-    data: {
-      title: string;
-      parent?: string;
-      depends_on?: string[];
-      implements?: string[];
-      enables?: string[];
-      [key: string]: unknown;
-    };
-  }>;
-  dependencies?: Array<{
-    from: string;
-    to: string;
-    type: 'blocks' | 'implements' | 'enables';
-  }>;
-  options?: {
-    atomic?: boolean;
-    add_to_canvas?: boolean;
-    canvas_source?: string;
-  };
-}
-
-export interface BatchOperationsOutput {
-  created: Array<{
-    ref: string;
-    id: EntityId;
-    type: EntityType;
-  }>;
-  dependencies_created: number;
-  canvas_nodes_added: number;
-}
-
-// batch_update_status
-export interface BatchUpdateStatusInput {
-  updates: Array<{
-    id: EntityId;
-    status: EntityStatus;
-    note?: string;
-  }>;
-  options?: {
-    auto_cascade?: boolean;
-  };
-}
-
-export interface BatchUpdateStatusOutput {
-  updated: EntityId[];
-  cascaded: EntityId[];
-  failed: Array<{ id: EntityId; error: string }>;
-}
-
-// batch_archive
-export interface BatchArchiveInput {
-  milestone_ids?: EntityId[];
-  entity_ids?: EntityId[];
-  options?: {
-    archive_folder?: string;
-    remove_from_canvas?: boolean;
-    canvas_source?: string;
-  };
-}
-
-export interface BatchArchiveOutput {
-  archived: {
-    milestones: EntityId[];
-    stories: EntityId[];
-    tasks: EntityId[];
-    decisions: EntityId[];
-    documents: EntityId[];
-  };
-  total_archived: number;
-  archive_path: string;
-}
-
-// =============================================================================
-// NEW: Unified batch_update (replaces batch_operations, batch_update_status, batch_archive)
-// =============================================================================
-
 /** Operation type for batch_update */
 export type BatchOpType = 'create' | 'update' | 'archive';
 
@@ -622,53 +542,6 @@ export interface GetEntityOutput {
   };
 }
 
-// Legacy types for backward compatibility (deprecated)
-/** @deprecated Use GetEntityInput instead */
-export interface GetEntitySummaryInput {
-  id: EntityId;
-}
-
-/** @deprecated Use GetEntityOutput instead */
-export interface GetEntitySummaryOutput extends EntitySummary {
-  effort?: Effort;
-  priority?: Priority;
-  dependencies: {
-    blocks: EntityId[];
-    blocked_by: EntityId[];
-  };
-  task_progress?: {
-    total: number;
-    completed: number;
-  };
-}
-
-/** @deprecated Use GetEntityInput instead */
-export interface GetEntityFullInput {
-  id: EntityId;
-  include_children?: boolean;
-  include_dependencies?: boolean;
-  depth?: number;
-}
-
-/** @deprecated Use GetEntityOutput instead */
-export interface GetEntityFullOutput extends EntityFull {}
-
-// navigate_hierarchy (DEPRECATED - use search_entities with from_id and direction)
-/** @deprecated Use SearchEntitiesInput with from_id and direction instead */
-export interface NavigateHierarchyInput {
-  from_id: EntityId;
-  direction: 'up' | 'down' | 'siblings' | 'dependencies';
-  depth?: number;
-  include_content?: boolean;
-}
-
-/** @deprecated Use SearchEntitiesOutput instead */
-export interface NavigateHierarchyOutput {
-  origin: EntitySummary;
-  results: EntitySummary[];
-  path_description: string;
-}
-
 // =============================================================================
 // Category 5: Decision & Document Management
 // =============================================================================
@@ -697,29 +570,6 @@ export type ManageDocumentsOutput =
   | { action: 'supersede_document' } & SupersedeDocumentOutput
   | { action: 'get_document_history' } & GetDocumentHistoryOutput
   | { action: 'check_freshness' } & CheckDocumentFreshnessOutput;
-
-// create_decision (DEPRECATED - use create_entity with type: 'decision' instead)
-/** @deprecated Use create_entity with type: 'decision' instead */
-export interface CreateDecisionInput {
-  title: string;
-  context: string;
-  decision: string;
-  rationale: string;
-  workstream: Workstream;
-  decided_by: string;
-  blocks?: EntityId[];
-  supersedes?: EntityId;
-  affects_documents?: EntityId[];
-  add_to_canvas?: boolean;
-  canvas_source?: string;
-}
-
-export interface CreateDecisionOutput {
-  id: EntityId;
-  decision: EntityFull;
-  blocked_count: number;
-  stale_documents: EntityId[];
-}
 
 // get_decision_history
 export interface GetDecisionHistoryInput {
@@ -792,106 +642,50 @@ export interface CheckDocumentFreshnessOutput {
   suggested_updates: string[];
 }
 
-
 // =============================================================================
-// Category 6: Implementation Handoff
+// Category 6: Feature Coverage
 // =============================================================================
 
-// get_ready_for_implementation
-export interface GetReadyForImplementationInput {
-  workstream?: Workstream;
-  priority?: Priority[];
+// get_feature_coverage
+export interface GetFeatureCoverageInput {
+  phase?: 'MVP' | '0' | '1' | '2' | '3' | '4' | '5';
+  tier?: 'OSS' | 'Premium';
+  include_tests?: boolean;
 }
 
-export interface GetReadyForImplementationOutput {
-  ready: Array<{
-    id: EntityId;
-    title: string;
-    type: EntityType;
-    readiness_score: number;
-    checklist: {
-      all_decisions_made: boolean;
-      no_blocking_dependencies: boolean;
-      acceptance_criteria_defined: boolean;
-      no_open_todos: boolean;
-      status_approved: boolean;
+export interface FeatureCoverageItem {
+  id: EntityId;
+  title: string;
+  tier: 'OSS' | 'Premium';
+  phase: 'MVP' | '0' | '1' | '2' | '3' | '4' | '5';
+  status: 'Planned' | 'In Progress' | 'Complete' | 'Deferred';
+  implementation: {
+    milestones: EntityId[];
+    stories: EntityId[];
+    progress_percent: number;
+  };
+  documentation: {
+    specs: EntityId[];
+    guides: EntityId[];
+    coverage: 'full' | 'partial' | 'none';
+  };
+  testing?: {
+    test_refs: string[];
+    has_tests: boolean;
+  };
+}
+
+export interface GetFeatureCoverageOutput {
+  features: FeatureCoverageItem[];
+  summary: {
+    total: number;
+    implemented: number;
+    documented: number;
+    tested: number;
+    gaps: {
+      missing_implementation: EntityId[];
+      missing_docs: EntityId[];
+      missing_tests: EntityId[];
     };
-    implementation_estimate: string;
-    suggested_start: string;
-  }>;
-  almost_ready: Array<{
-    id: EntityId;
-    title: string;
-    readiness_score: number;
-    blockers: Array<{
-      type: string;
-      id?: EntityId;
-      detail: string;
-    }>;
-    what_to_resolve: string;
-  }>;
-  not_ready_count: number;
-}
-
-// generate_implementation_package
-export interface GenerateImplementationPackageInput {
-  spec_id: EntityId;
-}
-
-export interface GenerateImplementationPackageOutput {
-  primary_spec: {
-    id: EntityId;
-    title: string;
-    content: string;
   };
-  required_context: Array<{
-    id: EntityId;
-    title: string;
-    content: string;
-    relevance: string;
-  }>;
-  reference_links: Array<{
-    id: EntityId;
-    title: string;
-    summary: string;
-    path: string;
-  }>;
-  related_systems: string[];
-  decisions: Array<{
-    id: EntityId;
-    title: string;
-    decision: string;
-    rationale: string;
-  }>;
-  acceptance_criteria: string[];
-  constraints: string[];
-  open_items: Array<{
-    type: 'pending_decision' | 'assumption' | 'risk';
-    detail: string;
-  }>;
-}
-
-// validate_spec_completeness
-export interface ValidateSpecCompletenessInput {
-  spec_id: EntityId;
-}
-
-export interface ValidateSpecCompletenessOutput {
-  spec_id: EntityId;
-  is_complete: boolean;
-  score: number;
-  checks: {
-    has_acceptance_criteria: boolean;
-    all_todos_resolved: boolean;
-    dependencies_met: boolean;
-    decisions_made: boolean;
-    status_approved: boolean;
-    implementation_context_defined: boolean;
-  };
-  issues: Array<{
-    severity: 'error' | 'warning';
-    check: string;
-    detail: string;
-    suggestion: string;
-  }>;
 }

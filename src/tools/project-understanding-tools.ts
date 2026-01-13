@@ -547,3 +547,211 @@ export async function analyzeProjectState(
     },
   };
 }
+
+// =============================================================================
+// Get Feature Coverage
+// =============================================================================
+
+import type {
+  GetFeatureCoverageInput,
+  GetFeatureCoverageOutput,
+  FeatureCoverageItem,
+} from './tool-types.js';
+
+import type {
+  Feature,
+  FeatureId,
+  Milestone,
+  Story,
+  Document,
+  MilestoneId,
+  StoryId,
+  DocumentId,
+} from '../models/v2-types.js';
+
+/**
+ * Dependencies for feature coverage tool.
+ */
+export interface FeatureCoverageDependencies {
+  /** Get all features */
+  getAllFeatures: (options?: {
+    tier?: string;
+    phase?: string;
+    includeDeferred?: boolean;
+  }) => Promise<Feature[]>;
+
+  /** Get entity by ID */
+  getEntity: (id: EntityId) => Promise<Entity | null>;
+
+  /** Get all documents */
+  getAllDocuments: (options?: { workstream?: string }) => Promise<Document[]>;
+}
+
+/**
+ * Get feature coverage analysis showing implementation, documentation, and testing status.
+ */
+export async function getFeatureCoverage(
+  input: GetFeatureCoverageInput,
+  deps: FeatureCoverageDependencies
+): Promise<GetFeatureCoverageOutput> {
+  const { phase, tier, include_tests } = input;
+
+  // Get all features with optional filtering
+  const features = await deps.getAllFeatures({
+    tier,
+    phase,
+    includeDeferred: true, // Include deferred to show full picture
+  });
+
+  // Get all documents for documentation coverage
+  const allDocs = await deps.getAllDocuments();
+  const docsByFeature = new Map<FeatureId, DocumentId[]>();
+
+  // Build map of documents that document each feature
+  for (const doc of allDocs) {
+    if (doc.documents && doc.documents.length > 0) {
+      for (const featureId of doc.documents) {
+        if (!docsByFeature.has(featureId)) {
+          docsByFeature.set(featureId, []);
+        }
+        docsByFeature.get(featureId)!.push(doc.id as DocumentId);
+      }
+    }
+  }
+
+  // Process each feature
+  const coverageItems: FeatureCoverageItem[] = [];
+  const missingImplementation: EntityId[] = [];
+  const missingDocs: EntityId[] = [];
+  const missingTests: EntityId[] = [];
+
+  let implementedCount = 0;
+  let documentedCount = 0;
+  let testedCount = 0;
+
+  for (const feature of features) {
+    // Get implementing entities
+    const implementedBy = feature.implemented_by || [];
+    const milestones: EntityId[] = [];
+    const stories: EntityId[] = [];
+
+    for (const implId of implementedBy) {
+      const entity = await deps.getEntity(implId);
+      if (entity?.type === 'milestone') {
+        milestones.push(implId);
+      } else if (entity?.type === 'story') {
+        stories.push(implId);
+      }
+    }
+
+    // Calculate implementation progress
+    let progressPercent = 0;
+    if (implementedBy.length > 0) {
+      let completedCount = 0;
+      for (const implId of implementedBy) {
+        const entity = await deps.getEntity(implId);
+        if (entity && (entity.status === 'Completed' || entity.status === 'Complete')) {
+          completedCount++;
+        }
+      }
+      progressPercent = Math.round((completedCount / implementedBy.length) * 100);
+    }
+
+    // Get documentation
+    const documentingDocs = docsByFeature.get(feature.id as FeatureId) || [];
+    const specs: EntityId[] = [];
+    const guides: EntityId[] = [];
+
+    for (const docId of documentingDocs) {
+      const doc = await deps.getEntity(docId);
+      if (doc && doc.type === 'document') {
+        const docEntity = doc as Document;
+        // Specs: spec, adr, vision, research
+        if (docEntity.doc_type === 'spec' || docEntity.doc_type === 'adr' ||
+            docEntity.doc_type === 'vision' || docEntity.doc_type === 'research') {
+          specs.push(docId);
+        } else if (docEntity.doc_type === 'guide') {
+          // Guides: guide
+          guides.push(docId);
+        }
+      }
+    }
+
+    // Determine documentation coverage
+    let docCoverage: 'full' | 'partial' | 'none' = 'none';
+    if (specs.length > 0 && guides.length > 0) {
+      docCoverage = 'full';
+    } else if (specs.length > 0 || guides.length > 0) {
+      docCoverage = 'partial';
+    }
+
+    // Track gaps
+    const hasImplementation = implementedBy.length > 0;
+    const hasDocs = documentingDocs.length > 0;
+
+    if (!hasImplementation && feature.status !== 'Deferred') {
+      missingImplementation.push(feature.id);
+    } else if (hasImplementation) {
+      implementedCount++;
+    }
+
+    if (!hasDocs && feature.status !== 'Deferred') {
+      missingDocs.push(feature.id);
+    } else if (hasDocs) {
+      documentedCount++;
+    }
+
+    // Build coverage item
+    const coverageItem: FeatureCoverageItem = {
+      id: feature.id,
+      title: feature.title,
+      tier: feature.tier || 'OSS',
+      phase: feature.phase || 'MVP',
+      status: feature.status as 'Planned' | 'In Progress' | 'Complete' | 'Deferred',
+      implementation: {
+        milestones,
+        stories,
+        progress_percent: progressPercent,
+      },
+      documentation: {
+        specs,
+        guides,
+        coverage: docCoverage,
+      },
+    };
+
+    // Add testing info if requested
+    if (include_tests) {
+      // For now, we check if there are test references in the feature content
+      // This could be enhanced to scan actual test files
+      const hasTests = feature.test_refs && feature.test_refs.length > 0;
+      coverageItem.testing = {
+        test_refs: feature.test_refs || [],
+        has_tests: hasTests || false,
+      };
+
+      if (!hasTests && feature.status !== 'Deferred') {
+        missingTests.push(feature.id);
+      } else if (hasTests) {
+        testedCount++;
+      }
+    }
+
+    coverageItems.push(coverageItem);
+  }
+
+  return {
+    features: coverageItems,
+    summary: {
+      total: features.length,
+      implemented: implementedCount,
+      documented: documentedCount,
+      tested: testedCount,
+      gaps: {
+        missing_implementation: missingImplementation,
+        missing_docs: missingDocs,
+        missing_tests: missingTests,
+      },
+    },
+  };
+}

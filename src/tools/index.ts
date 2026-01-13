@@ -43,7 +43,6 @@ export * from './batch-operations-tools.js';
 export * from './project-understanding-tools.js';
 export * from './search-navigation-tools.js';
 export * from './decision-document-tools.js';
-export * from './implementation-handoff-tools.js';
 export * from './tool-types.js';
 
 // =============================================================================
@@ -236,6 +235,18 @@ export const entityToolDefinitions: Tool[] = [
       },
     },
   },
+  {
+    name: 'get_feature_coverage',
+    description: 'Get feature coverage analysis showing implementation, documentation, and testing status for features.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        phase: { type: 'string', enum: ['MVP', '0', '1', '2', '3', '4', '5'], description: 'Filter by implementation phase' },
+        tier: { type: 'string', enum: ['OSS', 'Premium'], description: 'Filter by feature tier' },
+        include_tests: { type: 'boolean', description: 'Include test coverage analysis' },
+      },
+    },
+  },
 
   // Category 4: Search & Navigation
   {
@@ -323,41 +334,7 @@ export const entityToolDefinitions: Tool[] = [
     },
   },
 
-  // Category 6: Implementation Handoff (DEPRECATED - Low usage, will be removed)
-  {
-    name: 'get_ready_for_implementation',
-    description: '[DEPRECATED - Low usage, will be removed] Find stories and specs that are ready for implementation.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        workstream: { type: 'string' },
-        priority: { type: 'array', items: { type: 'string', enum: ['Low', 'Medium', 'High', 'Critical'] } },
-      },
-    },
-  },
-  {
-    name: 'generate_implementation_package',
-    description: '[DEPRECATED - Low usage, will be removed] Generate a complete implementation package for a spec.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        spec_id: { type: 'string', description: 'Spec or story ID' },
-      },
-      required: ['spec_id'],
-    },
-  },
-  {
-    name: 'validate_spec_completeness',
-    description: '[DEPRECATED - Low usage, will be removed] Validate that a spec is complete and ready for implementation.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        spec_id: { type: 'string' },
-      },
-      required: ['spec_id'],
-    },
-  },
-  // Category 7: Maintenance Tools
+  // Category 6: Maintenance Tools
   {
     name: 'reconcile_relationships',
     description: 'Reconcile all bidirectional relationships across entities. Syncs: parent↔children, depends_on↔blocks, implements↔implemented_by, supersedes↔superseded_by, previous_version↔next_version. Run this to fix inconsistent relationships in existing documents.',

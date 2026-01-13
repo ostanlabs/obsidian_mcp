@@ -64,6 +64,7 @@ const DEPENDS_ON_VALID_TYPES: Record<EntityType, EntityType[]> = {
   task: ['task', 'decision'],
   decision: ['decision'],
   document: ['document', 'decision'],
+  feature: ['feature', 'decision'],
 };
 
 // =============================================================================

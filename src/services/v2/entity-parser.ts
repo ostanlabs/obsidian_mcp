@@ -13,11 +13,15 @@ import {
   Task,
   Decision,
   Document,
+  Feature,
   MilestoneStatus,
   StoryStatus,
   TaskStatus,
   DecisionStatus,
   DocumentStatus,
+  FeatureStatus,
+  FeatureTier,
+  FeaturePhase,
   Priority,
   Effort,
   VaultPath,
@@ -89,6 +93,9 @@ export class EntityParser {
         break;
       case 'document':
         entity = this.parseDocument(id, frontmatter, body, filePath, errors);
+        break;
+      case 'feature':
+        entity = this.parseFeature(id, frontmatter, body, filePath, errors);
         break;
       default:
         throw new ValidationError(`Unknown entity type: ${type}`);
@@ -384,6 +391,7 @@ export class EntityParser {
       blocks: fm.blocks,
       depends_on: fm.depends_on,
       superseded_by: fm.superseded_by,
+      affects: fm.affects,
       archived: fm.archived || false,
       canvas_source: fm.canvas_source || '',
       vault_path: filePath,
@@ -412,6 +420,37 @@ export class EntityParser {
       implementation_context: fm.implementation_context,
       implemented_by: fm.implemented_by,
       previous_version: fm.previous_version,
+      documents: fm.documents,
+      content: body,
+      archived: fm.archived || false,
+      canvas_source: fm.canvas_source || '',
+      vault_path: filePath,
+      cssclasses: fm.cssclasses || [],
+      created_at: fm.created_at || new Date().toISOString(),
+      updated_at: fm.updated_at || new Date().toISOString(),
+    };
+  }
+
+  private parseFeature(
+    id: EntityId,
+    fm: FrontmatterData,
+    body: string,
+    filePath: VaultPath,
+    errors: string[]
+  ): Feature {
+    return {
+      id: id as any, // Cast to specific ID type
+      type: 'feature',
+      title: fm.title || this.extractTitleFromBody(body) || 'Untitled',
+      workstream: fm.workstream || 'default',
+      status: this.validateStatus<FeatureStatus>(fm.status, ['Planned', 'In Progress', 'Complete', 'Deferred'] as FeatureStatus[], 'Planned' as FeatureStatus),
+      user_story: fm.user_story || '',
+      tier: this.validateTier(fm.tier),
+      phase: this.validatePhase(fm.phase),
+      implemented_by: fm.implemented_by,
+      documented_by: fm.documented_by,
+      decided_by: fm.decided_by,
+      test_refs: fm.test_refs || [],
       content: body,
       archived: fm.archived || false,
       canvas_source: fm.canvas_source || '',
@@ -439,6 +478,16 @@ export class EntityParser {
   private validateEffort(value: any): Effort {
     const valid: Effort[] = ['Engineering', 'Business', 'Infra', 'Research', 'Design', 'Marketing'];
     return valid.includes(value) ? value : 'Engineering';
+  }
+
+  private validateTier(value: any): FeatureTier {
+    const valid: FeatureTier[] = ['OSS', 'Premium'];
+    return valid.includes(value) ? value : 'OSS';
+  }
+
+  private validatePhase(value: any): FeaturePhase {
+    const valid: FeaturePhase[] = ['MVP', '0', '1', '2', '3', '4', '5'];
+    return valid.includes(value) ? value : 'MVP';
   }
 
   private extractTitleFromBody(body: string): string | null {

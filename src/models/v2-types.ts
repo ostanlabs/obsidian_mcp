@@ -30,18 +30,21 @@ export type DecisionId = Brand<string, 'DecisionId'>;
 /** Document ID (DOC-xxx) */
 export type DocumentId = Brand<string, 'DocumentId'>;
 
+/** Feature ID (F-xxx) */
+export type FeatureId = Brand<string, 'FeatureId'>;
+
 /** Union of all entity ID types */
-export type EntityId = MilestoneId | StoryId | TaskId | DecisionId | DocumentId;
+export type EntityId = MilestoneId | StoryId | TaskId | DecisionId | DocumentId | FeatureId;
 
 // =============================================================================
 // Entity Types
 // =============================================================================
 
 /** All entity types in the V2 system */
-export type EntityType = 'milestone' | 'story' | 'task' | 'decision' | 'document';
+export type EntityType = 'milestone' | 'story' | 'task' | 'decision' | 'document' | 'feature';
 
 /** Valid entity type values */
-export const ENTITY_TYPES: readonly EntityType[] = ['milestone', 'story', 'task', 'decision', 'document'] as const;
+export const ENTITY_TYPES: readonly EntityType[] = ['milestone', 'story', 'task', 'decision', 'document', 'feature'] as const;
 
 /** Type guard for EntityType */
 export function isEntityType(value: unknown): value is EntityType {
@@ -67,8 +70,17 @@ export type DecisionStatus = 'Pending' | 'Decided' | 'Superseded';
 /** Document status values */
 export type DocumentStatus = 'Draft' | 'Review' | 'Approved' | 'Superseded';
 
+/** Feature status values */
+export type FeatureStatus = 'Planned' | 'In Progress' | 'Complete' | 'Deferred';
+
+/** Feature tier values */
+export type FeatureTier = 'OSS' | 'Premium';
+
+/** Feature phase values */
+export type FeaturePhase = 'MVP' | '0' | '1' | '2' | '3' | '4' | '5';
+
 /** Union of all status types */
-export type EntityStatus = MilestoneStatus | StoryStatus | TaskStatus | DecisionStatus | DocumentStatus;
+export type EntityStatus = MilestoneStatus | StoryStatus | TaskStatus | DecisionStatus | DocumentStatus | FeatureStatus;
 
 // =============================================================================
 // Common Types
@@ -103,6 +115,7 @@ export const ID_PATTERNS = {
   task: /^T-(\d{3,})$/,
   decision: /^DEC-(\d{3,})$/,
   document: /^DOC-(\d{3,})$/,
+  feature: /^F-(\d{3,})$/,
 } as const;
 
 /** ID prefixes by entity type */
@@ -112,6 +125,7 @@ export const ID_PREFIXES = {
   task: 'T',
   decision: 'DEC',
   document: 'DOC',
+  feature: 'F',
 } as const;
 
 // =============================================================================
@@ -143,9 +157,14 @@ export function isDocumentId(id: string): id is DocumentId {
   return ID_PATTERNS.document.test(id);
 }
 
+/** Check if a string is a valid Feature ID */
+export function isFeatureId(id: string): id is FeatureId {
+  return ID_PATTERNS.feature.test(id);
+}
+
 /** Check if a string is any valid Entity ID */
 export function isEntityId(id: string): id is EntityId {
-  return isMilestoneId(id) || isStoryId(id) || isTaskId(id) || isDecisionId(id) || isDocumentId(id);
+  return isMilestoneId(id) || isStoryId(id) || isTaskId(id) || isDecisionId(id) || isDocumentId(id) || isFeatureId(id);
 }
 
 /** Get entity type from ID */
@@ -155,6 +174,7 @@ export function getEntityTypeFromId(id: string): EntityType | null {
   if (isTaskId(id)) return 'task';
   if (isDecisionId(id)) return 'decision';
   if (isDocumentId(id)) return 'document';
+  if (isFeatureId(id)) return 'feature';
   return null;
 }
 
@@ -241,8 +261,8 @@ export interface Milestone extends EntityBase {
   blocks?: EntityId[];
 
   // === IMPLEMENTATION ===
-  /** Document IDs this milestone implements or is guided by */
-  implements?: DocumentId[];
+  /** Document or Feature IDs this milestone implements or is guided by */
+  implements?: (DocumentId | FeatureId)[];
 
   /** Objective description (markdown content) */
   objective?: string;
@@ -306,8 +326,8 @@ export interface Story extends EntityBase {
   blocks?: EntityId[];
 
   // === IMPLEMENTATION ===
-  /** Document IDs this story implements */
-  implements?: DocumentId[];
+  /** Document or Feature IDs this story implements */
+  implements?: (DocumentId | FeatureId)[];
 
   /** Outcome description */
   outcome?: string;
@@ -414,6 +434,10 @@ export interface Decision extends EntityBase {
 
   /** Decision that superseded this one (auto-synced from Decision.supersedes) */
   superseded_by?: DecisionId;
+
+  // === FEATURE RELATIONSHIPS ===
+  /** Features this decision affects (syncs to Feature.decided_by) */
+  affects?: FeatureId[];
 }
 
 // =============================================================================
@@ -449,6 +473,10 @@ export interface Document extends EntityBase {
   /** Stories or Milestones that implement this document */
   implemented_by?: (StoryId | MilestoneId)[];
 
+  // === FEATURE RELATIONSHIPS ===
+  /** Features this document describes (syncs to Feature.documented_by) */
+  documents?: FeatureId[];
+
   // === VERSIONING ===
   /** Previous version of this document */
   previous_version?: DocumentId;
@@ -464,11 +492,56 @@ export interface Document extends EntityBase {
 }
 
 // =============================================================================
+// Feature Interface
+// =============================================================================
+
+/**
+ * Feature entity (F-xxx).
+ * Represents a user-facing capability that can be implemented by milestones/stories.
+ */
+export interface Feature extends EntityBase {
+  /** Entity type discriminator */
+  type: 'feature';
+
+  /** Feature ID */
+  id: FeatureId;
+
+  /** Feature status */
+  status: FeatureStatus;
+
+  // === FEATURE-SPECIFIC ===
+  /** User story format: "As a... I want... so that..." */
+  user_story: string;
+
+  /** Feature tier (OSS or Premium) */
+  tier: FeatureTier;
+
+  /** Implementation phase */
+  phase: FeaturePhase;
+
+  // === RELATIONSHIPS ===
+  /** Milestones/Stories that implement this feature (auto-synced from *.implements) */
+  implemented_by?: (MilestoneId | StoryId)[];
+
+  /** Documents that describe this feature (auto-synced from Document.documents) */
+  documented_by?: DocumentId[];
+
+  /** Decisions that affect this feature (auto-synced from Decision.affects) */
+  decided_by?: DecisionId[];
+
+  /** Test file references for this feature */
+  test_refs?: string[];
+
+  /** Feature content (markdown) */
+  content?: string;
+}
+
+// =============================================================================
 // Union Types for Full Entities
 // =============================================================================
 
 /** Union of all full entity types */
-export type Entity = Milestone | Story | Task | Decision | Document;
+export type Entity = Milestone | Story | Task | Decision | Document | Feature;
 
 // =============================================================================
 // EntityMetadata Interface (Lightweight for Index)
