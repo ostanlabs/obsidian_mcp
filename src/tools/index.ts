@@ -251,28 +251,29 @@ export const entityToolDefinitions: Tool[] = [
   // Category 4: Search & Navigation
   {
     name: 'search_entities',
-    description: 'Full-text search across entities with filters. Enhanced to support navigation mode (consolidates navigate_hierarchy). Use query for search mode, or from_id+direction for navigation mode.',
+    description: 'Search, list, or navigate entities. Three modes: (1) SEARCH: provide query for full-text search, (2) NAVIGATE: provide from_id+direction to traverse hierarchy, (3) LIST: provide only filters (or nothing) to list all matching entities. Filters apply to all modes.',
     inputSchema: {
       type: 'object',
       properties: {
         // Search mode
-        query: { type: 'string', description: 'Search query (for search mode)' },
+        query: { type: 'string', description: 'Full-text search query (search mode)' },
         // Navigation mode (from navigate_hierarchy)
-        from_id: { type: 'string', description: 'Starting entity ID (for navigation mode)' },
-        direction: { type: 'string', enum: ['up', 'down', 'siblings', 'dependencies'], description: 'Navigation direction (for navigation mode)' },
-        depth: { type: 'number', description: 'How many levels to traverse (for navigation mode)' },
-        // Filters (apply to both modes)
+        from_id: { type: 'string', description: 'Starting entity ID (navigation mode)' },
+        direction: { type: 'string', enum: ['up', 'down', 'siblings', 'dependencies'], description: 'Navigation direction (navigation mode)' },
+        depth: { type: 'number', description: 'How many levels to traverse (navigation mode, default: 1)' },
+        // Filters (apply to all modes)
         filters: {
           type: 'object',
+          description: 'Filters apply to all modes. In list mode, can be used alone to get all entities matching criteria.',
           properties: {
-            type: { type: 'array', items: { type: 'string', enum: ['milestone', 'story', 'task', 'decision', 'document'] } },
+            type: { type: 'array', items: { type: 'string', enum: ['milestone', 'story', 'task', 'decision', 'document', 'feature'] } },
             status: { type: 'array', items: { type: 'string' } },
             workstream: { type: 'array', items: { type: 'string' } },
-            archived: { type: 'boolean' },
+            archived: { type: 'boolean', description: 'Include archived entities (default: false)' },
           },
         },
         // Response control
-        limit: { type: 'number', description: 'Max results to return' },
+        limit: { type: 'number', description: 'Max results to return (default: 50)' },
         include_content: { type: 'boolean' },
         fields: {
           type: 'array',
