@@ -184,10 +184,15 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 // Define get_resources_index tool (needs access to resourceCache)
 const getResourcesIndexDefinition = {
   name: 'get_resources_index',
-  description: 'Get a list of all indexed resource URIs from all workspaces. Use this to discover available documents that can be read via MCP resources.',
+  description: 'Get a list of all indexed resource URIs. Use this to discover available documents that can be read via MCP resources. Optionally filter by workspace.',
   inputSchema: {
     type: 'object' as const,
-    properties: {},
+    properties: {
+      workspace: {
+        type: 'string',
+        description: 'Optional workspace name to filter resources. If not provided, returns resources from all workspaces.',
+      },
+    },
     required: [],
   },
 };
@@ -207,10 +212,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     let result: unknown;
 
     switch (name) {
-      // Utility tools
-      case 'read_docs':
-        result = await handleReadDocs(config, args as any);
-        break;
+      // TEMPORARILY DISABLED: read_docs tool
+      // case 'read_docs':
+      //   result = await handleReadDocs(config, args as any);
+      //   break;
 
       case 'update_doc':
         result = await handleUpdateDoc(config, args as any);
@@ -225,12 +230,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       //   result = await handleListFiles(config, args as any);
       //   break;
 
-      case 'get_resources_index':
+      case 'get_resources_index': {
+        const workspace = (args as { workspace?: string })?.workspace;
+        let filteredResources = resourceCache;
+
+        if (workspace) {
+          // Filter by workspace - URI format is obsidian://workspace/path
+          const prefix = `obsidian://${workspace}/`;
+          filteredResources = resourceCache.filter(r => r.uri.startsWith(prefix));
+        }
+
         result = {
-          count: resourceCache.length,
-          resources: resourceCache.map(r => r.uri),
+          workspace: workspace || 'all',
+          count: filteredResources.length,
+          resources: filteredResources.map(r => r.uri),
         };
         break;
+      }
 
       // Entity Management
       case 'create_entity': {

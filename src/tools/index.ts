@@ -57,7 +57,7 @@ import { listFilesDefinition } from './list-files.js';
 
 // Utility tool definitions (cast to Tool[] to handle type literal compatibility)
 export const utilityToolDefinitions: Tool[] = [
-  readDocsDefinition as Tool,
+  // TEMPORARILY DISABLED: readDocsDefinition as Tool,
   updateDocDefinition as Tool,
   listWorkspacesDefinition as Tool,
   // TEMPORARILY DISABLED: listFilesDefinition as Tool,
