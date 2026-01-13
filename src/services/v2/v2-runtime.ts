@@ -54,6 +54,65 @@ import type { EntitySummary, EntityFull, Workstream } from '../../tools/tool-typ
 import { getConfig } from '../../utils/config.js';
 
 // =============================================================================
+// Obsidian Plugin Notification
+// =============================================================================
+
+/**
+ * Operation type for Obsidian plugin notification.
+ * - 'populate': Refresh canvas nodes from vault files
+ * - 'reposition': Reposition nodes on the canvas
+ */
+export type ObsidianPluginOperation = 'populate' | 'reposition';
+
+/**
+ * Configuration for the Obsidian plugin endpoint.
+ */
+const OBSIDIAN_PLUGIN_ENDPOINT = 'http://127.0.0.1:12312';
+const OBSIDIAN_PLUGIN_TIMEOUT_MS = 5000; // 5 second timeout
+
+/**
+ * Notify the Obsidian plugin to perform an operation.
+ * This sends a POST request to the plugin's local HTTP endpoint.
+ * The request is fire-and-forget - it does not block the calling operation.
+ *
+ * @param operation - The operation to perform ('populate' or 'reposition')
+ */
+export function notifyObsidianPlugin(operation: ObsidianPluginOperation): void {
+  console.error(`[V2Runtime] Notifying Obsidian plugin: action=${operation}`);
+
+  // Fire-and-forget: don't await the fetch, just let it run in the background
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), OBSIDIAN_PLUGIN_TIMEOUT_MS);
+
+  fetch(OBSIDIAN_PLUGIN_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ action: operation }),
+    signal: controller.signal,
+  })
+    .then((response) => {
+      clearTimeout(timeoutId);
+      if (response.ok) {
+        console.error(`[V2Runtime] Obsidian plugin notification successful: action=${operation}`);
+      } else {
+        console.error(`[V2Runtime] Obsidian plugin notification failed: ${response.status} ${response.statusText}`);
+      }
+    })
+    .catch((error) => {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error(`[V2Runtime] Obsidian plugin notification timed out after ${OBSIDIAN_PLUGIN_TIMEOUT_MS}ms`);
+      } else {
+        // Silently log errors - plugin might not be running
+        // This is expected when Obsidian is not open
+        console.error(`[V2Runtime] Could not notify Obsidian plugin (may not be running):`, error instanceof Error ? error.message : error);
+      }
+    });
+}
+
+// =============================================================================
 // V2 Runtime Class
 // =============================================================================
 
@@ -734,6 +793,9 @@ export class V2Runtime {
 
     // Sync bidirectional implements/implemented_by relationships
     await this.syncBidirectionalRelationships(entity);
+
+    // Notify Obsidian plugin to refresh canvas (fire-and-forget)
+    notifyObsidianPlugin('populate');
   }
 
   /**
@@ -1246,6 +1308,9 @@ export class V2Runtime {
     const metadata = this.createEntityMetadata(entity, stats.mtimeMs);
     this.index.set(metadata);
 
+    // Notify Obsidian plugin to refresh canvas (fire-and-forget)
+    notifyObsidianPlugin('populate');
+
     return targetPath;
   }
 
@@ -1276,6 +1341,9 @@ export class V2Runtime {
     const stats = await fs.stat(absoluteTarget);
     const metadata = this.createEntityMetadata(entity, stats.mtimeMs);
     this.index.set(metadata);
+
+    // Notify Obsidian plugin to refresh canvas (fire-and-forget)
+    notifyObsidianPlugin('populate');
 
     return targetPath;
   }
