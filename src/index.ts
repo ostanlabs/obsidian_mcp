@@ -209,9 +209,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await handleListWorkspaces(config, args as any);
         break;
 
-      case 'list_files':
-        result = await handleListFiles(config, args as any);
-        break;
+      // TEMPORARILY DISABLED: list_files tool
+      // case 'list_files':
+      //   result = await handleListFiles(config, args as any);
+      //   break;
 
       // Entity Management
       case 'create_entity': {
