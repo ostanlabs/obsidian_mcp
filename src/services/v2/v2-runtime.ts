@@ -2049,6 +2049,7 @@ export class V2Runtime {
   getSearchNavigationDeps(): SearchNavigationDependencies {
     return {
       searchEntities: (query, options) => this.searchEntities(query, options),
+      getAllEntities: (options) => this.getAllEntities(options),
       getEntity: (id) => this.getEntity(id),
       getEntityPath: (id) => this.getEntityPath(id),
       toEntitySummary: (entity) => this.toEntitySummary(entity),

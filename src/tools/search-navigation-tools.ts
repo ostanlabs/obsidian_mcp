@@ -24,6 +24,7 @@ import type {
   EntityFull,
   EntityStatus,
   Workstream,
+  Effort,
 } from './tool-types.js';
 
 // =============================================================================
@@ -42,6 +43,14 @@ export interface SearchNavigationDependencies {
     archived?: boolean;
     limit?: number;
   }) => Promise<Array<{ entity: Entity; score: number; snippet: string }>>;
+
+  /** Get all entities with optional filters (for list mode) */
+  getAllEntities: (options?: {
+    includeCompleted?: boolean;
+    includeArchived?: boolean;
+    workstream?: string;
+    types?: EntityType[];
+  }) => Promise<Entity[]>;
 
   /** Get entity by ID */
   getEntity: (id: EntityId) => Promise<Entity | null>;
@@ -80,55 +89,113 @@ export interface SearchNavigationDependencies {
 
 /**
  * Full-text search across entities with filters.
- * Enhanced to support navigation mode (consolidates navigate_hierarchy).
+ * Supports three modes:
+ * 1. Search mode: query is provided - full-text search
+ * 2. Navigation mode: from_id + direction - traverse hierarchy
+ * 3. List mode: filters only (or no params) - list entities matching filters
  */
 export async function searchEntities(
   input: SearchEntitiesInput,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
-  const { query, from_id, direction, depth = 1, filters, limit = 20 } = input;
+  const { query, from_id, direction, depth = 1, filters, limit = 50 } = input;
 
   // Navigation mode: if from_id and direction are specified
   if (from_id && direction) {
     return performNavigation(from_id, direction, depth, filters, deps);
   }
 
-  // Search mode: query is required
-  if (!query) {
-    throw new Error('Either query (for search) or from_id+direction (for navigation) is required');
+  // Search mode: if query is provided
+  if (query) {
+    const searchResults = await deps.searchEntities(query, {
+      types: filters?.type,
+      statuses: filters?.status,
+      workstreams: filters?.workstream,
+      archived: filters?.archived,
+      limit,
+    });
+
+    const results: SearchEntitiesOutput['results'] = [];
+
+    for (const { entity, score, snippet } of searchResults) {
+      const path = await deps.getEntityPath(entity.id);
+
+      results.push({
+        id: entity.id,
+        type: entity.type,
+        title: entity.title,
+        status: entity.status,
+        workstream: entity.workstream,
+        relevance_score: score,
+        snippet,
+        parent: 'parent' in entity ? (entity.parent as EntityId) : undefined,
+        path,
+      });
+    }
+
+    return {
+      results,
+      total_matches: results.length,
+    };
   }
 
-  // Perform search
-  const searchResults = await deps.searchEntities(query, {
+  // List mode: no query, no navigation - just list entities with filters
+  return performListMode(filters, limit, deps);
+}
+
+/**
+ * List entities with optional filters.
+ * Internal helper for searchEntities list mode.
+ */
+async function performListMode(
+  filters: SearchEntitiesInput['filters'] | undefined,
+  limit: number,
+  deps: SearchNavigationDependencies
+): Promise<SearchEntitiesOutput> {
+  // Get all entities with basic filters
+  let entities = await deps.getAllEntities({
+    includeArchived: filters?.archived ?? false,
+    includeCompleted: true,
     types: filters?.type,
-    statuses: filters?.status,
-    workstreams: filters?.workstream,
-    archived: filters?.archived,
-    limit,
+    workstream: filters?.workstream?.[0], // getAllEntities only supports single workstream
   });
 
-  // Build results
-  const results: SearchEntitiesOutput['results'] = [];
+  // Apply additional filters that getAllEntities doesn't support
+  if (filters?.status && filters.status.length > 0) {
+    entities = entities.filter(e => filters.status!.includes(e.status as EntityStatus));
+  }
 
-  for (const { entity, score, snippet } of searchResults) {
-    const path = await deps.getEntityPath(entity.id);
+  // Apply workstream filter for multiple workstreams (getAllEntities only supports one)
+  if (filters?.workstream && filters.workstream.length > 1) {
+    entities = entities.filter(e => filters.workstream!.includes(e.workstream));
+  }
 
-    results.push({
-      id: entity.id,
-      type: entity.type,
-      title: entity.title,
-      status: entity.status,
-      workstream: entity.workstream,
-      relevance_score: score,
-      snippet,
-      parent: 'parent' in entity ? (entity.parent as EntityId) : undefined,
-      path,
+  // Apply effort filter if present
+  if (filters?.effort && filters.effort.length > 0) {
+    entities = entities.filter(e => {
+      if ('effort' in e && e.effort) {
+        return filters.effort!.includes(e.effort as Effort);
+      }
+      return false;
     });
   }
 
+  // Apply limit
+  const limitedEntities = entities.slice(0, limit);
+
+  // Build results
+  const results: SearchEntitiesOutput['results'] = limitedEntities.map(entity => ({
+    id: entity.id,
+    type: entity.type,
+    title: entity.title,
+    status: entity.status as EntityStatus,
+    workstream: entity.workstream,
+    parent: 'parent' in entity ? (entity.parent as EntityId) : undefined,
+  }));
+
   return {
     results,
-    total_matches: results.length,
+    total_matches: entities.length,
   };
 }
 
