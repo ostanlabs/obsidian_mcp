@@ -181,10 +181,21 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 // Tool Handlers
 // ============================================================================
 
+// Define get_resources_index tool (needs access to resourceCache)
+const getResourcesIndexDefinition = {
+  name: 'get_resources_index',
+  description: 'Get a list of all indexed resource URIs from all workspaces. Use this to discover available documents that can be read via MCP resources.',
+  inputSchema: {
+    type: 'object' as const,
+    properties: {},
+    required: [],
+  },
+};
+
 // Register tool list handler
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
-    tools: allToolDefinitions,
+    tools: [...allToolDefinitions, getResourcesIndexDefinition],
   };
 });
 
@@ -213,6 +224,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // case 'list_files':
       //   result = await handleListFiles(config, args as any);
       //   break;
+
+      case 'get_resources_index':
+        result = {
+          count: resourceCache.length,
+          resources: resourceCache.map(r => r.uri),
+        };
+        break;
 
       // Entity Management
       case 'create_entity': {
