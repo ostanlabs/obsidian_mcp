@@ -94,10 +94,10 @@ describe('Tools Index Integration Tests', () => {
 
       // Should include both utility and entity tools
       const toolNames = allToolDefinitions.map((t) => t.name);
-      // TEMPORARILY DISABLED: expect(toolNames).toContain('read_docs');
+      expect(toolNames).toContain('read_docs');
       expect(toolNames).toContain('update_doc');
       expect(toolNames).toContain('list_workspaces');
-      // TEMPORARILY DISABLED: expect(toolNames).toContain('list_files');
+      expect(toolNames).toContain('list_files');
       expect(toolNames).toContain('create_entity');
       expect(toolNames).toContain('search_entities');
     });
@@ -105,14 +105,13 @@ describe('Tools Index Integration Tests', () => {
     it('should export utilityToolDefinitions with utility tools', () => {
       expect(utilityToolDefinitions).toBeDefined();
       expect(Array.isArray(utilityToolDefinitions)).toBe(true);
-      // TEMPORARILY DISABLED: read_docs and list_files tools (was 4, now 2)
-      expect(utilityToolDefinitions.length).toBe(2);
+      expect(utilityToolDefinitions.length).toBe(4);
 
       const toolNames = utilityToolDefinitions.map((t) => t.name);
-      // TEMPORARILY DISABLED: expect(toolNames).toContain('read_docs');
+      expect(toolNames).toContain('read_docs');
       expect(toolNames).toContain('update_doc');
       expect(toolNames).toContain('list_workspaces');
-      // TEMPORARILY DISABLED: expect(toolNames).toContain('list_files');
+      expect(toolNames).toContain('list_files');
     });
 
     it('should export entityToolDefinitions with entity tools', () => {
