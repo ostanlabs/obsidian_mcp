@@ -5,9 +5,13 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import type { Resource } from '@modelcontextprotocol/sdk/types.js';
 
-import { getConfig } from './utils/config.js';
+import { getConfig, getAllWorkspaces, getWorkspacePath } from './utils/config.js';
+import { listFilesRecursive, readFile } from './utils/file-utils.js';
 import { MCPError } from './models/types.js';
 import { getV2Runtime } from './services/v2/v2-runtime.js';
 import type { V2Config } from './models/v2-types.js';
@@ -51,6 +55,7 @@ const server = new Server(
   {
     capabilities: {
       tools: {},
+      resources: {},
     },
   }
 );
@@ -85,6 +90,96 @@ async function getOrCreateV2Runtime() {
   }
   return v2RuntimePromise;
 }
+
+// ============================================================================
+// Resource Handlers
+// ============================================================================
+
+// Cache for indexed resources (populated on startup)
+let resourceCache: Resource[] = [];
+
+/**
+ * Parse a resource URI to extract workspace and file path
+ * URI format: obsidian://workspace-name/path/to/file.md
+ */
+function parseResourceUri(uri: string): { workspace: string; filePath: string } | null {
+  const match = uri.match(/^obsidian:\/\/([^/]+)\/(.+)$/);
+  if (!match) return null;
+  return { workspace: match[1], filePath: match[2] };
+}
+
+/**
+ * Index all documents in all workspaces and populate the resource cache
+ */
+async function indexAllResources(): Promise<void> {
+  const resources: Resource[] = [];
+  const workspaces = getAllWorkspaces(config);
+
+  for (const [workspaceName, wsConfig] of Object.entries(workspaces)) {
+    try {
+      const allFiles = await listFilesRecursive(wsConfig.path);
+      const mdFiles = allFiles.filter(f => f.endsWith('.md'));
+
+      for (const file of mdFiles) {
+        const uri = `obsidian://${workspaceName}/${file}`;
+        const name = file.replace(/\.md$/, '').split('/').pop() || file;
+
+        resources.push({
+          uri,
+          name,
+          description: `${workspaceName}: ${file}`,
+          mimeType: 'text/markdown',
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to index workspace ${workspaceName}:`, error);
+    }
+  }
+
+  resourceCache = resources;
+  console.error(`Indexed ${resources.length} resources from ${Object.keys(workspaces).length} workspaces`);
+}
+
+// Register resources/list handler
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  return { resources: resourceCache };
+});
+
+// Register resources/read handler
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  const { uri } = request.params;
+
+  const parsed = parseResourceUri(uri);
+  if (!parsed) {
+    throw new MCPError(`Invalid resource URI: ${uri}`, 'INVALID_URI', 400);
+  }
+
+  const workspacePath = getWorkspacePath(config, parsed.workspace);
+  if (!workspacePath) {
+    throw new MCPError(`Workspace not found: ${parsed.workspace}`, 'NOT_FOUND', 404);
+  }
+
+  const absolutePath = `${workspacePath}/${parsed.filePath}`;
+
+  try {
+    const content = await readFile(absolutePath);
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: 'text/markdown',
+          text: content,
+        },
+      ],
+    };
+  } catch (error) {
+    throw new MCPError(`Failed to read resource: ${uri}`, 'READ_ERROR', 500);
+  }
+});
+
+// ============================================================================
+// Tool Handlers
+// ============================================================================
 
 // Register tool list handler
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -241,6 +336,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // Start the server
 async function main() {
+  // Index all resources on startup
+  await indexAllResources();
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('Obsidian Accomplishments MCP Server running on stdio');
