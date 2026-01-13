@@ -212,10 +212,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     let result: unknown;
 
     switch (name) {
-      // TEMPORARILY DISABLED: read_docs tool
-      // case 'read_docs':
-      //   result = await handleReadDocs(config, args as any);
-      //   break;
+      // Utility tools
+      case 'read_docs':
+        result = await handleReadDocs(config, args as any);
+        break;
 
       case 'update_doc':
         result = await handleUpdateDoc(config, args as any);
@@ -225,10 +225,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await handleListWorkspaces(config, args as any);
         break;
 
-      // TEMPORARILY DISABLED: list_files tool
-      // case 'list_files':
-      //   result = await handleListFiles(config, args as any);
-      //   break;
+      case 'list_files':
+        result = await handleListFiles(config, args as any);
+        break;
 
       case 'get_resources_index': {
         const workspace = (args as { workspace?: string })?.workspace;
