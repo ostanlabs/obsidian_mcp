@@ -60,7 +60,7 @@ export const utilityToolDefinitions: Tool[] = [
   readDocsDefinition as Tool,
   updateDocDefinition as Tool,
   listWorkspacesDefinition as Tool,
-  listFilesDefinition as Tool,
+  // TEMPORARILY DISABLED: listFilesDefinition as Tool,
 ];
 
 // Entity tool definitions (non-prefixed)
