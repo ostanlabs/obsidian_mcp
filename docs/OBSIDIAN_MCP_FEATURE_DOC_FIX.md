@@ -301,9 +301,38 @@ After implementing fixes:
 
 ## Acceptance Criteria
 
-- [ ] `get_entity` returns `documents` field for Document entities
-- [ ] `get_entity` returns `documented_by` field for Feature entities  
-- [ ] `get_feature_coverage` correctly shows documentation coverage
-- [ ] Bidirectional sync works (update one side, other side reflects)
-- [ ] All existing tests pass
-- [ ] New test cases pass
+- [x] `get_entity` returns `documents` field for Document entities
+- [x] `get_entity` returns `documented_by` field for Feature entities
+- [x] `get_feature_coverage` correctly shows documentation coverage
+- [x] Bidirectional sync works (update one side, other side reflects)
+- [x] All existing tests pass
+- [x] New test cases pass
+
+---
+
+## Implementation Status: ✅ COMPLETE
+
+**Completed:** 2026-01-14
+
+The fix was implemented in `src/services/v2/v2-runtime.ts` in the `toEntityFull()` method:
+
+```typescript
+// Add document-specific fields
+if (entity.type === 'document') {
+  const doc = entity as Document;
+  if (doc.documents && doc.documents.length > 0) {
+    full.documents = doc.documents;
+  }
+}
+
+// Add feature-specific fields
+if (entity.type === 'feature') {
+  const feature = entity as Feature;
+  // ... other fields ...
+  if (feature.documented_by && feature.documented_by.length > 0) {
+    full.documented_by = feature.documented_by;
+  }
+}
+```
+
+The `EntityFull` type in `src/tools/tool-types.ts` was also updated to include these optional fields.
