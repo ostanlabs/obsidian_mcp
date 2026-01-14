@@ -67,11 +67,11 @@ export const entityToolDefinitions: Tool[] = [
   // Category 1: Entity Management
   {
     name: 'create_entity',
-    description: 'Create a new entity (milestone, story, task, decision, or document) with optional dependencies and relationships.',
+    description: 'Create a new entity (milestone, story, task, decision, document, or feature) with optional dependencies and relationships.',
     inputSchema: {
       type: 'object',
       properties: {
-        type: { type: 'string', enum: ['milestone', 'story', 'task', 'decision', 'document'], description: 'Entity type to create' },
+        type: { type: 'string', enum: ['milestone', 'story', 'task', 'decision', 'document', 'feature'], description: 'Entity type to create' },
         data: {
           type: 'object',
           properties: {
