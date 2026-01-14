@@ -1472,6 +1472,34 @@ export class V2Runtime {
       full.effort = (entity as Story).effort;
     }
 
+    // Add document-specific fields
+    if (entity.type === 'document') {
+      const doc = entity as Document;
+      if (doc.documents && doc.documents.length > 0) {
+        full.documents = doc.documents;
+      }
+    }
+
+    // Add feature-specific fields
+    if (entity.type === 'feature') {
+      const feature = entity as Feature;
+      full.user_story = feature.user_story;
+      full.tier = feature.tier;
+      full.phase = feature.phase;
+      if (feature.documented_by && feature.documented_by.length > 0) {
+        full.documented_by = feature.documented_by;
+      }
+      if (feature.implemented_by && feature.implemented_by.length > 0) {
+        full.implemented_by = feature.implemented_by;
+      }
+      if (feature.decided_by && feature.decided_by.length > 0) {
+        full.decided_by = feature.decided_by;
+      }
+      if (feature.test_refs && feature.test_refs.length > 0) {
+        full.test_refs = feature.test_refs;
+      }
+    }
+
     return full;
   }
 

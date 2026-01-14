@@ -59,6 +59,20 @@ export interface EntityFull extends EntitySummary {
     reference: EntitySummary[];
     assumes: string[];
   };
+  // Document-specific: Features this document describes
+  documents?: EntityId[];
+  // Feature-specific: Documents that describe this feature
+  documented_by?: EntityId[];
+  // Feature-specific: Entities that implement this feature
+  implemented_by?: EntityId[];
+  // Feature-specific: Decisions that affect this feature
+  decided_by?: EntityId[];
+  // Feature-specific: Test file references
+  test_refs?: string[];
+  // Feature-specific fields
+  user_story?: string;
+  tier?: string;
+  phase?: string;
 }
 
 export interface TaskInfo {
