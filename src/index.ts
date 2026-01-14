@@ -35,10 +35,12 @@ import {
   getProjectOverview,
   analyzeProjectState,
   getFeatureCoverage,
+  getSchema,
 } from './tools/project-understanding-tools.js';
 import {
   searchEntities,
   getEntity,
+  getEntities,
 } from './tools/search-navigation-tools.js';
 import { manageDocuments } from './tools/decision-document-tools.js';
 
@@ -290,6 +292,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await getEntity(args as any, runtime.getSearchNavigationDeps());
         break;
       }
+      case 'get_entities': {
+        const runtime = await getOrCreateV2Runtime();
+        result = await getEntities(args as any, runtime.getSearchNavigationDeps());
+        break;
+      }
 
       // Decision & Document Management
       case 'manage_documents': {
@@ -302,17 +309,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'reconcile_relationships': {
         const runtime = await getOrCreateV2Runtime();
         const dryRun = (args as any).dry_run === true;
-        if (dryRun) {
-          // For dry run, we need to scan without modifying
-          // For now, just run the reconciliation and report
-          // A true dry-run would require refactoring the method
-          result = {
-            message: 'Dry run not yet implemented. Run without dry_run to reconcile relationships.',
-            hint: 'This will scan all entities and ensure bidirectional implements/implemented_by consistency.',
-          };
-        } else {
-          result = await runtime.reconcileImplementsRelationships();
-        }
+        result = await runtime.reconcileImplementsRelationships({ dry_run: dryRun });
+        break;
+      }
+
+      // Schema Introspection
+      case 'get_schema': {
+        result = getSchema(args as any);
         break;
       }
 
