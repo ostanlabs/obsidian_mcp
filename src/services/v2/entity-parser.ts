@@ -487,7 +487,12 @@ export class EntityParser {
 
   private validatePhase(value: any): FeaturePhase {
     const valid: FeaturePhase[] = ['MVP', '0', '1', '2', '3', '4', '5'];
-    return valid.includes(value) ? value : 'MVP';
+    // Convert to string to handle YAML parsing numbers (e.g., phase: 4 vs phase: "4")
+    const strValue = value !== undefined && value !== null ? String(value) : undefined;
+    if (strValue && valid.includes(strValue as FeaturePhase)) {
+      return strValue as FeaturePhase;
+    }
+    return 'MVP';
   }
 
   private extractTitleFromBody(body: string): string | null {
