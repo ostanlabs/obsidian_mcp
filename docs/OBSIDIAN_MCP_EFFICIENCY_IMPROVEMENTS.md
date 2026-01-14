@@ -4,7 +4,9 @@
 **Priority:** High
 **Type:** Enhancement
 **Date:** 2026-01-14
-**Status:** ✅ P0 and P1 IMPLEMENTED (2026-01-14)
+**Status:** ✅ ALL PRIORITIES IMPLEMENTED (2026-01-14)
+
+See also: `OBSIDIAN_MCP_IMPROVEMENTS_PHASE2.md` for detailed implementation notes.
 
 ---
 
@@ -553,21 +555,21 @@ search_entities {
 | #3 | get_entities (bulk) | Medium | ~3,000/session | ✅ Done |
 | #4 | Fields always returned | Low | ~2,000/session | ✅ Done |
 
-### P2 - Medium Value
+### P2 - Medium Value ✅ IMPLEMENTED
 
-| Issue | Improvement | Effort | Benefit |
-|-------|-------------|--------|---------|
-| #5 | get_schema introspection | Medium | Reduces source code reading |
-| #6 | update_entity shows diff | Low | Better debugging |
+| Issue | Improvement | Effort | Benefit | Status |
+|-------|-------------|--------|---------|--------|
+| #5 | get_schema introspection | Medium | Reduces source code reading | ✅ Done |
+| #6 | update_entity shows diff | Low | Better debugging | ✅ Done |
 
-### P3 - Nice to Have
+### P3 - Nice to Have ✅ PARTIALLY IMPLEMENTED
 
-| Issue | Improvement | Effort | Benefit |
-|-------|-------------|--------|---------|
-| #7 | reconcile detailed output | Low | Better debugging |
-| #8 | batch_update dry_run | Low | Safer operations |
-| #9 | Tool descriptions | Low | Better tool selection |
-| #10 | Pagination | Medium | Large dataset handling |
+| Issue | Improvement | Effort | Benefit | Status |
+|-------|-------------|--------|---------|--------|
+| #7 | reconcile detailed output | Low | Better debugging | ✅ Done |
+| #8 | batch_update dry_run | Low | Safer operations | ✅ Done |
+| #9 | Tool descriptions | Low | Better tool selection | Pending |
+| #10 | Pagination | Medium | Large dataset handling | ✅ Done (offset param added) |
 
 ---
 
