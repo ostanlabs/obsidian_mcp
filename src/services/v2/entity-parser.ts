@@ -221,7 +221,8 @@ export class EntityParser {
   /** Extract valid entity IDs from an array of strings */
   private extractValidEntityIds(elements: string[]): string[] {
     const validIds: string[] = [];
-    const idPattern = /^(M-\d{3}|S-\d{3}|T-\d{3}|DEC-\d{3}|DOC-\d{3})$/;
+    // Pattern includes all entity types: M (milestone), S (story), T (task), DEC (decision), DOC (document), F (feature)
+    const idPattern = /^(M-\d{3}|S-\d{3}|T-\d{3}|DEC-\d{3}|DOC-\d{3}|F-\d{3})$/;
 
     for (const el of elements) {
       if (idPattern.test(el)) {
@@ -229,7 +230,7 @@ export class EntityParser {
       } else {
         // Try to extract valid IDs from corrupted elements
         // This handles cases like character-by-character corruption
-        const matches = el.match(/(M-\d{3}|S-\d{3}|T-\d{3}|DEC-\d{3}|DOC-\d{3})/g);
+        const matches = el.match(/(M-\d{3}|S-\d{3}|T-\d{3}|DEC-\d{3}|DOC-\d{3}|F-\d{3})/g);
         if (matches) {
           validIds.push(...matches);
         }
