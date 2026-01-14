@@ -21,6 +21,8 @@ import type {
   EntityStatus,
   EntityFull,
   EntityField,
+  DryRunPreview,
+  FieldChange,
 } from './tool-types.js';
 
 import { validateRelationships } from './entity-management-tools.js';
@@ -97,6 +99,7 @@ export async function batchUpdate(
   const atomic = options?.atomic ?? false;
   const includeEntities = options?.include_entities ?? false;
   const requestedFields = options?.fields;
+  const dryRun = options?.dry_run ?? false;
 
   // Map of client_id → real EntityId (for cross-referencing within batch)
   const clientIdMap = new Map<string, EntityId>();
@@ -105,6 +108,7 @@ export async function batchUpdate(
   const processedClientIds = new Set<string>();
 
   const results: BatchOpResult[] = [];
+  const dryRunPreviews: DryRunPreview[] = [];
   let succeeded = 0;
   let failed = 0;
 
@@ -120,6 +124,38 @@ export async function batchUpdate(
       }
     }
     return filtered;
+  };
+
+  // Helper to compute field changes for dry_run preview
+  const computeChanges = (entity: Entity, payload: Record<string, unknown>): FieldChange[] => {
+    const changes: FieldChange[] = [];
+    const fieldsToCheck = ['title', 'status', 'priority', 'effort', 'content', 'workstream',
+      'target_date', 'owner', 'acceptance_criteria', 'implements', 'enables', 'parent', 'depends_on'];
+
+    for (const field of fieldsToCheck) {
+      if (field in payload && payload[field] !== undefined) {
+        const before = (entity as unknown as Record<string, unknown>)[field];
+        const after = payload[field];
+
+        // Check if values are different
+        const beforeStr = JSON.stringify(before);
+        const afterStr = JSON.stringify(after);
+        if (beforeStr !== afterStr) {
+          const change: FieldChange = { field, before, after };
+
+          // For array fields, compute added/removed
+          if (Array.isArray(before) && Array.isArray(after)) {
+            const beforeSet = new Set(before as unknown[]);
+            const afterSet = new Set(after as unknown[]);
+            change.added = (after as unknown[]).filter(v => !beforeSet.has(v));
+            change.removed = (before as unknown[]).filter(v => !afterSet.has(v));
+          }
+
+          changes.push(change);
+        }
+      }
+    }
+    return changes;
   };
 
   // Helper to resolve client_ids in payload
@@ -187,6 +223,23 @@ export async function batchUpdate(
           // Resolve client_ids in payload
           const resolvedPayload = resolveClientIds(op.payload);
 
+          if (dryRun) {
+            // In dry_run mode, just preview what would be created
+            const preview: DryRunPreview = {
+              client_id: op.client_id,
+              op: 'create',
+              changes: Object.entries(resolvedPayload).map(([field, value]) => ({
+                field,
+                before: undefined,
+                after: value,
+              })),
+              validation_errors: [],
+            };
+            dryRunPreviews.push(preview);
+            succeeded++;
+            break;
+          }
+
           // Create the entity
           const entity = await deps.createEntity(op.type, resolvedPayload);
 
@@ -230,17 +283,45 @@ export async function batchUpdate(
           // Resolve client_ids in payload
           const resolvedPayload = resolveClientIds(op.payload);
 
+          // Validate status transition if status is being changed
+          const validationErrors: string[] = [];
+          if (resolvedPayload.status && resolvedPayload.status !== entity.status) {
+            const validation = deps.validateStatusTransition(entity, resolvedPayload.status as EntityStatus);
+            if (!validation.valid) {
+              validationErrors.push(validation.reason || 'Invalid status transition');
+            }
+          }
+
+          if (dryRun) {
+            // In dry_run mode, compute and preview changes without executing
+            const preview: DryRunPreview = {
+              client_id: op.client_id,
+              id: op.id,
+              op: 'update',
+              changes: computeChanges(entity, resolvedPayload),
+              validation_errors: validationErrors,
+            };
+            dryRunPreviews.push(preview);
+            if (validationErrors.length === 0) {
+              succeeded++;
+            } else {
+              failed++;
+            }
+            break;
+          }
+
+          // Throw validation errors in non-dry_run mode
+          if (validationErrors.length > 0) {
+            throw new Error(validationErrors[0]);
+          }
+
           // Track what was updated
           let statusChanged = false;
           let dependenciesAdded = 0;
           let fieldsUpdated = 0;
 
-          // Handle status update with validation
+          // Handle status update
           if (resolvedPayload.status && resolvedPayload.status !== entity.status) {
-            const validation = deps.validateStatusTransition(entity, resolvedPayload.status as EntityStatus);
-            if (!validation.valid) {
-              throw new Error(validation.reason || 'Invalid status transition');
-            }
             (entity as any).status = resolvedPayload.status;
             statusChanged = true;
           }
@@ -307,6 +388,20 @@ export async function batchUpdate(
           const entity = await deps.getEntity(op.id);
           if (!entity) {
             throw new Error(`Entity not found: ${op.id}`);
+          }
+
+          if (dryRun) {
+            // In dry_run mode, preview what would be archived
+            const preview: DryRunPreview = {
+              client_id: op.client_id,
+              id: op.id,
+              op: 'archive',
+              changes: [{ field: 'archived', before: entity.archived, after: true }],
+              validation_errors: [],
+            };
+            dryRunPreviews.push(preview);
+            succeeded++;
+            break;
           }
 
           // Compute archive path
@@ -385,12 +480,21 @@ export async function batchUpdate(
     }
   }
 
-  return {
-    results,
+  // Build output
+  const output: BatchUpdateOutput = {
+    results: dryRun ? [] : results,
     summary: {
       total: ops.length,
       succeeded,
       failed,
     },
   };
+
+  // Add dry_run specific fields
+  if (dryRun) {
+    output.dry_run = true;
+    output.would_update = dryRunPreviews;
+  }
+
+  return output;
 }
