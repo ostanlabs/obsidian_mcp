@@ -12,6 +12,8 @@ import type {
   Entity,
   EntityId,
   EntityType,
+  Document,
+  Feature,
 } from '../models/v2-types.js';
 
 import type {
@@ -396,6 +398,40 @@ export async function getEntity(
   // Acceptance criteria
   if (fieldSet.has('acceptance_criteria') && 'acceptance_criteria' in entity) {
     result.acceptance_criteria = entity.acceptance_criteria as string[];
+  }
+
+  // Document-specific fields
+  if (entity.type === 'document') {
+    const doc = entity as Document;
+    if (fieldSet.has('documents') && doc.documents && doc.documents.length > 0) {
+      result.documents = doc.documents;
+    }
+  }
+
+  // Feature-specific fields
+  if (entity.type === 'feature') {
+    const feature = entity as Feature;
+    if (fieldSet.has('documented_by') && feature.documented_by && feature.documented_by.length > 0) {
+      result.documented_by = feature.documented_by;
+    }
+    if (fieldSet.has('implemented_by') && feature.implemented_by && feature.implemented_by.length > 0) {
+      result.implemented_by = feature.implemented_by;
+    }
+    if (fieldSet.has('decided_by') && feature.decided_by && feature.decided_by.length > 0) {
+      result.decided_by = feature.decided_by;
+    }
+    if (fieldSet.has('test_refs') && feature.test_refs && feature.test_refs.length > 0) {
+      result.test_refs = feature.test_refs;
+    }
+    if (fieldSet.has('user_story') && feature.user_story) {
+      result.user_story = feature.user_story;
+    }
+    if (fieldSet.has('tier') && feature.tier) {
+      result.tier = feature.tier;
+    }
+    if (fieldSet.has('phase') && feature.phase) {
+      result.phase = feature.phase;
+    }
   }
 
   return result;
