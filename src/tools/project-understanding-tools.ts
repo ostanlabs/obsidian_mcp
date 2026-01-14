@@ -24,6 +24,10 @@ import type {
   Workstream,
   EntityStatus,
   FeatureCoverageItem,
+  GetSchemaInput,
+  GetSchemaOutput,
+  EntitySchema,
+  SchemaFieldDefinition,
 } from './tool-types.js';
 
 // =============================================================================
@@ -786,4 +790,144 @@ export async function getFeatureCoverage(
     features: filteredItems,
     summary,
   };
+}
+
+// =============================================================================
+// Get Schema
+// =============================================================================
+
+/** Schema definitions for all entity types */
+const ENTITY_SCHEMAS: EntitySchema[] = [
+  {
+    type: 'milestone',
+    id_pattern: 'M-XXX',
+    fields: {
+      id: { type: 'MilestoneId', required: true, description: 'Unique identifier (M-XXX format)' },
+      title: { type: 'string', required: true, description: 'Milestone title' },
+      status: { type: 'enum', required: true, values: ['Planned', 'In Progress', 'Complete', 'Blocked', 'Deferred'] },
+      workstream: { type: 'string', required: true, description: 'Workstream this milestone belongs to' },
+      priority: { type: 'enum', values: ['P0', 'P1', 'P2', 'P3'], description: 'Priority level' },
+      objective: { type: 'string', description: 'Milestone objective/goal' },
+      depends_on: { type: 'EntityId[]', relationship: { target_types: ['milestone', 'decision'], inverse: 'blocks' } },
+      implements: { type: 'FeatureId[]', relationship: { target_types: ['feature'], inverse: 'implemented_by', auto_sync: true } },
+    },
+    statuses: ['Planned', 'In Progress', 'Complete', 'Blocked', 'Deferred'],
+    status_transitions: {
+      'Planned': ['In Progress', 'Blocked', 'Deferred'],
+      'In Progress': ['Complete', 'Blocked', 'Deferred'],
+      'Blocked': ['In Progress', 'Deferred'],
+      'Complete': [],
+      'Deferred': ['Planned'],
+    },
+  },
+  {
+    type: 'story',
+    id_pattern: 'S-XXX',
+    fields: {
+      id: { type: 'StoryId', required: true, description: 'Unique identifier (S-XXX format)' },
+      title: { type: 'string', required: true, description: 'Story title' },
+      status: { type: 'enum', required: true, values: ['Planned', 'In Progress', 'Complete', 'Blocked', 'Deferred'] },
+      workstream: { type: 'string', required: true, description: 'Workstream this story belongs to' },
+      parent: { type: 'MilestoneId', required: true, relationship: { target_types: ['milestone'], inverse: 'children' } },
+      priority: { type: 'enum', values: ['P0', 'P1', 'P2', 'P3'], description: 'Priority level' },
+      effort: { type: 'enum', values: ['XS', 'S', 'M', 'L', 'XL'], description: 'Effort estimate' },
+      outcome: { type: 'string', description: 'Expected outcome' },
+      acceptance_criteria: { type: 'string[]', description: 'List of acceptance criteria' },
+      depends_on: { type: 'EntityId[]', relationship: { target_types: ['story', 'decision', 'document'], inverse: 'blocks' } },
+      implements: { type: 'FeatureId[]', relationship: { target_types: ['feature'], inverse: 'implemented_by', auto_sync: true } },
+    },
+    statuses: ['Planned', 'In Progress', 'Complete', 'Blocked', 'Deferred'],
+  },
+  {
+    type: 'task',
+    id_pattern: 'T-XXX',
+    fields: {
+      id: { type: 'TaskId', required: true, description: 'Unique identifier (T-XXX format)' },
+      title: { type: 'string', required: true, description: 'Task title' },
+      status: { type: 'enum', required: true, values: ['Pending', 'In Progress', 'Completed', 'Blocked', 'Deferred'] },
+      workstream: { type: 'string', description: 'Workstream (inherited from parent story)' },
+      parent: { type: 'StoryId', required: true, relationship: { target_types: ['story'], inverse: 'children' } },
+      goal: { type: 'string', description: 'Task goal' },
+      description: { type: 'string', description: 'Task description' },
+      technical_notes: { type: 'string', description: 'Technical implementation notes' },
+      depends_on: { type: 'EntityId[]', relationship: { target_types: ['task', 'decision'], inverse: 'blocks' } },
+    },
+    statuses: ['Pending', 'In Progress', 'Completed', 'Blocked', 'Deferred'],
+  },
+  {
+    type: 'decision',
+    id_pattern: 'DEC-XXX',
+    fields: {
+      id: { type: 'DecisionId', required: true, description: 'Unique identifier (DEC-XXX format)' },
+      title: { type: 'string', required: true, description: 'Decision title' },
+      status: { type: 'enum', required: true, values: ['Proposed', 'Accepted', 'Rejected', 'Superseded'] },
+      workstream: { type: 'string', required: true, description: 'Workstream this decision affects' },
+      context: { type: 'string', description: 'Context/background for the decision' },
+      decision: { type: 'string', description: 'The actual decision made' },
+      rationale: { type: 'string', description: 'Reasoning behind the decision' },
+      affects: { type: 'FeatureId[]', relationship: { target_types: ['feature'], inverse: 'decided_by', auto_sync: true } },
+      blocks: { type: 'EntityId[]', relationship: { target_types: ['document', 'story', 'task'], inverse: 'depends_on' } },
+      supersedes: { type: 'DecisionId', relationship: { target_types: ['decision'], inverse: 'superseded_by' } },
+    },
+    statuses: ['Proposed', 'Accepted', 'Rejected', 'Superseded'],
+  },
+  {
+    type: 'document',
+    id_pattern: 'DOC-XXX',
+    fields: {
+      id: { type: 'DocumentId', required: true, description: 'Unique identifier (DOC-XXX format)' },
+      title: { type: 'string', required: true, description: 'Document title' },
+      status: { type: 'enum', required: true, values: ['Draft', 'Review', 'Published', 'Archived'] },
+      workstream: { type: 'string', required: true, description: 'Workstream this document belongs to' },
+      content: { type: 'string', description: 'Document content (markdown)' },
+      documents: { type: 'FeatureId[]', relationship: { target_types: ['feature'], inverse: 'documented_by', auto_sync: true } },
+      implemented_by: { type: 'EntityId[]', relationship: { target_types: ['story', 'task'], inverse: 'implements' } },
+    },
+    statuses: ['Draft', 'Review', 'Published', 'Archived'],
+  },
+  {
+    type: 'feature',
+    id_pattern: 'F-XXX',
+    fields: {
+      id: { type: 'FeatureId', required: true, description: 'Unique identifier (F-XXX format)' },
+      title: { type: 'string', required: true, description: 'Feature title' },
+      status: { type: 'enum', required: true, values: ['Planned', 'In Progress', 'Complete', 'Deferred'] },
+      workstream: { type: 'string', description: 'Primary workstream' },
+      user_story: { type: 'string', required: true, description: 'User story format: "As a... I want... so that..."' },
+      tier: { type: 'enum', required: true, values: ['OSS', 'Premium'], default: 'OSS', description: 'Feature tier' },
+      phase: { type: 'enum', required: true, values: ['MVP', '0', '1', '2', '3', '4', '5'], default: 'MVP', description: 'Implementation phase' },
+      implemented_by: { type: '(MilestoneId|StoryId)[]', relationship: { target_types: ['milestone', 'story'], inverse: 'implements', auto_sync: true } },
+      documented_by: { type: 'DocumentId[]', relationship: { target_types: ['document'], inverse: 'documents', auto_sync: true } },
+      decided_by: { type: 'DecisionId[]', relationship: { target_types: ['decision'], inverse: 'affects', auto_sync: true } },
+      test_refs: { type: 'string[]', description: 'Test file references' },
+    },
+    statuses: ['Planned', 'In Progress', 'Complete', 'Deferred'],
+  },
+];
+
+/**
+ * Get entity schema information.
+ * Returns field definitions, valid values, and relationship info.
+ */
+export function getSchema(input: GetSchemaInput): GetSchemaOutput {
+  const { entity_type, relationships_only } = input;
+
+  let schemas = ENTITY_SCHEMAS;
+
+  // Filter by entity type if specified
+  if (entity_type) {
+    schemas = schemas.filter(s => s.type === entity_type);
+  }
+
+  // Filter to relationships only if requested
+  if (relationships_only) {
+    schemas = schemas.map(schema => ({
+      ...schema,
+      fields: Object.fromEntries(
+        Object.entries(schema.fields).filter(([_, def]) => def.relationship)
+      ),
+    }));
+  }
+
+  return { schemas };
 }
