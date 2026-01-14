@@ -991,5 +991,82 @@ describe('MCP Integration Tests', () => {
     });
   });
 
+  // ===========================================================================
+  // Scenario 15: Efficiency Improvements
+  // ===========================================================================
+  describe('Scenario 15: Efficiency Improvements', () => {
+    it('should return entities with batch_update when include_entities=true', async () => {
+      const deps = runtime.getEntityManagementDeps();
+      const batchDeps = runtime.getBatchOperationsDeps();
+
+      // Create a story first
+      const story = await createEntity({
+        type: 'story',
+        data: { title: 'Batch Test Story', workstream: 'batch-test' },
+      }, deps);
+
+      // Update with include_entities=true
+      const result = await batchUpdate({
+        ops: [
+          { client_id: 'u1', op: 'update', id: story.id, payload: { status: 'In Progress' } },
+        ],
+        options: { include_entities: true },
+      }, batchDeps);
+
+      expect(result.summary.succeeded).toBe(1);
+      expect(result.results[0].entity).toBeDefined();
+      expect(result.results[0].entity?.id).toBe(story.id);
+      expect(result.results[0].entity?.title).toBe('Batch Test Story');
+    });
+
+    it('should NOT return entities with batch_update when include_entities=false', async () => {
+      const deps = runtime.getEntityManagementDeps();
+      const batchDeps = runtime.getBatchOperationsDeps();
+
+      // Create a story first
+      const story = await createEntity({
+        type: 'story',
+        data: { title: 'Batch Test Story 2', workstream: 'batch-test' },
+      }, deps);
+
+      // Update with include_entities=false (default)
+      const result = await batchUpdate({
+        ops: [
+          { client_id: 'u1', op: 'update', id: story.id, payload: { status: 'In Progress' } },
+        ],
+        options: { include_entities: false },
+      }, batchDeps);
+
+      expect(result.summary.succeeded).toBe(1);
+      expect(result.results[0].entity).toBeUndefined();
+    });
+
+    it('should filter fields with batch_update when fields option is provided', async () => {
+      const deps = runtime.getEntityManagementDeps();
+      const batchDeps = runtime.getBatchOperationsDeps();
+
+      // Create a story first
+      const story = await createEntity({
+        type: 'story',
+        data: { title: 'Batch Field Test', workstream: 'batch-test' },
+      }, deps);
+
+      // Update with include_entities=true and specific fields
+      const result = await batchUpdate({
+        ops: [
+          { client_id: 'u1', op: 'update', id: story.id, payload: { status: 'In Progress' } },
+        ],
+        options: { include_entities: true, fields: ['id', 'title', 'status'] },
+      }, batchDeps);
+
+      expect(result.summary.succeeded).toBe(1);
+      expect(result.results[0].entity).toBeDefined();
+      expect(result.results[0].entity?.id).toBe(story.id);
+      expect(result.results[0].entity?.title).toBe('Batch Field Test');
+      // Should not have content since we only requested id, title, status
+      expect(result.results[0].entity?.content).toBeUndefined();
+    });
+  });
+
 });
 
