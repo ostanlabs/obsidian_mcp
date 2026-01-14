@@ -320,7 +320,11 @@ export class EntitySerializer {
     const sections: string[] = [];
 
     if (entity.content) {
-      sections.push(entity.content);
+      // Strip existing dataview blocks to prevent duplication
+      const cleanContent = this.stripDataviewBlocks(entity.content);
+      if (cleanContent) {
+        sections.push(cleanContent);
+      }
     }
 
     // Add Dataview query for entities implementing this document
@@ -334,7 +338,11 @@ export class EntitySerializer {
     const sections: string[] = [];
 
     if (entity.content) {
-      sections.push(entity.content);
+      // Strip existing dataview blocks to prevent duplication
+      const cleanContent = this.stripDataviewBlocks(entity.content);
+      if (cleanContent) {
+        sections.push(cleanContent);
+      }
     }
 
     // Add Dataview queries for related items
@@ -592,6 +600,36 @@ SORT decided_on DESC
     }
 
     return cleaned;
+  }
+
+  /**
+   * Strip dataview blocks and their section headers from content.
+   * This prevents duplication when re-serializing entities.
+   *
+   * Removes:
+   * - Dataview code blocks (```dataview ... ```)
+   * - Section headers that precede dataview blocks (## 🔗 Implemented By, etc.)
+   */
+  private stripDataviewBlocks(content: string): string {
+    // Pattern to match section headers followed by dataview blocks
+    // Matches: ## Header\n\n```dataview...```
+    const sectionWithDataviewPattern = /^##\s+[^\n]+\n+```dataview[\s\S]*?```\n*/gm;
+
+    // Pattern to match standalone dataview blocks
+    const standaloneDataviewPattern = /```dataview[\s\S]*?```\n*/g;
+
+    let cleaned = content;
+
+    // First remove section headers with their dataview blocks
+    cleaned = cleaned.replace(sectionWithDataviewPattern, '');
+
+    // Then remove any remaining standalone dataview blocks
+    cleaned = cleaned.replace(standaloneDataviewPattern, '');
+
+    // Clean up excessive newlines
+    cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+    return cleaned.trim();
   }
 }
 
