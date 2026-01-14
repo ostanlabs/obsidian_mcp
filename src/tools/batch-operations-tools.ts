@@ -129,11 +129,10 @@ export async function batchUpdate(
   // Helper to compute field changes for dry_run preview
   const computeChanges = (entity: Entity, payload: Record<string, unknown>): FieldChange[] => {
     const changes: FieldChange[] = [];
-    const fieldsToCheck = ['title', 'status', 'priority', 'effort', 'content', 'workstream',
-      'target_date', 'owner', 'acceptance_criteria', 'implements', 'enables', 'parent', 'depends_on'];
 
-    for (const field of fieldsToCheck) {
-      if (field in payload && payload[field] !== undefined) {
+    // Check all fields in the payload, not just a hardcoded list
+    for (const field of Object.keys(payload)) {
+      if (payload[field] !== undefined) {
         const before = (entity as unknown as Record<string, unknown>)[field];
         const after = payload[field];
 
