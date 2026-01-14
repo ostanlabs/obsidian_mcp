@@ -514,7 +514,17 @@ export type EntityField =
   | 'task_progress'
   | 'acceptance_criteria'
   | 'children'
-  | 'implementation_context';
+  | 'implementation_context'
+  // Document-specific fields
+  | 'documents'
+  // Feature-specific fields
+  | 'documented_by'
+  | 'implemented_by'
+  | 'decided_by'
+  | 'test_refs'
+  | 'user_story'
+  | 'tier'
+  | 'phase';
 
 export interface GetEntityInput {
   id: EntityId;
@@ -554,6 +564,16 @@ export interface GetEntityOutput {
     reference: EntitySummary[];
     assumes: string[];
   };
+  // Document-specific fields
+  documents?: EntityId[];
+  // Feature-specific fields
+  documented_by?: EntityId[];
+  implemented_by?: EntityId[];
+  decided_by?: EntityId[];
+  test_refs?: string[];
+  user_story?: string;
+  tier?: string;
+  phase?: string;
 }
 
 // =============================================================================
