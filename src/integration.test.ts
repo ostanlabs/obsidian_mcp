@@ -1116,6 +1116,81 @@ describe('MCP Integration Tests', () => {
       // updated should be 0 in dry_run mode
       expect(result.updated).toBe(0);
     });
+
+    it('should return changes array with update_entity', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      // Create a story
+      const story = await createEntity({
+        type: 'story',
+        data: {
+          title: 'Changes Test Story',
+          workstream: 'core',
+          status: 'Not Started',
+          priority: 'Medium',
+        },
+      }, deps);
+
+      // Update the story
+      const result = await updateEntity({
+        id: story.id,
+        data: { title: 'Updated Title', priority: 'High' },
+      }, deps);
+
+      // Should have changes array
+      expect(result.changes).toBeDefined();
+      expect(result.changes!.length).toBeGreaterThan(0);
+
+      // Find title change
+      const titleChange = result.changes!.find(c => c.field === 'title');
+      expect(titleChange).toBeDefined();
+      expect(titleChange!.before).toBe('Changes Test Story');
+      expect(titleChange!.after).toBe('Updated Title');
+
+      // Find priority change
+      const priorityChange = result.changes!.find(c => c.field === 'priority');
+      expect(priorityChange).toBeDefined();
+      expect(priorityChange!.before).toBe('Medium');
+      expect(priorityChange!.after).toBe('High');
+    });
+
+    it('should not duplicate dataview blocks on feature update', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      // Create a feature
+      const feature = await createEntity({
+        type: 'feature',
+        data: {
+          title: 'Dataview Test Feature',
+          workstream: 'core',
+          status: 'Planned',
+          tier: 'OSS',
+          phase: 'MVP',
+          user_story: 'As a user, I want to test dataview blocks',
+        },
+      }, deps);
+
+      // Update the feature multiple times
+      await updateEntity({
+        id: feature.id,
+        data: { tier: 'Premium' },
+      }, deps);
+
+      await updateEntity({
+        id: feature.id,
+        data: { phase: 'GA' },
+      }, deps);
+
+      // Get the entity content
+      const entity = await deps.getEntity(feature.id);
+      expect(entity).toBeDefined();
+
+      // Check that dataview blocks are not duplicated
+      // The content should have at most one instance of each dataview section
+      const content = (entity as any).content || '';
+      const implementedByMatches = content.match(/## 🔗 Implemented By/g);
+      expect(implementedByMatches?.length || 0).toBeLessThanOrEqual(1);
+    });
   });
 
 });
