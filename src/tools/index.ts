@@ -67,7 +67,15 @@ export const entityToolDefinitions: Tool[] = [
   // Category 1: Entity Management
   {
     name: 'create_entity',
-    description: 'Create a new entity (milestone, story, task, decision, document, or feature) with optional dependencies and relationships.',
+    description: `Create a new entity (milestone, story, task, decision, document, or feature).
+
+USE FOR: Creating new work items, decisions, or documentation.
+NOT FOR: Bulk creation (use batch_update), updating existing entities (use update_entity).
+
+EXAMPLES:
+- "Create a new milestone for Q1 planning"
+- "Add a task to implement authentication"
+- "Record a decision about database choice"`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -99,7 +107,20 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'update_entity',
-    description: 'Update entity fields, status, relationships, or archive/restore. All bidirectional relationships auto-sync: parent↔children, depends_on↔blocks, implements↔implemented_by, supersedes↔superseded_by, previous_version↔next_version.',
+    description: `Update a single entity's fields, status, relationships, or archive/restore it.
+
+USE FOR: Modifying one entity, changing status, adding/removing relationships, archiving.
+NOT FOR: Bulk updates (use batch_update), creating new entities (use create_entity).
+
+FEATURES:
+- Returns before/after diff in 'changes' array showing what changed
+- All bidirectional relationships auto-sync (parent↔children, depends_on↔blocks, etc.)
+- Can archive (archived: true) or restore (archived: false) in same call
+
+EXAMPLES:
+- "Update task T-001 status to Complete"
+- "Add M-029 to F-010's implemented_by list"
+- "Archive milestone M-005 and its children"`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -158,7 +179,21 @@ export const entityToolDefinitions: Tool[] = [
   // NEW: Unified batch_update tool with client_id support
   {
     name: 'batch_update',
-    description: 'Unified batch operation for create, update, and archive. Supports client_id for idempotency and cross-referencing within the batch. All bidirectional relationships auto-sync.',
+    description: `Perform multiple create/update/archive operations in a single call.
+
+USE FOR: Bulk operations, creating related entities together, batch status updates.
+NOT FOR: Single entity changes (use update_entity for better diff output).
+
+FEATURES:
+- client_id for idempotency and cross-referencing within batch
+- dry_run: true to preview changes without executing
+- include_entities: true to get full entity data in response (avoids follow-up get_entity calls)
+- Atomic mode: rollback all on any failure
+
+EXAMPLES:
+- "Create 5 features with their relationships in one call"
+- "Update phase to '4' for features F-021 through F-029"
+- "Preview what batch changes would do with dry_run: true"`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -216,7 +251,15 @@ export const entityToolDefinitions: Tool[] = [
   // Category 3: Project Understanding
   {
     name: 'get_project_overview',
-    description: 'Get high-level project status across all workstreams. Enhanced to support workstream filtering and grouping (consolidates get_workstream_status).',
+    description: `Get high-level project status summary across workstreams.
+
+USE FOR: Dashboard views, overall progress checks, workstream summaries.
+NOT FOR: Searching entities (use search_entities), feature coverage (use get_feature_coverage).
+
+EXAMPLES:
+- "What's the overall project status?"
+- "Show me the engineering workstream progress"
+- "How many tasks are blocked across all workstreams?"`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -232,7 +275,15 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'analyze_project_state',
-    description: 'Deep analysis of project state with blockers and suggested actions.',
+    description: `Deep analysis of project state identifying blockers and suggesting actions.
+
+USE FOR: Finding blockers, getting actionable recommendations, understanding what's stuck.
+NOT FOR: Simple status checks (use get_project_overview), listing entities (use search_entities).
+
+EXAMPLES:
+- "What's blocking progress in the engineering workstream?"
+- "What actions should I take next?"
+- "Give me a detailed blocker analysis"`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -244,7 +295,20 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'get_feature_coverage',
-    description: 'Get feature coverage analysis showing implementation, documentation, and testing status for features. Use summary_only=true for quick overview without feature details.',
+    description: `Analyze feature implementation, documentation, and test coverage.
+
+USE FOR: Coverage reports, gap analysis, roadmap planning, finding undocumented features.
+NOT FOR: Text search (use search_entities), general entity queries (use search_entities).
+
+EFFICIENCY TIPS:
+- summary_only: true - Get counts without feature details (~90% smaller response)
+- feature_ids: [...] - Filter to specific features
+- fields: [...] - Return only needed fields per feature
+
+EXAMPLES:
+- "How many features have documentation?" → summary_only: true
+- "What Phase 4 features are missing implementation?" → phase: "4"
+- "Show coverage for F-001 and F-002 only" → feature_ids: ["F-001", "F-002"]`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -265,7 +329,22 @@ export const entityToolDefinitions: Tool[] = [
   // Category 4: Search & Navigation
   {
     name: 'search_entities',
-    description: 'Search, list, or navigate entities. Three modes: (1) SEARCH: provide query for full-text search, (2) NAVIGATE: provide from_id+direction to traverse hierarchy, (3) LIST: provide only filters (or nothing) to list all matching entities. Filters apply to all modes.',
+    description: `Search, list, or navigate entities with filtering and pagination.
+
+USE FOR: Finding entities by text, listing by type/status, traversing relationships.
+NOT FOR: Coverage analysis (use get_feature_coverage), project overview (use get_project_overview).
+
+THREE MODES:
+1. SEARCH: query="authentication" - Full-text search
+2. NAVIGATE: from_id="M-001", direction="down" - Traverse hierarchy
+3. LIST: filters={type:["task"], status:["Blocked"]} - List matching entities
+
+PAGINATION: Use limit + offset for large result sets.
+
+EXAMPLES:
+- "Find entities mentioning 'authentication'" → query: "authentication"
+- "List all blocked tasks" → filters: {type: ["task"], status: ["Blocked"]}
+- "Get children of milestone M-001" → from_id: "M-001", direction: "down"`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -300,7 +379,16 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'get_entity',
-    description: 'Get entity with selective field retrieval. Control response size by specifying only needed fields. Default returns summary fields (id, type, title, status, workstream, last_updated).',
+    description: `Get a single entity by ID with selective field retrieval.
+
+USE FOR: Fetching one entity's details, verifying an update, getting specific fields.
+NOT FOR: Multiple entities (use get_entities), searching (use search_entities).
+
+TIP: Specify fields to reduce response size. Default returns summary fields only.
+
+EXAMPLES:
+- "Get task T-001 details" → id: "T-001"
+- "Get F-001's documentation status" → id: "F-001", fields: ["id", "documented_by"]`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -324,7 +412,16 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'get_entities',
-    description: 'Get multiple entities in a single call. More efficient than multiple get_entity calls. Returns entities keyed by ID with not_found array for missing IDs.',
+    description: `Get multiple entities in a single call (bulk fetch).
+
+USE FOR: Fetching 2+ entities at once, verifying batch updates, efficient bulk retrieval.
+NOT FOR: Single entity (use get_entity), searching (use search_entities).
+
+EFFICIENCY: ~75% token savings vs multiple get_entity calls.
+
+EXAMPLES:
+- "Get features F-001 through F-005" → ids: ["F-001", "F-002", "F-003", "F-004", "F-005"]
+- "Verify these entities exist" → ids: [...], fields: ["id", "title"]`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -356,7 +453,20 @@ export const entityToolDefinitions: Tool[] = [
   // Category 5: Decision & Document Management
   {
     name: 'manage_documents',
-    description: 'Consolidated tool for document and decision management. Use action to specify operation: get_decision_history, supersede_document, get_document_history, or check_freshness.',
+    description: `Manage documents and decisions: history, versioning, freshness checks.
+
+USE FOR: Decision history, document versioning, checking if docs are stale.
+NOT FOR: Creating documents (use create_entity), updating content (use update_entity).
+
+ACTIONS:
+- get_decision_history: List decisions, optionally filtered by topic/workstream
+- supersede_document: Create new version of a document based on a decision
+- get_document_history: Get version history of a document
+- check_freshness: Check if document is stale based on related decisions
+
+EXAMPLES:
+- "What decisions have we made about authentication?" → action: "get_decision_history", topic: "authentication"
+- "Is DOC-001 up to date?" → action: "check_freshness", document_id: "DOC-001"`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -383,7 +493,21 @@ export const entityToolDefinitions: Tool[] = [
   // Category 6: Maintenance Tools
   {
     name: 'reconcile_relationships',
-    description: 'Reconcile all bidirectional relationships across entities. Syncs: parent↔children, depends_on↔blocks, implements↔implemented_by, supersedes↔superseded_by, previous_version↔next_version. Run this to fix inconsistent relationships in existing documents.',
+    description: `Fix inconsistent bidirectional relationships across all entities.
+
+USE FOR: Fixing broken relationships, ensuring consistency after manual edits.
+NOT FOR: Regular operations (relationships auto-sync on create/update).
+
+SYNCS: parent↔children, depends_on↔blocks, implements↔implemented_by, supersedes↔superseded_by, previous_version↔next_version, documents↔documented_by
+
+FEATURES:
+- dry_run: true to preview changes without executing
+- Returns detailed changes array showing what was fixed
+- Returns warnings for references to non-existent entities
+
+EXAMPLES:
+- "Check for broken relationships" → dry_run: true
+- "Fix all relationship inconsistencies" → dry_run: false`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -396,7 +520,17 @@ export const entityToolDefinitions: Tool[] = [
   // Category 7: Schema Introspection
   {
     name: 'get_schema',
-    description: 'Get entity schema information. Returns field definitions, valid values, and relationship info for entity types.',
+    description: `Get entity schema information without reading source code.
+
+USE FOR: Learning field names, valid values, relationship definitions.
+NOT FOR: Getting entity data (use get_entity), searching (use search_entities).
+
+RETURNS: Field definitions, types, valid enum values, relationship info, status transitions.
+
+EXAMPLES:
+- "What fields does a feature have?" → entity_type: "feature"
+- "Get all entity schemas" → (no params, returns all)
+- "What relationships exist?" → relationships_only: true`,
     inputSchema: {
       type: 'object',
       properties: {
