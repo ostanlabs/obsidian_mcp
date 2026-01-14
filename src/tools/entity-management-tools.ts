@@ -14,11 +14,15 @@ import {
   Task,
   Decision,
   Document,
+  Feature,
   MilestoneId,
   StoryId,
   TaskId,
   DecisionId,
   DocumentId,
+  FeatureId,
+  FeatureTier,
+  FeaturePhase,
 } from '../models/v2-types.js';
 
 import {
@@ -350,6 +354,9 @@ export async function createEntity(
     case 'document':
       entity = buildDocument(baseEntity, data);
       break;
+    case 'feature':
+      entity = buildFeature(baseEntity, data);
+      break;
     default:
       throw new Error(`Unknown entity type: ${type}`);
   }
@@ -478,6 +485,29 @@ function buildDocument(
     previous_version: (data.previous_version as DocumentId[]) || [],
     content: data.content as string,
   } as unknown as Document;
+
+  // Auto-generate cssclasses if not provided
+  entity.cssclasses = (data.cssclasses as string[]) || generateCssClasses(entity);
+  return entity;
+}
+
+function buildFeature(
+  base: Record<string, unknown>,
+  data: Record<string, unknown>
+): Feature {
+  const entity = {
+    ...base,
+    type: 'feature',
+    status: (data.status as string) || 'Planned',
+    user_story: (data.user_story as string) || '',
+    tier: (data.tier as FeatureTier) || 'OSS',
+    phase: (data.phase as FeaturePhase) || 'MVP',
+    implemented_by: (data.implemented_by as (MilestoneId | StoryId)[]) || [],
+    documented_by: (data.documented_by as DocumentId[]) || [],
+    decided_by: (data.decided_by as DecisionId[]) || [],
+    test_refs: (data.test_refs as string[]) || [],
+    content: data.content as string,
+  } as unknown as Feature;
 
   // Auto-generate cssclasses if not provided
   entity.cssclasses = (data.cssclasses as string[]) || generateCssClasses(entity);
