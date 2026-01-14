@@ -14,11 +14,14 @@ import type {
   EntityType,
   Document,
   Feature,
+  Story,
+  Milestone,
 } from '../models/v2-types.js';
 
 import type {
   SearchEntitiesInput,
   SearchEntitiesOutput,
+  SearchResultItem,
   GetEntityInput,
   GetEntityOutput,
   GetEntitiesInput,
@@ -91,6 +94,53 @@ export interface SearchNavigationDependencies {
 // Search Entities
 // =============================================================================
 
+/** Default fields for search results when none specified */
+const SEARCH_DEFAULT_FIELDS: EntityField[] = ['id', 'type', 'title', 'status', 'workstream'];
+
+/**
+ * Build a search result item with only the requested fields.
+ */
+function buildSearchResultItem(
+  entity: Entity,
+  requestedFields: EntityField[] | undefined,
+  extras?: { relevance_score?: number; snippet?: string; path?: string }
+): SearchResultItem {
+  const fields = requestedFields || SEARCH_DEFAULT_FIELDS;
+  const fieldSet = new Set(fields);
+
+  // Always include id
+  const result: SearchResultItem = { id: entity.id };
+
+  // Add requested fields
+  if (fieldSet.has('type')) result.type = entity.type;
+  if (fieldSet.has('title')) result.title = entity.title;
+  if (fieldSet.has('status')) result.status = entity.status as EntityStatus;
+  if (fieldSet.has('workstream')) result.workstream = entity.workstream;
+  if (fieldSet.has('last_updated')) result.last_updated = entity.updated_at || new Date().toISOString();
+  if (fieldSet.has('parent') && 'parent' in entity && entity.parent) {
+    result.parent = entity.parent as EntityId;
+  }
+  if (fieldSet.has('effort') && 'effort' in entity) {
+    result.effort = (entity as Story).effort as Effort;
+  }
+  if (fieldSet.has('priority') && 'priority' in entity) {
+    result.priority = (entity as Milestone | Story).priority;
+  }
+  if (fieldSet.has('phase') && 'phase' in entity) {
+    result.phase = (entity as Feature).phase;
+  }
+  if (fieldSet.has('tier') && 'tier' in entity) {
+    result.tier = (entity as Feature).tier;
+  }
+
+  // Add search-specific extras
+  if (extras?.relevance_score !== undefined) result.relevance_score = extras.relevance_score;
+  if (extras?.snippet !== undefined) result.snippet = extras.snippet;
+  if (extras?.path !== undefined) result.path = extras.path;
+
+  return result;
+}
+
 /**
  * Full-text search across entities with filters.
  * Supports three modes:
@@ -102,11 +152,11 @@ export async function searchEntities(
   input: SearchEntitiesInput,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
-  const { query, from_id, direction, depth = 1, filters, limit = 50 } = input;
+  const { query, from_id, direction, depth = 1, filters, limit = 50, offset = 0, fields } = input;
 
   // Navigation mode: if from_id and direction are specified
   if (from_id && direction) {
-    return performNavigation(from_id, direction, depth, filters, deps);
+    return performNavigation(from_id, direction, depth, filters, fields, deps);
   }
 
   // Search mode: if query is provided
@@ -116,35 +166,31 @@ export async function searchEntities(
       statuses: filters?.status,
       workstreams: filters?.workstream,
       archived: filters?.archived,
-      limit,
+      limit: limit + offset, // Get enough results to handle offset
     });
 
-    const results: SearchEntitiesOutput['results'] = [];
+    // Apply offset
+    const paginatedResults = searchResults.slice(offset, offset + limit);
+    const results: SearchResultItem[] = [];
 
-    for (const { entity, score, snippet } of searchResults) {
+    for (const { entity, score, snippet } of paginatedResults) {
       const path = await deps.getEntityPath(entity.id);
-
-      results.push({
-        id: entity.id,
-        type: entity.type,
-        title: entity.title,
-        status: entity.status,
-        workstream: entity.workstream,
-        relevance_score: score,
-        snippet,
-        parent: 'parent' in entity ? (entity.parent as EntityId) : undefined,
-        path,
-      });
+      results.push(buildSearchResultItem(entity, fields, { relevance_score: score, snippet, path }));
     }
 
     return {
       results,
-      total_matches: results.length,
+      total_matches: searchResults.length,
+      pagination: {
+        offset,
+        limit,
+        has_more: offset + limit < searchResults.length,
+      },
     };
   }
 
   // List mode: no query, no navigation - just list entities with filters
-  return performListMode(filters, limit, deps);
+  return performListMode(filters, limit, offset, fields, deps);
 }
 
 /**
@@ -154,6 +200,8 @@ export async function searchEntities(
 async function performListMode(
   filters: SearchEntitiesInput['filters'] | undefined,
   limit: number,
+  offset: number,
+  fields: EntityField[] | undefined,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
   // Get all entities with basic filters
@@ -184,22 +232,24 @@ async function performListMode(
     });
   }
 
-  // Apply limit
-  const limitedEntities = entities.slice(0, limit);
+  const totalMatches = entities.length;
 
-  // Build results
-  const results: SearchEntitiesOutput['results'] = limitedEntities.map(entity => ({
-    id: entity.id,
-    type: entity.type,
-    title: entity.title,
-    status: entity.status as EntityStatus,
-    workstream: entity.workstream,
-    parent: 'parent' in entity ? (entity.parent as EntityId) : undefined,
-  }));
+  // Apply pagination
+  const paginatedEntities = entities.slice(offset, offset + limit);
+
+  // Build results with field filtering
+  const results: SearchResultItem[] = paginatedEntities.map(entity =>
+    buildSearchResultItem(entity, fields)
+  );
 
   return {
     results,
-    total_matches: entities.length,
+    total_matches: totalMatches,
+    pagination: {
+      offset,
+      limit,
+      has_more: offset + limit < totalMatches,
+    },
   };
 }
 
@@ -212,6 +262,7 @@ async function performNavigation(
   direction: 'up' | 'down' | 'siblings' | 'dependencies',
   depth: number,
   filters: SearchEntitiesInput['filters'] | undefined,
+  fields: EntityField[] | undefined,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
   const origin = await deps.getEntity(from_id);
@@ -287,15 +338,10 @@ async function performNavigation(
     });
   }
 
-  // Convert to output format
-  const results: SearchEntitiesOutput['results'] = filteredResults.map(entity => ({
-    id: entity.id,
-    type: entity.type,
-    title: entity.title,
-    status: entity.status as EntityStatus,
-    workstream: entity.workstream,
-    parent: 'parent' in entity ? (entity.parent as EntityId) : undefined,
-  }));
+  // Convert to output format with field filtering
+  const results: SearchResultItem[] = filteredResults.map(entity =>
+    buildSearchResultItem(entity, fields)
+  );
 
   return {
     results,
