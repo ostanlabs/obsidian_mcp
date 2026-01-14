@@ -1066,6 +1066,56 @@ describe('MCP Integration Tests', () => {
       // Should not have content since we only requested id, title, status
       expect(result.results[0].entity?.content).toBeUndefined();
     });
+
+    it('should preview changes with batch_update dry_run=true', async () => {
+      const deps = runtime.getEntityManagementDeps();
+      const batchDeps = runtime.getBatchOperationsDeps();
+
+      // Create a story first
+      const story = await createEntity({
+        type: 'story',
+        data: { title: 'Dry Run Test', workstream: 'dry-run-test' },
+      }, deps);
+
+      // Update with dry_run=true
+      const result = await batchUpdate({
+        ops: [
+          { client_id: 'u1', op: 'update', id: story.id, payload: { title: 'Changed Title' } },
+        ],
+        options: { dry_run: true },
+      }, batchDeps);
+
+      // Should have dry_run flag and would_update array
+      expect(result.dry_run).toBe(true);
+      expect(result.would_update).toBeDefined();
+      expect(result.would_update?.length).toBe(1);
+      expect(result.would_update?.[0].client_id).toBe('u1');
+      expect(result.would_update?.[0].id).toBe(story.id);
+      expect(result.would_update?.[0].op).toBe('update');
+      expect(result.would_update?.[0].changes.length).toBeGreaterThan(0);
+
+      // Verify entity was NOT actually updated - title should still be 'Dry Run Test'
+      const entityAfter = await deps.getEntity(story.id);
+      expect(entityAfter?.title).toBe('Dry Run Test');
+    });
+
+    it('should return detailed changes with reconcile_relationships', async () => {
+      // Test reconcile_relationships returns enhanced output
+      const result = await runtime.reconcileImplementsRelationships({ dry_run: true });
+
+      // Should have the new output format
+      expect(result).toHaveProperty('scanned');
+      expect(result).toHaveProperty('updated');
+      expect(result).toHaveProperty('dry_run');
+      expect(result).toHaveProperty('changes');
+      expect(result).toHaveProperty('warnings');
+      expect(result).toHaveProperty('details'); // Legacy format
+
+      // dry_run should be true
+      expect(result.dry_run).toBe(true);
+      // updated should be 0 in dry_run mode
+      expect(result.updated).toBe(0);
+    });
   });
 
 });
