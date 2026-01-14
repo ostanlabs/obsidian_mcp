@@ -199,6 +199,12 @@ export const entityToolDefinitions: Tool[] = [
             atomic: { type: 'boolean', description: 'Rollback all on any failure (default: false)' },
             add_to_canvas: { type: 'boolean', description: 'Add created entities to canvas' },
             canvas_source: { type: 'string', description: 'Canvas file path' },
+            include_entities: { type: 'boolean', description: 'Include full entity data in results (default: false). Eliminates need for follow-up get_entity calls.' },
+            fields: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Fields to include when include_entities is true. If not specified, returns all fields.',
+            },
           },
         },
       },
@@ -237,13 +243,20 @@ export const entityToolDefinitions: Tool[] = [
   },
   {
     name: 'get_feature_coverage',
-    description: 'Get feature coverage analysis showing implementation, documentation, and testing status for features.',
+    description: 'Get feature coverage analysis showing implementation, documentation, and testing status for features. Use summary_only=true for quick overview without feature details.',
     inputSchema: {
       type: 'object',
       properties: {
         phase: { type: 'string', enum: ['MVP', '0', '1', '2', '3', '4', '5'], description: 'Filter by implementation phase' },
         tier: { type: 'string', enum: ['OSS', 'Premium'], description: 'Filter by feature tier' },
         include_tests: { type: 'boolean', description: 'Include test coverage analysis' },
+        summary_only: { type: 'boolean', description: 'Return only summary without features array. Significantly reduces response size.' },
+        feature_ids: { type: 'array', items: { type: 'string' }, description: 'Filter to specific feature IDs' },
+        fields: {
+          type: 'array',
+          items: { type: 'string', enum: ['id', 'title', 'tier', 'phase', 'status', 'implementation', 'documentation', 'testing'] },
+          description: 'Fields to include in each feature. If not specified, returns all fields.',
+        },
       },
     },
   },
@@ -305,6 +318,36 @@ export const entityToolDefinitions: Tool[] = [
         },
       },
       required: ['id'],
+    },
+  },
+  {
+    name: 'get_entities',
+    description: 'Get multiple entities in a single call. More efficient than multiple get_entity calls. Returns entities keyed by ID with not_found array for missing IDs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of entity IDs to retrieve',
+        },
+        fields: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: [
+              'id', 'type', 'title', 'status', 'workstream', 'last_updated',
+              'parent', 'children_count', 'content', 'effort', 'priority',
+              'dependencies', 'dependency_details', 'task_progress',
+              'acceptance_criteria', 'children', 'implementation_context',
+              'documents', 'documented_by', 'implemented_by', 'decided_by',
+              'test_refs', 'user_story', 'tier', 'phase'
+            ],
+          },
+          description: 'Fields to include in response. If not specified, returns summary fields.',
+        },
+      },
+      required: ['ids'],
     },
   },
 

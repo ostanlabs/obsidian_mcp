@@ -19,6 +19,8 @@ import type {
   BatchUpdateOutput,
   BatchOpResult,
   EntityStatus,
+  EntityFull,
+  EntityField,
 } from './tool-types.js';
 
 import { validateRelationships } from './entity-management-tools.js';
@@ -70,6 +72,9 @@ export interface BatchOperationsDependencies {
 
   /** Remove node from canvas */
   removeFromCanvas?: (id: EntityId, canvasPath: string) => Promise<boolean>;
+
+  /** Convert entity to full representation */
+  toEntityFull: (entity: Entity) => Promise<EntityFull>;
 }
 
 // =============================================================================
@@ -90,6 +95,8 @@ export async function batchUpdate(
 ): Promise<BatchUpdateOutput> {
   const { ops, options } = input;
   const atomic = options?.atomic ?? false;
+  const includeEntities = options?.include_entities ?? false;
+  const requestedFields = options?.fields;
 
   // Map of client_id → real EntityId (for cross-referencing within batch)
   const clientIdMap = new Map<string, EntityId>();
@@ -100,6 +107,20 @@ export async function batchUpdate(
   const results: BatchOpResult[] = [];
   let succeeded = 0;
   let failed = 0;
+
+  // Helper to filter entity fields based on requested fields
+  const filterEntityFields = (entityFull: EntityFull): Partial<EntityFull> => {
+    if (!requestedFields || requestedFields.length === 0) {
+      return entityFull; // Return all fields if none specified
+    }
+    const filtered: Partial<EntityFull> = {};
+    for (const field of requestedFields) {
+      if (field in entityFull) {
+        (filtered as Record<string, unknown>)[field] = (entityFull as unknown as Record<string, unknown>)[field];
+      }
+    }
+    return filtered;
+  };
 
   // Helper to resolve client_ids in payload
   const resolveClientIds = (payload: Record<string, unknown>): Record<string, unknown> => {
@@ -177,11 +198,20 @@ export async function batchUpdate(
             await deps.addToCanvas(entity, options.canvas_source);
           }
 
-          results.push({
+          // Build result with optional entity data
+          const createResult: BatchOpResult = {
             client_id: op.client_id,
             status: 'ok',
             id: entity.id,
-          });
+          };
+
+          // Include entity data if requested
+          if (includeEntities) {
+            const entityFull = await deps.toEntityFull(entity);
+            createResult.entity = filterEntityFields(entityFull);
+          }
+
+          results.push(createResult);
           succeeded++;
           break;
         }
@@ -250,11 +280,20 @@ export async function batchUpdate(
           // Store mapping for potential cross-references
           clientIdMap.set(op.client_id, op.id);
 
-          results.push({
+          // Build result with optional entity data
+          const updateResult: BatchOpResult = {
             client_id: op.client_id,
             status: 'ok',
             id: op.id,
-          });
+          };
+
+          // Include entity data if requested
+          if (includeEntities) {
+            const entityFull = await deps.toEntityFull(entity);
+            updateResult.entity = filterEntityFields(entityFull);
+          }
+
+          results.push(updateResult);
           succeeded++;
           break;
         }
@@ -302,11 +341,23 @@ export async function batchUpdate(
             await deps.removeFromCanvas(op.id, options.canvas_source);
           }
 
-          results.push({
+          // Build result with optional entity data
+          const archiveResult: BatchOpResult = {
             client_id: op.client_id,
             status: 'ok',
             id: op.id,
-          });
+          };
+
+          // Include entity data if requested (re-fetch after archive to get updated state)
+          if (includeEntities) {
+            const archivedEntity = await deps.getEntity(op.id);
+            if (archivedEntity) {
+              const entityFull = await deps.toEntityFull(archivedEntity);
+              archiveResult.entity = filterEntityFields(entityFull);
+            }
+          }
+
+          results.push(archiveResult);
           succeeded++;
           break;
         }

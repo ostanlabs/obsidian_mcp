@@ -2061,6 +2061,7 @@ export class V2Runtime {
         if (!entity) return false;
         return this.canvasManager.removeNode(entity.vault_path, canvasPath as CanvasPath);
       },
+      toEntityFull: (entity) => this.toEntityFull(entity),
     };
   }
 
