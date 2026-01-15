@@ -141,7 +141,8 @@ describe('Tools Index Integration Tests', () => {
     it('should have batch_update with include_entities and fields options', () => {
       const batchUpdateTool = entityToolDefinitions.find((t) => t.name === 'batch_update');
       expect(batchUpdateTool).toBeDefined();
-      const optionsProps = batchUpdateTool?.inputSchema.properties?.options?.properties;
+      const options = batchUpdateTool?.inputSchema.properties?.options as { properties?: Record<string, unknown> } | undefined;
+      const optionsProps = options?.properties;
       expect(optionsProps?.include_entities).toBeDefined();
       expect(optionsProps?.fields).toBeDefined();
     });
