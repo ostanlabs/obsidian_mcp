@@ -469,93 +469,98 @@ restore_from_archive({
 
 ### Category 2: Batch Operations
 
-#### `batch_operations`
+#### `batch_update`
 
-Create multiple entities with relationships in one call.
+Unified batch operations for create, update, and archive operations.
 
 ```typescript
-batch_operations({
-  entities: [
+batch_update({
+  ops: [
     {
-      type: string,
-      data: {
-        title: string,
+      op: 'create' | 'update' | 'archive',
+      id?: string,                          // Required for update/archive
+      type?: string,                        // Required for create
+      payload?: {                           // Entity data
+        title?: string,
+        status?: string,
         parent?: string | "$0" | "$1",      // $N references previous entity
         depends_on?: (string | "$N")[],
         // ...other fields
-      }
+      },
+      client_id?: string,                   // Optional client reference
     },
-    // ...more entities
-  ],
-  dependencies?: [                          // Additional explicit dependencies
-    { from: string | "$N", to: string | "$N", type: 'blocks' },
+    // ...more operations
   ],
   options?: {
     atomic?: boolean,                       // All or nothing (default: true)
     add_to_canvas?: boolean,
     canvas_source?: string,
+    include_entities?: boolean,             // Return full entity data (default: false)
+    fields?: EntityField[],                 // Fields to include when include_entities=true
   }
 })
 
 // Returns:
 {
-  created: [
-    { ref: "$0", id: "M-005", type: "milestone" },
-    { ref: "$1", id: "S-030", type: "story" },
+  results: [
+    {
+      client_id?: string,
+      status: 'ok' | 'error',
+      id: string,
+      error?: string,
+      entity?: Partial<EntityFull>,         // Included when include_entities=true
+    },
     // ...
   ],
-  dependencies_created: number,
-  canvas_nodes_added: number,
+  summary: {
+    total: number,
+    succeeded: number,
+    failed: number,
+  }
 }
 ```
 
-#### `batch_update_status`
-
-Update status of multiple entities.
-
+**Example with entity return:**
 ```typescript
-batch_update_status({
-  updates: [
-    { id: string, status: string, note?: string },
-    // ...
+// Request
+batch_update({
+  ops: [
+    { id: "F-021", op: "update", payload: { phase: "4" }, client_id: "p1" },
+    { id: "F-022", op: "update", payload: { phase: "4" }, client_id: "p2" },
   ],
-  options?: {
-    auto_cascade?: boolean,       // Auto-complete parents if all children done
+  options: {
+    include_entities: true,
+    fields: ["id", "title", "phase", "status"]
   }
 })
 
-// Returns:
+// Response - no need for follow-up get_entity calls!
 {
-  updated: string[],
-  cascaded: string[],
-  failed: { id: string, error: string }[],
-}
-```
-
-#### `batch_archive`
-
-Archive multiple milestones/entities.
-
-```typescript
-batch_archive({
-  milestone_ids?: string[],
-  entity_ids?: string[],
-  options?: {
-    archive_folder?: string,
-    remove_from_canvas?: boolean,
-  }
-})
-
-// Returns:
-{
-  archived: {
-    milestones: string[],
-    stories: string[],
-    tasks: string[],
-    decisions: string[],
-    documents: string[],
-  },
-  total_archived: number,
+  "results": [
+    {
+      "client_id": "p1",
+      "status": "ok",
+      "id": "F-021",
+      "entity": {
+        "id": "F-021",
+        "title": "RBAC/ABAC",
+        "phase": "4",
+        "status": "Planned"
+      }
+    },
+    {
+      "client_id": "p2",
+      "status": "ok",
+      "id": "F-022",
+      "entity": {
+        "id": "F-022",
+        "title": "Workflow Engine",
+        "phase": "4",
+        "status": "Planned"
+      }
+    }
+  ],
+  "summary": { "total": 2, "succeeded": 2, "failed": 0 }
 }
 ```
 
@@ -810,6 +815,150 @@ navigate_hierarchy({
   results: EntitySummary[],
   path_description: string,       // "M-001 → S-015 → T-042"
 }
+```
+
+#### `get_entity`
+
+Get a single entity with configurable field selection.
+
+```typescript
+get_entity({
+  id: string,
+  fields?: EntityField[],         // Specific fields to return
+})
+
+// Returns:
+{
+  id: string,
+  type: EntityType,
+  title: string,
+  status: string,
+  // ... other requested fields
+  _field_info?: {                 // Only present when fields are inapplicable
+    inapplicable: string[],       // Fields that don't exist on this entity type
+  }
+}
+```
+
+**Field Applicability:**
+
+Different fields apply to different entity types. When you request a field that doesn't apply to the entity type (e.g., `effort` on a milestone), it will be listed in `_field_info.inapplicable` rather than returned as `null`.
+
+| Field | Applies To |
+|-------|------------|
+| `parent`, `children`, `children_count` | milestone, story |
+| `effort`, `priority` | story, task |
+| `task_progress`, `acceptance_criteria`, `implementation_context` | story |
+| `documented_by`, `implemented_by`, `decided_by`, `test_refs`, `user_story`, `tier`, `phase` | feature |
+| `documents` | document |
+
+**Example:**
+```typescript
+// Request
+get_entity({ id: "M-001", fields: ["id", "title", "effort", "phase"] })
+
+// Response - effort and phase don't apply to milestones
+{
+  "id": "M-001",
+  "title": "Q1 Launch",
+  "_field_info": {
+    "inapplicable": ["effort", "phase"]
+  }
+}
+```
+
+#### `get_entities`
+
+Bulk entity retrieval with field selection.
+
+```typescript
+get_entities({
+  ids: string[],                  // Entity IDs to retrieve
+  fields?: EntityField[],         // Specific fields to return
+})
+
+// Returns:
+{
+  entities: [
+    {
+      id: string,
+      type: EntityType,
+      title: string,
+      // ... other requested fields
+      _field_info?: {
+        inapplicable: string[],
+      }
+    },
+    // ...
+  ],
+  not_found: string[],            // IDs that didn't exist
+}
+```
+
+**Example:**
+```typescript
+// Request - verify 5 features in one call
+get_entities({
+  ids: ["F-011", "F-012", "F-017", "F-018", "F-019"],
+  fields: ["id", "title", "phase", "status"]
+})
+
+// Response
+{
+  "entities": [
+    { "id": "F-011", "title": "Auth System", "phase": "1", "status": "Complete" },
+    { "id": "F-012", "title": "API Gateway", "phase": "2", "status": "Planned" },
+    { "id": "F-017", "title": "Webhooks", "phase": "3", "status": "Planned" },
+    { "id": "F-018", "title": "Rate Limiting", "phase": "3", "status": "Planned" },
+    { "id": "F-019", "title": "Audit Logs", "phase": "4", "status": "Planned" }
+  ],
+  "not_found": []
+}
+```
+
+#### `get_feature_coverage`
+
+Analyze feature implementation, documentation, and test coverage.
+
+```typescript
+get_feature_coverage({
+  tier?: string,                  // Filter by tier (e.g., "OSS", "Premium")
+  summary_only?: boolean,         // Return only summary, no features array
+  feature_ids?: string[],         // Filter to specific feature IDs
+  fields?: EntityField[],         // Fields to include for each feature
+})
+
+// Returns:
+{
+  summary: {
+    total: number,
+    documented: number,
+    implemented: number,
+    tested: number,
+    by_phase: Record<string, number>,
+    by_tier: Record<string, number>,
+  },
+  features?: FeatureCoverageItem[],  // Omitted when summary_only=true
+}
+```
+
+**Examples:**
+
+```typescript
+// Summary only - minimal response
+get_feature_coverage({ tier: "OSS", summary_only: true })
+// Returns:
+{
+  "summary": { "total": 24, "documented": 1, "implemented": 24, "tested": 0, ... }
+}
+
+// Filter to specific features
+get_feature_coverage({ feature_ids: ["F-001", "F-002"] })
+// Returns only those 2 features
+
+// Field selection for features
+get_feature_coverage({ tier: "OSS", fields: ["id", "title", "documented_by"] })
+// Returns features with only requested fields
 ```
 
 ### Category 5: Decision & Document Management
@@ -1116,15 +1265,17 @@ See `IMPLEMENTATION_PACKAGE_SPEC.md` for the original design if this functionali
 - `restore_from_archive` - Restore archived entity
 
 **Category 2: Batch Operations**
-- `batch_update` - Unified batch operations (create, update, archive)
+- `batch_update` - Unified batch operations (create, update, archive) with optional entity return
 
 **Category 3: Project Understanding**
 - `get_project_overview` - High-level project status
 - `analyze_project_state` - Comprehensive analysis with blockers
+- `get_feature_coverage` - Feature implementation, documentation, and test coverage analysis
 
 **Category 4: Search & Navigation**
 - `search_entities` - Full-text search with filters and hierarchy navigation
-- `get_entity` - Get entity with configurable field selection
+- `get_entity` - Get entity with configurable field selection and `_field_info` for inapplicable fields
+- `get_entities` - Bulk entity retrieval with field selection
 
 **Category 5: Decision & Document Management**
 - `get_decision_history` - Query decisions by topic
@@ -1648,3 +1799,4 @@ interface EntityFull extends EntitySummary {
 | Version | Date | Changes |
 |---------|------|---------|
 | 2.0-draft | 2024-12-17 | Initial V2 specification |
+| 2.1 | 2026-01-14 | Added efficiency improvements: `batch_update` with `include_entities` option, `get_entities` bulk retrieval, `get_feature_coverage` filtering options, `get_entity` with `_field_info` for inapplicable fields |

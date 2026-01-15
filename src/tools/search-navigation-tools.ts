@@ -21,6 +21,8 @@ import type {
   SearchEntitiesOutput,
   GetEntityInput,
   GetEntityOutput,
+  GetEntitiesInput,
+  GetEntitiesOutput,
   EntityField,
   EntitySummary,
   EntityFull,
@@ -310,6 +312,19 @@ async function performNavigation(
 /** Default fields returned when no fields specified */
 const DEFAULT_FIELDS: EntityField[] = ['id', 'type', 'title', 'status', 'workstream', 'last_updated'];
 
+/** Fields that are always applicable to all entity types */
+const UNIVERSAL_FIELDS: EntityField[] = ['id', 'type', 'title', 'status', 'workstream', 'last_updated', 'content', 'dependencies', 'dependency_details'];
+
+/** Fields applicable to specific entity types */
+const TYPE_SPECIFIC_FIELDS: Record<EntityType, EntityField[]> = {
+  milestone: ['priority', 'children', 'children_count'],
+  story: ['parent', 'children', 'children_count', 'effort', 'priority', 'task_progress', 'acceptance_criteria', 'implementation_context'],
+  task: ['parent', 'effort', 'acceptance_criteria'],
+  decision: [],
+  document: ['documents', 'implementation_context'],
+  feature: ['documented_by', 'implemented_by', 'decided_by', 'test_refs', 'user_story', 'tier', 'phase'],
+};
+
 /**
  * Get entity with selective field retrieval.
  * Replaces get_entity_summary and get_entity_full with field-based control.
@@ -337,6 +352,17 @@ export async function getEntity(
 
   // Add optional fields based on request
   const fieldSet = new Set(fields);
+
+  // Track inapplicable fields
+  const applicableFields = new Set([...UNIVERSAL_FIELDS, ...(TYPE_SPECIFIC_FIELDS[entity.type] || [])]);
+  const inapplicableFields: string[] = [];
+
+  // Check for inapplicable fields
+  for (const field of fields) {
+    if (!applicableFields.has(field)) {
+      inapplicableFields.push(field);
+    }
+  }
 
   // Parent info
   if (fieldSet.has('parent') && 'parent' in entity && entity.parent) {
@@ -434,5 +460,46 @@ export async function getEntity(
     }
   }
 
+  // Add _field_info if there are inapplicable fields
+  if (inapplicableFields.length > 0) {
+    result._field_info = { inapplicable: inapplicableFields };
+  }
+
   return result;
+}
+
+// =============================================================================
+// Get Entities (Bulk)
+// =============================================================================
+
+/**
+ * Get multiple entities in a single call.
+ * More efficient than multiple get_entity calls.
+ */
+export async function getEntities(
+  input: GetEntitiesInput,
+  deps: SearchNavigationDependencies
+): Promise<GetEntitiesOutput> {
+  const { ids, fields } = input;
+
+  const entities: Record<EntityId, GetEntityOutput> = {};
+  const notFound: EntityId[] = [];
+
+  // Process all IDs in parallel for efficiency
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const entityOutput = await getEntity({ id, fields }, deps);
+        entities[id] = entityOutput;
+      } catch {
+        // Entity not found
+        notFound.push(id);
+      }
+    })
+  );
+
+  return {
+    entities,
+    not_found: notFound,
+  };
 }

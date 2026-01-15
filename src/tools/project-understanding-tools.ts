@@ -23,6 +23,7 @@ import type {
   EntitySummary,
   Workstream,
   EntityStatus,
+  FeatureCoverageItem,
 } from './tool-types.js';
 
 // =============================================================================
@@ -555,7 +556,6 @@ export async function analyzeProjectState(
 import type {
   GetFeatureCoverageInput,
   GetFeatureCoverageOutput,
-  FeatureCoverageItem,
 } from './tool-types.js';
 
 import type {
@@ -594,14 +594,20 @@ export async function getFeatureCoverage(
   input: GetFeatureCoverageInput,
   deps: FeatureCoverageDependencies
 ): Promise<GetFeatureCoverageOutput> {
-  const { phase, tier, include_tests } = input;
+  const { phase, tier, include_tests, summary_only, feature_ids, fields } = input;
 
   // Get all features with optional filtering
-  const features = await deps.getAllFeatures({
+  let features = await deps.getAllFeatures({
     tier,
     phase,
     includeDeferred: true, // Include deferred to show full picture
   });
+
+  // Filter to specific feature IDs if provided
+  if (feature_ids && feature_ids.length > 0) {
+    const featureIdSet = new Set(feature_ids);
+    features = features.filter(f => featureIdSet.has(f.id));
+  }
 
   // Get all documents for documentation coverage
   const allDocs = await deps.getAllDocuments();
@@ -740,18 +746,44 @@ export async function getFeatureCoverage(
     coverageItems.push(coverageItem);
   }
 
-  return {
-    features: coverageItems,
-    summary: {
-      total: features.length,
-      implemented: implementedCount,
-      documented: documentedCount,
-      tested: testedCount,
-      gaps: {
-        missing_implementation: missingImplementation,
-        missing_docs: missingDocs,
-        missing_tests: missingTests,
-      },
+  // Build summary
+  const summary = {
+    total: features.length,
+    implemented: implementedCount,
+    documented: documentedCount,
+    tested: testedCount,
+    gaps: {
+      missing_implementation: missingImplementation,
+      missing_docs: missingDocs,
+      missing_tests: missingTests,
     },
+  };
+
+  // Return summary only if requested
+  if (summary_only) {
+    return { summary };
+  }
+
+  // Filter fields if specified
+  let filteredItems = coverageItems;
+  if (fields && fields.length > 0) {
+    const fieldSet = new Set(fields);
+    filteredItems = coverageItems.map(item => {
+      const filtered: Partial<FeatureCoverageItem> = {};
+      if (fieldSet.has('id')) filtered.id = item.id;
+      if (fieldSet.has('title')) filtered.title = item.title;
+      if (fieldSet.has('tier')) filtered.tier = item.tier;
+      if (fieldSet.has('phase')) filtered.phase = item.phase;
+      if (fieldSet.has('status')) filtered.status = item.status;
+      if (fieldSet.has('implementation')) filtered.implementation = item.implementation;
+      if (fieldSet.has('documentation')) filtered.documentation = item.documentation;
+      if (fieldSet.has('testing') && item.testing) filtered.testing = item.testing;
+      return filtered as FeatureCoverageItem;
+    });
+  }
+
+  return {
+    features: filteredItems,
+    summary,
   };
 }

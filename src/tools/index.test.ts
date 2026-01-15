@@ -131,10 +131,37 @@ describe('Tools Index Integration Tests', () => {
       // Search & navigation (consolidated)
       expect(toolNames).toContain('search_entities');
       expect(toolNames).toContain('get_entity');
+      expect(toolNames).toContain('get_entities'); // Bulk retrieval
       // Decision & document (consolidated)
       expect(toolNames).toContain('manage_documents');
       // Feature coverage
       expect(toolNames).toContain('get_feature_coverage');
+    });
+
+    it('should have batch_update with include_entities and fields options', () => {
+      const batchUpdateTool = entityToolDefinitions.find((t) => t.name === 'batch_update');
+      expect(batchUpdateTool).toBeDefined();
+      const optionsProps = batchUpdateTool?.inputSchema.properties?.options?.properties;
+      expect(optionsProps?.include_entities).toBeDefined();
+      expect(optionsProps?.fields).toBeDefined();
+    });
+
+    it('should have get_feature_coverage with summary_only, feature_ids, and fields options', () => {
+      const featureCoverageTool = entityToolDefinitions.find((t) => t.name === 'get_feature_coverage');
+      expect(featureCoverageTool).toBeDefined();
+      const props = featureCoverageTool?.inputSchema.properties;
+      expect(props?.summary_only).toBeDefined();
+      expect(props?.feature_ids).toBeDefined();
+      expect(props?.fields).toBeDefined();
+    });
+
+    it('should have get_entities tool with ids and fields parameters', () => {
+      const getEntitiesTool = entityToolDefinitions.find((t) => t.name === 'get_entities');
+      expect(getEntitiesTool).toBeDefined();
+      const props = getEntitiesTool?.inputSchema.properties;
+      expect(props?.ids).toBeDefined();
+      expect(props?.fields).toBeDefined();
+      expect(getEntitiesTool?.inputSchema.required).toContain('ids');
     });
 
     it('should have valid inputSchema for each tool definition', () => {

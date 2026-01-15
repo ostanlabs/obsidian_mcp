@@ -281,6 +281,10 @@ export interface BatchUpdateInput {
     add_to_canvas?: boolean;
     /** Canvas file path */
     canvas_source?: string;
+    /** If true, include full entity data in results. Default: false */
+    include_entities?: boolean;
+    /** Fields to include when include_entities is true. If not specified, returns all fields. */
+    fields?: EntityField[];
   };
 }
 
@@ -298,6 +302,8 @@ export interface BatchOpResult {
     message: string;
     field?: string;
   };
+  /** Entity data (when include_entities option is true) */
+  entity?: Partial<EntityFull>;
 }
 
 /** Output for batch_update tool */
@@ -574,6 +580,25 @@ export interface GetEntityOutput {
   user_story?: string;
   tier?: string;
   phase?: string;
+  /** Info about requested fields that don't apply to this entity type. Only included when non-empty. */
+  _field_info?: {
+    inapplicable: string[];
+  };
+}
+
+// get_entities (bulk retrieval)
+export interface GetEntitiesInput {
+  /** Array of entity IDs to retrieve */
+  ids: EntityId[];
+  /** Fields to include in response. If not specified, returns summary fields. */
+  fields?: EntityField[];
+}
+
+export interface GetEntitiesOutput {
+  /** Retrieved entities keyed by ID */
+  entities: Record<EntityId, GetEntityOutput>;
+  /** IDs that were not found */
+  not_found: EntityId[];
 }
 
 // =============================================================================
@@ -685,6 +710,12 @@ export interface GetFeatureCoverageInput {
   phase?: 'MVP' | '0' | '1' | '2' | '3' | '4' | '5';
   tier?: 'OSS' | 'Premium';
   include_tests?: boolean;
+  /** If true, return only summary without features array. Reduces response size significantly. */
+  summary_only?: boolean;
+  /** Filter to specific feature IDs. When specified, only these features are included. */
+  feature_ids?: EntityId[];
+  /** Fields to include in each feature. If not specified, returns all fields. */
+  fields?: ('id' | 'title' | 'tier' | 'phase' | 'status' | 'implementation' | 'documentation' | 'testing')[];
 }
 
 export interface FeatureCoverageItem {
@@ -710,7 +741,8 @@ export interface FeatureCoverageItem {
 }
 
 export interface GetFeatureCoverageOutput {
-  features: FeatureCoverageItem[];
+  /** Feature coverage items. Omitted when summary_only is true. */
+  features?: FeatureCoverageItem[];
   summary: {
     total: number;
     implemented: number;
