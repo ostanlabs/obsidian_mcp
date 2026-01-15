@@ -1633,7 +1633,9 @@ export class V2Runtime {
     }
 
     if (options?.phase) {
-      features = features.filter(f => f.phase === options.phase);
+      // Use String() to ensure consistent comparison (phase might be passed as number)
+      const phaseStr = String(options.phase);
+      features = features.filter(f => f.phase === phaseStr);
     }
 
     if (!options?.includeDeferred) {
