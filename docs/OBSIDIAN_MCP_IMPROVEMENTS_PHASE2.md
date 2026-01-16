@@ -14,6 +14,15 @@ Phase 1 improvements (OBSIDIAN-MCP-003) successfully implemented:
 - ✅ `batch_update` with `include_entities` option
 - ✅ `get_feature_coverage` with `summary_only`, `feature_ids`, and `fields` parameters
 
+Phase 2 improvements implemented:
+- ✅ Issue #3: `get_entities` bulk fetch tool
+- ✅ Issue #5: `get_schema` introspection tool
+- ✅ Issue #6: `update_entity` before/after diff (changes array)
+- ✅ Issue #10: Pagination `offset` parameter
+- ✅ Issue #11: `batch_update` dry_run mode
+- ✅ Issue #12: `reconcile_relationships` detailed output
+- ✅ BUG: Content duplication on update (fixed)
+
 This document covers remaining improvements and newly discovered issues.
 
 **Estimated Impact:**
