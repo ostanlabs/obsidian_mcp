@@ -335,6 +335,11 @@ export class V2Runtime {
         return parts.join(' ');
       }
       case 'document': return (entity as Document).content || '';
+      case 'feature': {
+        const f = entity as Feature;
+        // Return actual markdown content if available, otherwise user_story
+        return f.content || f.user_story || '';
+      }
       default: return '';
     }
   }
@@ -603,6 +608,7 @@ export class V2Runtime {
       case 'task': return (entity as Task).status;
       case 'decision': return (entity as Decision).status;
       case 'document': return (entity as Document).status;
+      case 'feature': return (entity as Feature).status;
       default: return 'Unknown';
     }
   }
@@ -615,6 +621,7 @@ export class V2Runtime {
       case 'task': return (entity as Task).workstream || '';
       case 'decision': return (entity as Decision).workstream;
       case 'document': return (entity as Document).workstream;
+      case 'feature': return (entity as Feature).workstream || '';
       default: return '';
     }
   }
@@ -1798,14 +1805,37 @@ export class V2Runtime {
    * - If Story/Milestone has `implements: [DOC-001]`, ensure DOC-001 has `implemented_by: [S-001]`
    * - If Document has `implemented_by: [S-001]`, ensure S-001 has `implements: [DOC-001]`
    *
+   * @param options.dry_run If true, only report what would be changed without making changes
    * @returns Summary of reconciliation actions taken
    */
-  async reconcileImplementsRelationships(): Promise<{
+  async reconcileImplementsRelationships(options?: { dry_run?: boolean }): Promise<{
     scanned: number;
     updated: number;
+    dry_run: boolean;
+    changes: Array<{
+      entity_id: EntityId;
+      field: string;
+      action: 'added' | 'removed';
+      values: EntityId[];
+      reason: string;
+    }>;
+    warnings: Array<{
+      entity_id: EntityId;
+      issue: string;
+    }>;
+    /** @deprecated Use changes instead */
     details: Array<{ entity_id: EntityId; action: string; related_id: EntityId }>;
   }> {
+    const dryRun = options?.dry_run ?? false;
     const details: Array<{ entity_id: EntityId; action: string; related_id: EntityId }> = [];
+    const changes: Array<{
+      entity_id: EntityId;
+      field: string;
+      action: 'added' | 'removed';
+      values: EntityId[];
+      reason: string;
+    }> = [];
+    const warnings: Array<{ entity_id: EntityId; issue: string }> = [];
     let updated = 0;
 
     // Get all entities
@@ -1852,6 +1882,16 @@ export class V2Runtime {
       const expectedImplementers = docImplementsMap.get(doc.id as DocumentId) || new Set();
       const currentImplementedBy = new Set(doc.implemented_by || []);
 
+      // Check for references to non-existent entities
+      for (const implementerId of currentImplementedBy) {
+        if (!this.entityExists(implementerId)) {
+          warnings.push({
+            entity_id: doc.id,
+            issue: `References non-existent entity ${implementerId} in implemented_by`,
+          });
+        }
+      }
+
       // Find missing implementers
       const missingImplementers: (StoryId | MilestoneId)[] = [];
       for (const implementerId of expectedImplementers) {
@@ -1861,11 +1901,23 @@ export class V2Runtime {
       }
 
       if (missingImplementers.length > 0) {
-        doc.implemented_by = [...(doc.implemented_by || []), ...missingImplementers as StoryId[]];
-        doc.updated_at = new Date().toISOString();
-        await this.writeEntityDirect(doc);
-        updated++;
+        // Add to changes array (new format)
+        changes.push({
+          entity_id: doc.id,
+          field: 'implemented_by',
+          action: 'added',
+          values: missingImplementers,
+          reason: `Synced from ${missingImplementers.map(id => `${id}.implements`).join(', ')}`,
+        });
 
+        if (!dryRun) {
+          doc.implemented_by = [...(doc.implemented_by || []), ...missingImplementers as StoryId[]];
+          doc.updated_at = new Date().toISOString();
+          await this.writeEntityDirect(doc);
+          updated++;
+        }
+
+        // Legacy details format
         for (const implementerId of missingImplementers) {
           details.push({
             entity_id: doc.id,
@@ -1885,6 +1937,16 @@ export class V2Runtime {
       const expectedImplementers = featureImplementsMap.get(feature.id as FeatureId) || new Set();
       const currentImplementedBy = new Set(feature.implemented_by || []);
 
+      // Check for references to non-existent entities
+      for (const implementerId of currentImplementedBy) {
+        if (!this.entityExists(implementerId)) {
+          warnings.push({
+            entity_id: feature.id,
+            issue: `References non-existent entity ${implementerId} in implemented_by`,
+          });
+        }
+      }
+
       // Find missing implementers
       const missingImplementers: (StoryId | MilestoneId)[] = [];
       for (const implementerId of expectedImplementers) {
@@ -1894,10 +1956,21 @@ export class V2Runtime {
       }
 
       if (missingImplementers.length > 0) {
-        feature.implemented_by = [...(feature.implemented_by || []), ...missingImplementers as StoryId[]];
-        feature.updated_at = new Date().toISOString();
-        await this.writeEntityDirect(feature);
-        updated++;
+        // Add to changes array (new format)
+        changes.push({
+          entity_id: feature.id,
+          field: 'implemented_by',
+          action: 'added',
+          values: missingImplementers,
+          reason: `Synced from ${missingImplementers.map(id => `${id}.implements`).join(', ')}`,
+        });
+
+        if (!dryRun) {
+          feature.implemented_by = [...(feature.implemented_by || []), ...missingImplementers as StoryId[]];
+          feature.updated_at = new Date().toISOString();
+          await this.writeEntityDirect(feature);
+          updated++;
+        }
 
         for (const implementerId of missingImplementers) {
           details.push({
@@ -1933,8 +2006,19 @@ export class V2Runtime {
       if (!entity) continue;
       if (entity.type !== 'story' && entity.type !== 'milestone') continue;
 
+      const storyOrMilestone = entity as Story | Milestone;
       const expectedDocs = implementedByMap.get(id as StoryId | MilestoneId) || new Set();
-      const currentImplements = new Set((entity as Story | Milestone).implements || []);
+      const currentImplements = new Set(storyOrMilestone.implements || []);
+
+      // Check for references to non-existent entities
+      for (const targetId of currentImplements) {
+        if (!this.entityExists(targetId)) {
+          warnings.push({
+            entity_id: entity.id,
+            issue: `References non-existent entity ${targetId} in implements`,
+          });
+        }
+      }
 
       // Find missing docs
       const missingDocs: DocumentId[] = [];
@@ -1945,15 +2029,27 @@ export class V2Runtime {
       }
 
       if (missingDocs.length > 0) {
-        if (entity.type === 'story') {
-          (entity as Story).implements = [...((entity as Story).implements || []), ...missingDocs];
-        } else {
-          (entity as Milestone).implements = [...((entity as Milestone).implements || []), ...missingDocs];
-        }
-        entity.updated_at = new Date().toISOString();
-        await this.writeEntityDirect(entity);
-        updated++;
+        // Add to changes array (new format)
+        changes.push({
+          entity_id: entity.id,
+          field: 'implements',
+          action: 'added',
+          values: missingDocs,
+          reason: `Synced from ${missingDocs.map(id => `${id}.implemented_by`).join(', ')}`,
+        });
 
+        if (!dryRun) {
+          if (entity.type === 'story') {
+            (entity as Story).implements = [...((entity as Story).implements || []), ...missingDocs];
+          } else {
+            (entity as Milestone).implements = [...((entity as Milestone).implements || []), ...missingDocs];
+          }
+          entity.updated_at = new Date().toISOString();
+          await this.writeEntityDirect(entity);
+          updated++;
+        }
+
+        // Legacy details format
         for (const docId of missingDocs) {
           details.push({
             entity_id: entity.id,
@@ -1966,7 +2062,10 @@ export class V2Runtime {
 
     return {
       scanned: allIds.length,
-      updated,
+      updated: dryRun ? 0 : updated,
+      dry_run: dryRun,
+      changes,
+      warnings,
       details,
     };
   }
