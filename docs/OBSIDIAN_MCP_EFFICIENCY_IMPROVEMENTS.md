@@ -562,13 +562,13 @@ search_entities {
 | #5 | get_schema introspection | Medium | Reduces source code reading | ✅ Done |
 | #6 | update_entity shows diff | Low | Better debugging | ✅ Done |
 
-### P3 - Nice to Have ✅ PARTIALLY IMPLEMENTED
+### P3 - Nice to Have ✅ IMPLEMENTED
 
 | Issue | Improvement | Effort | Benefit | Status |
 |-------|-------------|--------|---------|--------|
 | #7 | reconcile detailed output | Low | Better debugging | ✅ Done |
 | #8 | batch_update dry_run | Low | Safer operations | ✅ Done |
-| #9 | Tool descriptions | Low | Better tool selection | Pending |
+| #9 | Tool descriptions | Low | Better tool selection | ✅ Done |
 | #10 | Pagination | Medium | Large dataset handling | ✅ Done (offset param added) |
 
 ---
