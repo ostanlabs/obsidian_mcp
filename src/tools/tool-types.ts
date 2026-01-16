@@ -146,9 +146,22 @@ export interface UpdateEntityInput {
   };
 }
 
+/** Represents a single field change in an update operation */
+export interface FieldChange {
+  field: string;
+  before: unknown;
+  after: unknown;
+  /** For array fields: items added */
+  added?: unknown[];
+  /** For array fields: items removed */
+  removed?: unknown[];
+}
+
 export interface UpdateEntityOutput {
   id: EntityId;
   entity: EntityFull;
+  /** List of field changes made (before/after diff) */
+  changes?: FieldChange[];
   dependencies_added: number;
   dependencies_removed: number;
   // Enhanced: Status change info
@@ -285,7 +298,23 @@ export interface BatchUpdateInput {
     include_entities?: boolean;
     /** Fields to include when include_entities is true. If not specified, returns all fields. */
     fields?: EntityField[];
+    /** If true, preview changes without executing them. Default: false */
+    dry_run?: boolean;
   };
+}
+
+/** Preview of changes for dry_run mode */
+export interface DryRunPreview {
+  /** Client-provided ID */
+  client_id: string;
+  /** Entity ID (for updates/archives) */
+  id?: EntityId;
+  /** Operation type */
+  op: 'create' | 'update' | 'archive';
+  /** Predicted changes */
+  changes: FieldChange[];
+  /** Validation errors (if any) */
+  validation_errors: string[];
 }
 
 /** Result of a single operation in batch_update */
@@ -316,6 +345,10 @@ export interface BatchUpdateOutput {
     succeeded: number;
     failed: number;
   };
+  /** Dry run mode indicator */
+  dry_run?: boolean;
+  /** Preview of changes (only in dry_run mode) */
+  would_update?: DryRunPreview[];
 }
 
 // =============================================================================
@@ -467,23 +500,41 @@ export interface SearchEntitiesInput {
 
   // Response control
   limit?: number;
+  offset?: number;  // For pagination
   include_content?: boolean;
   fields?: EntityField[];  // Control response size
 }
 
+/** Search result item - fields are dynamic based on input.fields */
+export interface SearchResultItem {
+  id: EntityId;
+  type?: EntityType;
+  title?: string;
+  status?: EntityStatus;
+  workstream?: Workstream;
+  relevance_score?: number;  // Only for search mode
+  snippet?: string;  // Only for search mode
+  parent?: EntityId | { id: EntityId; title: string };
+  path?: string;  // Only for search mode
+  // Additional fields that can be requested
+  last_updated?: string;
+  effort?: Effort;
+  priority?: string;
+  phase?: string;
+  tier?: string;
+  content?: string;
+  [key: string]: unknown;  // Allow dynamic fields
+}
+
 export interface SearchEntitiesOutput {
-  results: Array<{
-    id: EntityId;
-    type: EntityType;
-    title: string;
-    status: EntityStatus;
-    workstream: Workstream;
-    relevance_score?: number;  // Only for search mode
-    snippet?: string;  // Only for search mode
-    parent?: EntityId;
-    path?: string;  // Only for search mode
-  }>;
+  results: SearchResultItem[];
   total_matches: number;
+  // Pagination info
+  pagination?: {
+    offset: number;
+    limit: number;
+    has_more: boolean;
+  };
   // Navigation mode fields
   origin?: EntitySummary;  // Only for navigation mode
   path_description?: string;  // Only for navigation mode
@@ -754,4 +805,37 @@ export interface GetFeatureCoverageOutput {
       missing_tests: EntityId[];
     };
   };
+}
+
+// get_schema
+export interface GetSchemaInput {
+  /** Entity type to get schema for. If not specified, returns all schemas. */
+  entity_type?: EntityType;
+  /** If true, only return relationship definitions */
+  relationships_only?: boolean;
+}
+
+export interface SchemaFieldDefinition {
+  type: string;
+  required?: boolean;
+  default?: unknown;
+  values?: string[];
+  description?: string;
+  relationship?: {
+    target_types: string[];
+    inverse?: string;
+    auto_sync?: boolean;
+  };
+}
+
+export interface EntitySchema {
+  type: EntityType;
+  id_pattern: string;
+  fields: Record<string, SchemaFieldDefinition>;
+  statuses: string[];
+  status_transitions?: Record<string, string[]>;
+}
+
+export interface GetSchemaOutput {
+  schemas: EntitySchema[];
 }

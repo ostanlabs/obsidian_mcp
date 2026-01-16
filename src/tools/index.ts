@@ -205,6 +205,7 @@ export const entityToolDefinitions: Tool[] = [
               items: { type: 'string' },
               description: 'Fields to include when include_entities is true. If not specified, returns all fields.',
             },
+            dry_run: { type: 'boolean', description: 'Preview changes without executing them (default: false). Returns would_update array with predicted changes.' },
           },
         },
       },
@@ -287,11 +288,12 @@ export const entityToolDefinitions: Tool[] = [
         },
         // Response control
         limit: { type: 'number', description: 'Max results to return (default: 50)' },
+        offset: { type: 'number', description: 'Number of results to skip for pagination (default: 0)' },
         include_content: { type: 'boolean' },
         fields: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Fields to include in response (for controlling response size)',
+          description: 'Fields to include in response. Default: [id, type, title, status, workstream]. Available: id, type, title, status, workstream, last_updated, parent, effort, priority, phase, tier',
         },
       },
     },
@@ -388,6 +390,26 @@ export const entityToolDefinitions: Tool[] = [
         dry_run: { type: 'boolean', description: 'If true, only report what would be changed without making changes', default: false },
       },
       required: [],
+    },
+  },
+
+  // Category 7: Schema Introspection
+  {
+    name: 'get_schema',
+    description: 'Get entity schema information. Returns field definitions, valid values, and relationship info for entity types.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        entity_type: {
+          type: 'string',
+          enum: ['milestone', 'story', 'task', 'decision', 'document', 'feature'],
+          description: 'Entity type to get schema for. If not specified, returns all schemas.',
+        },
+        relationships_only: {
+          type: 'boolean',
+          description: 'If true, only return relationship definitions (not all fields)',
+        },
+      },
     },
   },
 ];
