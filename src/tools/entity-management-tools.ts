@@ -39,6 +39,7 @@ import {
   RestoreFromArchiveInput,
   RestoreFromArchiveOutput,
   EntityFull,
+  FieldChange,
 } from './tool-types.js';
 
 import { generateCssClasses } from '../services/v2/entity-serializer.js';
@@ -643,6 +644,12 @@ export async function updateEntity(
   // Update timestamp
   updatedEntity.updated_at = deps.getCurrentTimestamp();
 
+  // Compute field changes (before/after diff)
+  const changes = computeFieldChanges(entity, updatedEntity);
+  if (changes.length > 0) {
+    result.changes = changes;
+  }
+
   // Write updated entity
   await deps.writeEntity(updatedEntity);
 
@@ -650,6 +657,62 @@ export async function updateEntity(
   result.entity = await deps.toEntityFull(updatedEntity);
 
   return result;
+}
+
+// =============================================================================
+// Helper: Compute Field Changes (before/after diff)
+// =============================================================================
+
+/**
+ * Compare two entity states and return a list of field changes.
+ * For array fields, also computes added/removed items.
+ */
+function computeFieldChanges(before: Entity, after: Entity): FieldChange[] {
+  const changes: FieldChange[] = [];
+
+  // Get all keys from both objects
+  const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+
+  // Fields to skip (internal/computed)
+  const skipFields = new Set(['vault_path', 'created_at', 'updated_at']);
+
+  for (const key of allKeys) {
+    if (skipFields.has(key)) continue;
+
+    const beforeVal = (before as unknown as Record<string, unknown>)[key];
+    const afterVal = (after as unknown as Record<string, unknown>)[key];
+
+    // Check if values are different
+    const beforeStr = JSON.stringify(beforeVal);
+    const afterStr = JSON.stringify(afterVal);
+
+    if (beforeStr !== afterStr) {
+      const change: FieldChange = {
+        field: key,
+        before: beforeVal,
+        after: afterVal,
+      };
+
+      // For arrays, compute added/removed
+      if (Array.isArray(beforeVal) || Array.isArray(afterVal)) {
+        const beforeArr = Array.isArray(beforeVal) ? beforeVal : [];
+        const afterArr = Array.isArray(afterVal) ? afterVal : [];
+
+        const beforeSet = new Set(beforeArr.map(v => JSON.stringify(v)));
+        const afterSet = new Set(afterArr.map(v => JSON.stringify(v)));
+
+        const added = afterArr.filter(v => !beforeSet.has(JSON.stringify(v)));
+        const removed = beforeArr.filter(v => !afterSet.has(JSON.stringify(v)));
+
+        if (added.length > 0) change.added = added;
+        if (removed.length > 0) change.removed = removed;
+      }
+
+      changes.push(change);
+    }
+  }
+
+  return changes;
 }
 
 // =============================================================================
