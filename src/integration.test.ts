@@ -1074,13 +1074,13 @@ describe('MCP Integration Tests', () => {
       // Create a story first
       const story = await createEntity({
         type: 'story',
-        data: { title: 'Dry Run Test', workstream: 'dry-run-test' },
+        data: { title: 'Dry Run Test', workstream: 'dry-run-test', priority: 'Medium' },
       }, deps);
 
-      // Update with dry_run=true
+      // Update with dry_run=true - test multiple fields including non-standard ones
       const result = await batchUpdate({
         ops: [
-          { client_id: 'u1', op: 'update', id: story.id, payload: { title: 'Changed Title' } },
+          { client_id: 'u1', op: 'update', id: story.id, payload: { title: 'Changed Title', priority: 'High' } },
         ],
         options: { dry_run: true },
       }, batchDeps);
@@ -1093,6 +1093,17 @@ describe('MCP Integration Tests', () => {
       expect(result.would_update?.[0].id).toBe(story.id);
       expect(result.would_update?.[0].op).toBe('update');
       expect(result.would_update?.[0].changes.length).toBeGreaterThan(0);
+
+      // Verify the changes array contains the actual field changes
+      const titleChange = result.would_update?.[0].changes.find(c => c.field === 'title');
+      expect(titleChange).toBeDefined();
+      expect(titleChange?.before).toBe('Dry Run Test');
+      expect(titleChange?.after).toBe('Changed Title');
+
+      const priorityChange = result.would_update?.[0].changes.find(c => c.field === 'priority');
+      expect(priorityChange).toBeDefined();
+      expect(priorityChange?.before).toBe('Medium');
+      expect(priorityChange?.after).toBe('High');
 
       // Verify entity was NOT actually updated - title should still be 'Dry Run Test'
       const entityAfter = await deps.getEntity(story.id);
