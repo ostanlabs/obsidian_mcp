@@ -38,7 +38,6 @@ describe('EntityValidator', () => {
     vault_path: `/vault/stories/${id}.md` as VaultPath,
     canvas_source: '/vault/canvas.canvas' as CanvasPath,
     cssclasses: [],
-    effort: 'Engineering',
     priority: 'High',
     parent: parent as MilestoneId | undefined,
     depends_on: [],
@@ -328,11 +327,11 @@ describe('EntityValidator', () => {
     });
   });
 
-  describe('Decision blocks Validation', () => {
-    it('should pass for decision blocking story', () => {
+  describe('Decision affects Validation', () => {
+    it('should pass for decision affecting story', () => {
       const decision = createDecision('DEC-001');
       const story = createStory('S-001');
-      (decision as any).blocks = ['S-001'];
+      (decision as any).affects = ['S-001'];
       entities.set(decision.id, decision);
       entities.set(story.id, story);
 
@@ -340,10 +339,10 @@ describe('EntityValidator', () => {
       expect(result.valid).toBe(true);
     });
 
-    it('should pass for decision blocking task', () => {
+    it('should pass for decision affecting task', () => {
       const decision = createDecision('DEC-001');
       const task = createTask('T-001');
-      (decision as any).blocks = ['T-001'];
+      (decision as any).affects = ['T-001'];
       entities.set(decision.id, decision);
       entities.set(task.id, task);
 
@@ -351,10 +350,10 @@ describe('EntityValidator', () => {
       expect(result.valid).toBe(true);
     });
 
-    it('should pass for decision blocking document', () => {
+    it('should pass for decision affecting document', () => {
       const decision = createDecision('DEC-001');
       const doc = createDocument('DOC-001');
-      (decision as any).blocks = ['DOC-001'];
+      (decision as any).affects = ['DOC-001'];
       entities.set(decision.id, decision);
       entities.set(doc.id, doc);
 
@@ -362,26 +361,26 @@ describe('EntityValidator', () => {
       expect(result.valid).toBe(true);
     });
 
-    it('should fail for decision blocking milestone', () => {
+    it('should fail for decision affecting milestone', () => {
       const decision = createDecision('DEC-001');
       const milestone = createMilestone('M-001');
-      (decision as any).blocks = ['M-001'];
+      (decision as any).affects = ['M-001'];
       entities.set(decision.id, decision);
       entities.set(milestone.id, milestone);
 
       const result = validator.validate(decision);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.field === 'blocks')).toBe(true);
+      expect(result.errors.some(e => e.field === 'affects')).toBe(true);
     });
 
-    it('should fail for decision blocking non-existent entity', () => {
+    it('should fail for decision affecting non-existent entity', () => {
       const decision = createDecision('DEC-001');
-      (decision as any).blocks = ['S-999'];
+      (decision as any).affects = ['S-999'];
       entities.set(decision.id, decision);
 
       const result = validator.validate(decision);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.field === 'blocks')).toBe(true);
+      expect(result.errors.some(e => e.field === 'affects')).toBe(true);
     });
   });
 

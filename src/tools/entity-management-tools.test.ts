@@ -327,55 +327,55 @@ describe('validateRelationships', () => {
     });
   });
 
-  describe('Decision blocks Validation', () => {
-    it('should pass for decision blocking story', () => {
+  describe('Decision affects Validation', () => {
+    it('should pass for decision affecting story', () => {
       const entities = new Map<EntityId, EntityType>([
         ['S-001' as EntityId, 'story'],
       ]);
       const deps = createMockDeps(entities);
 
-      const errors = validateRelationships('decision', { blocks: ['S-001'] }, deps);
+      const errors = validateRelationships('decision', { affects: ['S-001'] }, deps);
       expect(errors).toHaveLength(0);
     });
 
-    it('should pass for decision blocking task', () => {
+    it('should pass for decision affecting task', () => {
       const entities = new Map<EntityId, EntityType>([
         ['T-001' as EntityId, 'task'],
       ]);
       const deps = createMockDeps(entities);
 
-      const errors = validateRelationships('decision', { blocks: ['T-001'] }, deps);
+      const errors = validateRelationships('decision', { affects: ['T-001'] }, deps);
       expect(errors).toHaveLength(0);
     });
 
-    it('should pass for decision blocking document', () => {
+    it('should pass for decision affecting document', () => {
       const entities = new Map<EntityId, EntityType>([
         ['DOC-001' as EntityId, 'document'],
       ]);
       const deps = createMockDeps(entities);
 
-      const errors = validateRelationships('decision', { blocks: ['DOC-001'] }, deps);
+      const errors = validateRelationships('decision', { affects: ['DOC-001'] }, deps);
       expect(errors).toHaveLength(0);
     });
 
-    it('should fail for decision blocking milestone', () => {
+    it('should fail for decision affecting milestone', () => {
       const entities = new Map<EntityId, EntityType>([
         ['M-001' as EntityId, 'milestone'],
       ]);
       const deps = createMockDeps(entities);
 
-      const errors = validateRelationships('decision', { blocks: ['M-001'] }, deps);
+      const errors = validateRelationships('decision', { affects: ['M-001'] }, deps);
       expect(errors).toHaveLength(1);
-      expect(errors[0].field).toBe('blocks');
-      expect(errors[0].message).toContain('cannot block milestone');
+      expect(errors[0].field).toBe('affects');
+      expect(errors[0].message).toContain('cannot affect milestone');
     });
 
-    it('should fail for decision blocking non-existent entity', () => {
+    it('should fail for decision affecting non-existent entity', () => {
       const deps = createMockDeps(new Map());
 
-      const errors = validateRelationships('decision', { blocks: ['S-999'] }, deps);
+      const errors = validateRelationships('decision', { affects: ['S-999'] }, deps);
       expect(errors).toHaveLength(1);
-      expect(errors[0].field).toBe('blocks');
+      expect(errors[0].field).toBe('affects');
       expect(errors[0].message).toContain('does not exist');
     });
 

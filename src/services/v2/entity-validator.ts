@@ -74,10 +74,10 @@ const VALID_PARENT_TYPES: Record<EntityType, EntityType | null> = {
 // =============================================================================
 
 /**
- * Valid target types for Decision.blocks field.
- * Decisions can block: documents, stories, tasks (NOT milestones)
+ * Valid target types for Decision.affects field.
+ * Decisions can affect: documents, stories, tasks (NOT milestones)
  */
-const DECISION_BLOCKS_VALID_TYPES: EntityType[] = ['document', 'story', 'task'];
+const DECISION_AFFECTS_VALID_TYPES: EntityType[] = ['document', 'story', 'task'];
 
 /**
  * Valid target types for Document.implemented_by field.
@@ -223,10 +223,10 @@ export class EntityValidator {
       validate: (entity) => this.validateBlockersExist(entity),
     });
 
-    // Decision blocks relationship rule
+    // Decision affects relationship rule
     this.rules.push({
-      name: 'decision_blocks_types',
-      validate: (entity) => this.validateDecisionBlocks(entity),
+      name: 'decision_affects_types',
+      validate: (entity) => this.validateDecisionAffects(entity),
     });
 
     // Document implemented_by relationship rule
@@ -411,8 +411,8 @@ export class EntityValidator {
     return errors;
   }
 
-  /** Validate Decision.blocks targets only valid entity types */
-  private validateDecisionBlocks(entity: Entity): ValidationError[] {
+  /** Validate Decision.affects targets only valid entity types */
+  private validateDecisionAffects(entity: Entity): ValidationError[] {
     const errors: ValidationError[] = [];
 
     if (entity.type !== 'decision') {
@@ -420,16 +420,16 @@ export class EntityValidator {
     }
 
     const decision = entity as Decision;
-    if (!decision.blocks || decision.blocks.length === 0) {
+    if (!decision.affects || decision.affects.length === 0) {
       return errors;
     }
 
-    for (const blockedId of decision.blocks) {
-      const blocked = this.context.getEntity(blockedId);
-      if (blocked && !DECISION_BLOCKS_VALID_TYPES.includes(blocked.type)) {
+    for (const affectedId of decision.affects) {
+      const affected = this.context.getEntity(affectedId);
+      if (affected && !DECISION_AFFECTS_VALID_TYPES.includes(affected.type)) {
         errors.push({
-          field: 'blocks',
-          message: `Decision cannot block ${blocked.type} '${blockedId}'. Valid types: ${DECISION_BLOCKS_VALID_TYPES.join(', ')}`,
+          field: 'affects',
+          message: `Decision cannot affect ${affected.type} '${affectedId}'. Valid types: ${DECISION_AFFECTS_VALID_TYPES.join(', ')}`,
           severity: 'error',
         });
       }
@@ -601,15 +601,15 @@ export class EntityValidator {
       }
     }
 
-    // Check blocks (for decisions)
+    // Check affects (for decisions)
     if (entity.type === 'decision') {
       const decision = entity as Decision;
-      if (decision.blocks) {
-        for (const blockedId of decision.blocks) {
-          if (!this.context.getEntity(blockedId)) {
+      if (decision.affects) {
+        for (const affectedId of decision.affects) {
+          if (!this.context.getEntity(affectedId)) {
             errors.push({
-              field: 'blocks',
-              message: `Referenced entity '${blockedId}' not found`,
+              field: 'affects',
+              message: `Referenced entity '${affectedId}' not found`,
               severity: 'error',
             });
           }

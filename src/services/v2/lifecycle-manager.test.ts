@@ -37,7 +37,6 @@ describe('LifecycleManager', () => {
     vault_path: '/vault/stories/S-001.md' as VaultPath,
     canvas_source: '/vault/canvas.canvas' as CanvasPath,
     cssclasses: [],
-    effort: 'Engineering',
     priority: 'High',
     depends_on: [],
     implements: [],

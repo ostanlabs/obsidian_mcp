@@ -39,7 +39,6 @@ describe('EntitySerializer', () => {
     vault_path: '/vault/stories/S-001.md' as VaultPath,
     canvas_source: '/vault/canvas.canvas' as CanvasPath,
     cssclasses: [],
-    effort: 'Engineering',
     priority: 'High',
     parent: 'M-001' as MilestoneId,
     depends_on: [],
@@ -87,7 +86,7 @@ describe('EntitySerializer', () => {
 
       expect(result).toContain('id: S-001');
       expect(result).toContain('type: story');
-      expect(result).toContain('effort: Engineering');
+      expect(result).toContain('priority: High');
       expect(result).toContain('parent: M-001');
     });
 
@@ -186,17 +185,17 @@ describe('generateCssClasses', () => {
     const classes = generateCssClasses(milestone);
 
     expect(classes).toContain('canvas-milestone');
-    expect(classes).toContain('canvas-effort-engineering');
+    expect(classes).toContain('canvas-workstream-engineering');
     expect(classes).toContain('canvas-status-in-progress');
     expect(classes).toContain('canvas-priority-high');
   });
 
-  it('should generate effort class from story effort field', () => {
+  it('should generate workstream class from story workstream field', () => {
     const story: Story = {
       id: 'S-001' as StoryId,
       type: 'story',
       title: 'Test Story',
-      workstream: 'engineering',
+      workstream: 'design',
       status: 'Not Started',
       archived: false,
       created_at: '2024-01-01',
@@ -204,7 +203,6 @@ describe('generateCssClasses', () => {
       vault_path: '/vault/stories/S-001.md' as VaultPath,
       canvas_source: '/vault/canvas.canvas' as CanvasPath,
       cssclasses: [],
-      effort: 'Design',
       priority: 'Medium',
       parent: 'M-001' as MilestoneId,
       depends_on: [],
@@ -215,7 +213,7 @@ describe('generateCssClasses', () => {
     const classes = generateCssClasses(story);
 
     expect(classes).toContain('canvas-story');
-    expect(classes).toContain('canvas-effort-design');
+    expect(classes).toContain('canvas-workstream-design');
     expect(classes).toContain('canvas-status-not-started');
     expect(classes).toContain('canvas-priority-medium');
   });
@@ -243,7 +241,7 @@ describe('generateCssClasses', () => {
     const classes = generateCssClasses(task);
 
     expect(classes).toContain('canvas-task');
-    expect(classes).toContain('canvas-effort-design');
+    expect(classes).toContain('canvas-workstream-design');
     expect(classes).toContain('canvas-status-not-started');
     // Tasks don't have priority
     expect(classes).not.toContain('canvas-priority');

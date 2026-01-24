@@ -23,7 +23,6 @@ import {
   FeatureTier,
   FeaturePhase,
   Priority,
-  Effort,
   VaultPath,
   CanvasPath,
   ValidationError,
@@ -303,14 +302,16 @@ export class EntityParser {
     const outcome = fm.outcome || this.extractSection(body, 'Outcome');
     const notes = fm.notes || this.extractSection(body, 'Notes');
 
+    // Migration: if workstream is missing but effort exists, use effort as workstream
+    const workstream = fm.workstream || fm.effort || 'default';
+
     return {
       id: id as any, // Cast to specific ID type
       type: 'story',
       title: fm.title || this.extractTitleFromBody(body) || 'Untitled',
-      workstream: fm.workstream || 'default',
+      workstream,
       status: this.validateStatus<StoryStatus>(fm.status, ['Not Started', 'In Progress', 'Completed', 'Blocked'] as StoryStatus[], 'Not Started' as StoryStatus),
       priority: this.validatePriority(fm.priority),
-      effort: this.validateEffort(fm.effort),
       parent: fm.parent,
       outcome,
       tasks: fm.tasks,
@@ -376,6 +377,9 @@ export class EntityParser {
     const decision = fm.decision || this.extractSection(body, 'Decision');
     const rationale = fm.rationale || this.extractSection(body, 'Rationale');
 
+    // Migration: if affects is missing but blocks exists, use blocks as affects
+    const affects = fm.affects || fm.blocks;
+
     return {
       id: id as any, // Cast to specific ID type
       type: 'decision',
@@ -389,10 +393,9 @@ export class EntityParser {
       decided_by: fm.decided_by,
       decided_on: fm.decided_on,
       supersedes: fm.supersedes,
-      blocks: fm.blocks,
       depends_on: fm.depends_on,
       superseded_by: fm.superseded_by,
-      affects: fm.affects,
+      affects,
       archived: fm.archived || false,
       canvas_source: fm.canvas_source || '',
       vault_path: filePath,
@@ -474,11 +477,6 @@ export class EntityParser {
   private validatePriority(value: any): Priority {
     const valid: Priority[] = ['Critical', 'High', 'Medium', 'Low'];
     return valid.includes(value) ? value : 'Medium';
-  }
-
-  private validateEffort(value: any): Effort {
-    const valid: Effort[] = ['Engineering', 'Business', 'Infra', 'Research', 'Design', 'Marketing'];
-    return valid.includes(value) ? value : 'Engineering';
   }
 
   private validateTier(value: any): FeatureTier {

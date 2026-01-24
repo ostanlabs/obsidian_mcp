@@ -372,7 +372,7 @@ EXAMPLES:
         fields: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Fields to include in response. Default: [id, type, title, status, workstream]. Available: id, type, title, status, workstream, last_updated, parent, effort, priority, phase, tier',
+          description: 'Fields to include in response. Default: [id, type, title, status, workstream]. Available: id, type, title, status, workstream, last_updated, parent, priority, phase, tier',
         },
       },
     },
@@ -399,7 +399,7 @@ EXAMPLES:
             type: 'string',
             enum: [
               'id', 'type', 'title', 'status', 'workstream', 'last_updated',
-              'parent', 'children_count', 'content', 'effort', 'priority',
+              'parent', 'children_count', 'content', 'priority',
               'dependencies', 'dependency_details', 'task_progress',
               'acceptance_criteria', 'children', 'implementation_context'
             ],
@@ -436,7 +436,7 @@ EXAMPLES:
             type: 'string',
             enum: [
               'id', 'type', 'title', 'status', 'workstream', 'last_updated',
-              'parent', 'children_count', 'content', 'effort', 'priority',
+              'parent', 'children_count', 'content', 'priority',
               'dependencies', 'dependency_details', 'task_progress',
               'acceptance_criteria', 'children', 'implementation_context',
               'documents', 'documented_by', 'implemented_by', 'decided_by',

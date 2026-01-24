@@ -11,7 +11,6 @@ import {
   EntityStatus,
   EntityMetadata,
   Priority,
-  Effort,
   VaultPath,
   CanvasPath,
 } from '../../models/v2-types.js';
@@ -25,7 +24,6 @@ export interface SecondaryIndexes {
   by_type: Map<EntityType, Set<EntityId>>;
   by_status: Map<EntityStatus, Set<EntityId>>;
   by_workstream: Map<string, Set<EntityId>>;
-  by_effort: Map<Effort, Set<EntityId>>;
   by_parent: Map<EntityId, Set<EntityId>>;
   by_canvas: Map<CanvasPath, Set<EntityId>>;
   archived: Set<EntityId>;
@@ -82,7 +80,6 @@ export class ProjectIndex {
       by_type: new Map(),
       by_status: new Map(),
       by_workstream: new Map(),
-      by_effort: new Map(),
       by_parent: new Map(),
       by_canvas: new Map(),
       archived: new Set(),
@@ -168,7 +165,6 @@ export class ProjectIndex {
     this.addToSetIndex(this.secondary.by_type, metadata.type, metadata.id);
     this.addToSetIndex(this.secondary.by_status, metadata.status, metadata.id);
     this.addToSetIndex(this.secondary.by_workstream, metadata.workstream, metadata.id);
-    if (metadata.effort) this.addToSetIndex(this.secondary.by_effort, metadata.effort, metadata.id);
     if (metadata.parent_id) this.addToSetIndex(this.secondary.by_parent, metadata.parent_id, metadata.id);
     this.addToSetIndex(this.secondary.by_canvas, metadata.canvas_source, metadata.id);
     if (metadata.archived) this.secondary.archived.add(metadata.id);
@@ -180,7 +176,6 @@ export class ProjectIndex {
     this.removeFromSetIndex(this.secondary.by_type, metadata.type, metadata.id);
     this.removeFromSetIndex(this.secondary.by_status, metadata.status, metadata.id);
     this.removeFromSetIndex(this.secondary.by_workstream, metadata.workstream, metadata.id);
-    if (metadata.effort) this.removeFromSetIndex(this.secondary.by_effort, metadata.effort, metadata.id);
     if (metadata.parent_id) this.removeFromSetIndex(this.secondary.by_parent, metadata.parent_id, metadata.id);
     this.removeFromSetIndex(this.secondary.by_canvas, metadata.canvas_source, metadata.id);
     this.secondary.archived.delete(metadata.id);

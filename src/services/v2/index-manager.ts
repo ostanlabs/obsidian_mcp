@@ -13,7 +13,6 @@ import {
   Entity,
   VaultPath,
   CanvasPath,
-  Effort,
   Priority,
 } from '../../models/v2-types.js';
 import { ProjectIndex, RelationshipType } from './index-service.js';
@@ -40,7 +39,6 @@ export interface EntityQuery {
   types?: EntityType[];
   statuses?: EntityStatus[];
   workstreams?: string[];
-  efforts?: Effort[];
   priorities?: Priority[];
   parentId?: EntityId;
   canvasPath?: CanvasPath;
@@ -131,7 +129,6 @@ export class IndexManager {
       base.priority = (entity as any).priority;
     }
     if (entity.type === 'story') {
-      base.effort = (entity as any).effort;
       base.parent_id = (entity as any).parent;
     }
     if (entity.type === 'task') {
@@ -235,9 +232,6 @@ export class IndexManager {
     }
     if (q.workstreams?.length) {
       results = results.filter(m => q.workstreams!.includes(m.workstream));
-    }
-    if (q.efforts?.length) {
-      results = results.filter(m => m.effort && q.efforts!.includes(m.effort));
     }
     if (q.priorities?.length) {
       results = results.filter(m => m.priority && q.priorities!.includes(m.priority));

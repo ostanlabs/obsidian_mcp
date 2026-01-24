@@ -43,16 +43,17 @@ import {
 } from './tool-types.js';
 
 import { generateCssClasses } from '../services/v2/entity-serializer.js';
+import { workstreamNormalizer, NormalizationResult } from '../services/v2/workstream-normalizer.js';
 
 // =============================================================================
 // Relationship Validation Constants
 // =============================================================================
 
 /**
- * Valid target types for Decision.blocks field.
- * Decisions can block: documents, stories, tasks (NOT milestones)
+ * Valid target types for Decision.affects field.
+ * Decisions can affect: documents, stories, tasks (NOT milestones)
  */
-const DECISION_BLOCKS_VALID_TYPES: EntityType[] = ['document', 'story', 'task'];
+const DECISION_AFFECTS_VALID_TYPES: EntityType[] = ['document', 'story', 'task'];
 
 /**
  * Valid target types for Document.implemented_by field.
@@ -225,24 +226,24 @@ export function validateRelationships(
     }
   }
 
-  // Validate blocks references (for decisions)
+  // Validate affects references (for decisions)
   if (type === 'decision') {
-    const blocks = data.blocks as EntityId[] | undefined;
-    if (blocks && blocks.length > 0) {
-      for (const blockedId of blocks) {
-        if (!idExists(blockedId)) {
+    const affects = data.affects as EntityId[] | undefined;
+    if (affects && affects.length > 0) {
+      for (const affectedId of affects) {
+        if (!idExists(affectedId)) {
           errors.push({
-            field: 'blocks',
-            message: `Entity '${blockedId}' does not exist`,
-            invalidId: blockedId,
+            field: 'affects',
+            message: `Entity '${affectedId}' does not exist`,
+            invalidId: affectedId,
           });
         } else {
-          const blockedType = getType(blockedId);
-          if (blockedType && !DECISION_BLOCKS_VALID_TYPES.includes(blockedType)) {
+          const affectedType = getType(affectedId);
+          if (affectedType && !DECISION_AFFECTS_VALID_TYPES.includes(affectedType)) {
             errors.push({
-              field: 'blocks',
-              message: `Decision cannot block ${blockedType} '${blockedId}'. Valid types: ${DECISION_BLOCKS_VALID_TYPES.join(', ')}`,
-              invalidId: blockedId,
+              field: 'affects',
+              message: `Decision cannot affect ${affectedType} '${affectedId}'. Valid types: ${DECISION_AFFECTS_VALID_TYPES.join(', ')}`,
+              invalidId: affectedId,
             });
           }
         }
@@ -321,6 +322,10 @@ export async function createEntity(
     throw new Error(`Invalid relationships: ${errorMessages}`);
   }
 
+  // Normalize workstream
+  const workstreamResult = workstreamNormalizer.normalize(data.workstream as string);
+  const normalizedWorkstream = workstreamResult.normalized;
+
   // Generate new ID
   const id = await deps.getNextId(type);
 
@@ -330,7 +335,7 @@ export async function createEntity(
     id,
     type,
     title: data.title,
-    workstream: data.workstream,
+    workstream: normalizedWorkstream,
     created_at: now,
     updated_at: now,
     archived: false,
@@ -374,12 +379,21 @@ export async function createEntity(
   // Convert to full representation
   const entityFull = await deps.toEntityFull(entity);
 
-  return {
+  // Build result with optional normalization message
+  const result: CreateEntityOutput = {
     id,
     entity: entityFull,
     dependencies_created: data.depends_on?.length ?? 0,
     canvas_node_added: canvasNodeAdded,
   };
+
+  // Add normalization message if workstream was normalized
+  if (workstreamResult.wasNormalized && workstreamResult.message) {
+    result.messages = result.messages || [];
+    result.messages.push(workstreamResult.message);
+  }
+
+  return result;
 }
 
 // =============================================================================
@@ -414,7 +428,6 @@ function buildStory(
     type: 'story',
     status: (data.status as string) || 'Not Started',
     parent: data.parent as MilestoneId,
-    effort: data.effort as string,
     priority: data.priority as string,
     depends_on: (data.depends_on as EntityId[]) || [],
     implements: (data.implements as DocumentId[]) || [],
@@ -461,7 +474,7 @@ function buildDecision(
     decided_by: data.decided_by as string,
     decided_on: data.decided_on as string,
     supersedes: data.supersedes as DecisionId,
-    blocks: (data.blocks as EntityId[]) || [],
+    affects: (data.affects as EntityId[]) || [],
     depends_on: (data.depends_on as DecisionId[]) || [],
   } as unknown as Decision;
 
@@ -585,7 +598,17 @@ export async function updateEntity(
 
   // Apply field updates
   const updatedEntity = { ...entity };
+  let workstreamNormalizationMessage: string | undefined;
+
   if (data) {
+    // Normalize workstream if being updated
+    if (data.workstream !== undefined) {
+      const workstreamResult = workstreamNormalizer.normalize(data.workstream as string);
+      data.workstream = workstreamResult.normalized;
+      if (workstreamResult.wasNormalized && workstreamResult.message) {
+        workstreamNormalizationMessage = workstreamResult.message;
+      }
+    }
     Object.assign(updatedEntity, data);
   }
 
@@ -613,15 +636,15 @@ export async function updateEntity(
     }
   }
 
-  // Handle relationship additions (implements, blocks)
+  // Handle relationship additions (implements, affects)
   if (add_to) {
     if (add_to.implements && 'implements' in updatedEntity) {
       const current = (updatedEntity as Story).implements || [];
       (updatedEntity as Story).implements = [...new Set([...current, ...add_to.implements as DocumentId[]])];
     }
-    if (add_to.blocks && 'blocks' in updatedEntity) {
-      const current = (updatedEntity as Decision).blocks || [];
-      (updatedEntity as Decision).blocks = [...new Set([...current, ...add_to.blocks])];
+    if (add_to.affects && 'affects' in updatedEntity) {
+      const current = (updatedEntity as Decision).affects || [];
+      (updatedEntity as Decision).affects = [...new Set([...current, ...add_to.affects])];
     }
   }
 
@@ -633,10 +656,10 @@ export async function updateEntity(
         (i) => !remove_from.implements!.includes(i)
       );
     }
-    if (remove_from.blocks && 'blocks' in updatedEntity) {
-      const current = (updatedEntity as Decision).blocks || [];
-      (updatedEntity as Decision).blocks = current.filter(
-        (e: EntityId) => !remove_from.blocks!.includes(e)
+    if (remove_from.affects && 'affects' in updatedEntity) {
+      const current = (updatedEntity as Decision).affects || [];
+      (updatedEntity as Decision).affects = current.filter(
+        (e: EntityId) => !remove_from.affects!.includes(e)
       );
     }
   }
@@ -655,6 +678,12 @@ export async function updateEntity(
 
   // Convert to full representation
   result.entity = await deps.toEntityFull(updatedEntity);
+
+  // Add normalization message if workstream was normalized
+  if (workstreamNormalizationMessage) {
+    result.messages = result.messages || [];
+    result.messages.push(workstreamNormalizationMessage);
+  }
 
   return result;
 }
