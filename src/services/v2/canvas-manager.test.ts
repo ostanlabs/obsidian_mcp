@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { CanvasManager, type Position, type NodeDimensions, type CanvasOperation, type BatchResult } from './canvas-manager.js';
-import type { EntityId, VaultPath, CanvasPath, CanvasFile, CanvasNode } from '../../models/v2-types.js';
+import { CanvasManager, type Position, type NodeDimensions, type CanvasOperation } from './canvas-manager.js';
+import type { EntityId, VaultPath, CanvasPath, CanvasFile } from '../../models/v2-types.js';
 import * as fs from 'fs/promises';
 import { writeFileAtomic, triggerObsidianReload } from '../../utils/file-utils.js';
 

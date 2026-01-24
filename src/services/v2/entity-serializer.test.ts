@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { EntitySerializer, generateCssClasses } from './entity-serializer.js';
-import type { Milestone, Story, Task, Decision, EntityId, MilestoneId, StoryId, TaskId, VaultPath, CanvasPath } from '../../models/v2-types.js';
+import type { Milestone, Story, Task, MilestoneId, StoryId, TaskId, VaultPath, CanvasPath } from '../../models/v2-types.js';
 
 describe('EntitySerializer', () => {
   const serializer = new EntitySerializer();

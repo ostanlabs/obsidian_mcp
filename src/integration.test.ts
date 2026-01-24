@@ -12,7 +12,7 @@ import * as os from 'os';
 
 import { getV2Runtime, V2Runtime, resetV2Runtime } from './services/v2/v2-runtime.js';
 import type { V2Config } from './models/v2-types.js';
-import type { EntityId, EntityType } from './models/v2-types.js';
+import type { EntityId } from './models/v2-types.js';
 
 // Tool implementations
 import {
@@ -540,7 +540,7 @@ describe('MCP Integration Tests', () => {
       const searchDeps = runtime.getSearchNavigationDeps();
 
       // Create decision
-      const decision = await createEntity({
+      await createEntity({
         type: 'decision',
         data: {
           title: 'Use TypeScript',

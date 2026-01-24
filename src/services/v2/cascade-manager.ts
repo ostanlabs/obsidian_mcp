@@ -10,9 +10,6 @@ import {
   EntityId,
   EntityType,
   EntityStatus,
-  Milestone,
-  Story,
-  Task,
 } from '../../models/v2-types.js';
 
 // =============================================================================
