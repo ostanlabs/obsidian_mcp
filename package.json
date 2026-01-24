@@ -1,6 +1,6 @@
 {
   "name": "obsidian-accomplishments-mcp",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Model Context Protocol (MCP) server for managing structured project accomplishments in Obsidian",
   "type": "module",
   "main": "dist/index.js",
