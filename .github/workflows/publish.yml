@@ -7,7 +7,7 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: npm  # Required for npm Trusted Publishing
+    environment: prod  # Required for npm Trusted Publishing
     permissions:
       contents: read
       id-token: write  # Required for npm provenance and OIDC
