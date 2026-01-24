@@ -33,56 +33,12 @@ This MCP server lets AI assistants:
 - Node.js 18 or later
 - An Obsidian vault
 
-### Option 1: Install from npm (Recommended)
-
-```bash
-npm install -g obsidian-accomplishments-mcp
-```
-
-Or run directly with npx (no installation required):
-
-```bash
-npx obsidian-accomplishments-mcp
-```
-
-### Option 2: Install from Source
-
-```bash
-git clone https://github.com/ostanlabs/obsidian_mcp.git
-cd obsidian_mcp
-npm install
-npm run build
-```
-
-### Set Up Your Vault
-
-Create the required folder structure in your Obsidian vault:
-
-```
-your-vault/
-├── milestones/               # Milestone files (M-xxx.md)
-├── stories/                  # Story files (S-xxx.md)
-├── tasks/                    # Task files (T-xxx.md)
-├── decisions/                # Decision files (DEC-xxx.md)
-├── documents/                # Document files (DOC-xxx.md)
-├── features/                 # Feature files (F-xxx.md)
-├── archive/                  # Archived entities (by type)
-│   ├── milestone/
-│   ├── story/
-│   ├── task/
-│   └── ...
-├── projects/
-│   └── main.canvas           # Your project canvas
-└── workspaces.json           # Workspace configuration (auto-created on first run)
-```
-
 ### Configure Your AI Assistant
 
-Add the MCP server to your AI client's configuration.
+Add the MCP server to your AI client's configuration. No separate installation needed - npx handles it automatically.
 
 **For Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
-Using npx (recommended):
 ```json
 {
   "mcpServers": {
@@ -98,43 +54,25 @@ Using npx (recommended):
 }
 ```
 
-Using global install:
-```json
-{
-  "mcpServers": {
-    "obsidian": {
-      "command": "obsidian-accomplishments-mcp",
-      "env": {
-        "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
-        "DEFAULT_CANVAS": "projects/main.canvas"
-      }
-    }
-  }
-}
-```
-
-Using local install:
-```json
-{
-  "mcpServers": {
-    "obsidian": {
-      "command": "node",
-      "args": ["/path/to/obsidian_mcp/dist/index.js"],
-      "env": {
-        "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
-        "DEFAULT_CANVAS": "projects/main.canvas"
-      }
-    }
-  }
-}
-```
-
-#### Environment Variables
-
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `VAULT_PATH` | Yes | Absolute path to your Obsidian vault |
 | `DEFAULT_CANVAS` | No | Path to your main project canvas file (relative to vault) |
+
+### Vault Structure
+
+The server will create entities in these folders (create them if they don't exist):
+
+```
+your-vault/
+├── milestones/               # M-xxx.md
+├── stories/                  # S-xxx.md
+├── tasks/                    # T-xxx.md
+├── decisions/                # DEC-xxx.md
+├── documents/                # DOC-xxx.md
+├── features/                 # F-xxx.md
+└── archive/                  # Archived entities
+```
 
 ### Configure Workspaces
 
