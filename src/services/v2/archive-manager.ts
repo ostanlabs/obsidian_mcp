@@ -10,11 +10,6 @@ import {
   Entity,
   EntityId,
   EntityType,
-  Milestone,
-  Story,
-  Task,
-  Decision,
-  Document,
 } from '../../models/v2-types.js';
 
 // =============================================================================
@@ -332,7 +327,7 @@ export class ArchiveManager {
    * @deprecated Use getArchivedEntitiesByType instead.
    * List archived entities for a quarter (legacy structure)
    */
-  getArchivedEntities(quarter: string): ArchiveMetadata[] {
+  getArchivedEntities(_quarter: string): ArchiveMetadata[] {
     // This would be implemented with actual file system scanning
     // For now, return empty array as placeholder
     return [];
@@ -342,7 +337,7 @@ export class ArchiveManager {
    * List archived entities by type from the flat archive structure.
    * This is the preferred method for the new archive structure.
    */
-  getArchivedEntitiesByType(type: EntityType): ArchiveMetadata[] {
+  getArchivedEntitiesByType(_type: EntityType): ArchiveMetadata[] {
     // This would be implemented with actual file system scanning
     // For now, return empty array as placeholder
     return [];

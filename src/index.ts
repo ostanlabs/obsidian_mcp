@@ -170,7 +170,7 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
         },
       ],
     };
-  } catch (error) {
+  } catch (_error) {
     throw new MCPError(`Failed to read resource: ${uri}`, 'READ_ERROR', 500);
   }
 });

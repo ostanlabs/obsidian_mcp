@@ -4,22 +4,10 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  type EntityType,
-  type MilestoneStatus,
-  type StoryStatus,
-  type TaskStatus,
-  type DecisionStatus,
-  type DocumentStatus,
-  type EntityId,
   type MilestoneId,
   type StoryId,
   type Milestone,
   type Story,
-  type Task,
-  type Decision,
-  type Document,
-  type Entity,
-  type EntityMetadata,
   isEntityType,
   isMilestoneId,
   isStoryId,

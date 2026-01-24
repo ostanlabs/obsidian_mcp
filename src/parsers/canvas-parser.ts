@@ -32,7 +32,7 @@ export function findNodeByFile(canvas: CanvasFile, filePath: string): CanvasNode
 /**
  * Find a node by accomplishment ID (searches file paths for the ID)
  */
-export function findNodeByAccomplishmentId(canvas: CanvasFile, accomplishmentId: string): CanvasNode | undefined {
+export function findNodeByAccomplishmentId(canvas: CanvasFile, _accomplishmentId: string): CanvasNode | undefined {
   // We need to look at the actual file content to match by ID
   // For now, we'll search by checking if the file path contains the ID pattern
   // This is a simplified approach - in practice, we'd need to read the files

@@ -14,7 +14,6 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 
 import type {
-  Entity,
   EntityId,
   CanvasNode,
   CanvasEdge,
