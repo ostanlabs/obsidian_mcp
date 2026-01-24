@@ -33,10 +33,22 @@ This MCP server lets AI assistants:
 - Node.js 18 or later
 - An Obsidian vault
 
-### Install from Source
+### Option 1: Install from npm (Recommended)
 
 ```bash
-git clone <repository-url>
+npm install -g obsidian-accomplishments-mcp
+```
+
+Or run directly with npx (no installation required):
+
+```bash
+npx obsidian-accomplishments-mcp
+```
+
+### Option 2: Install from Source
+
+```bash
+git clone https://github.com/ostanlabs/obsidian_mcp.git
 cd obsidian_mcp
 npm install
 npm run build
@@ -70,6 +82,38 @@ Add the MCP server to your AI client's configuration.
 
 **For Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
+Using npx (recommended):
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "npx",
+      "args": ["-y", "obsidian-accomplishments-mcp"],
+      "env": {
+        "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
+        "DEFAULT_CANVAS": "projects/main.canvas"
+      }
+    }
+  }
+}
+```
+
+Using global install:
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "obsidian-accomplishments-mcp",
+      "env": {
+        "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
+        "DEFAULT_CANVAS": "projects/main.canvas"
+      }
+    }
+  }
+}
+```
+
+Using local install:
 ```json
 {
   "mcpServers": {
