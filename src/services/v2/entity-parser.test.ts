@@ -272,7 +272,6 @@ title: User Authentication
 workstream: engineering
 status: In Progress
 parent: M-001
-effort: Engineering
 priority: High
 ---
 # User Authentication
@@ -285,7 +284,7 @@ Story content here.`;
       expect(story.type).toBe('story');
       expect(story.id).toBe('S-001');
       expect(story.parent).toBe('M-001');
-      expect(story.effort).toBe('Engineering');
+      expect(story.workstream).toBe('engineering');
       expect(story.priority).toBe('High');
     });
   });
@@ -363,7 +362,25 @@ supersedes: DEC-001
       expect(decision.supersedes).toBe('DEC-001');
     });
 
-    it('should parse decision with blocks array', () => {
+    it('should parse decision with affects array', () => {
+      const content = `---
+id: DEC-001
+title: Use React
+workstream: engineering
+status: Decided
+affects:
+  - DOC-001
+  - S-001
+---
+# Use React`;
+
+      const result = parser.parse(content, '/vault/decisions/DEC-001.md' as VaultPath);
+      const decision = result.entity as Decision;
+
+      expect(decision.affects).toEqual(['DOC-001', 'S-001']);
+    });
+
+    it('should migrate legacy blocks field to affects', () => {
       const content = `---
 id: DEC-001
 title: Use React
@@ -378,7 +395,8 @@ blocks:
       const result = parser.parse(content, '/vault/decisions/DEC-001.md' as VaultPath);
       const decision = result.entity as Decision;
 
-      expect(decision.blocks).toEqual(['DOC-001', 'S-001']);
+      // Legacy blocks should be migrated to affects
+      expect(decision.affects).toEqual(['DOC-001', 'S-001']);
     });
   });
 

@@ -163,7 +163,6 @@ describe('v2-types', () => {
         canvas_source: '/canvas.canvas',
         cssclasses: [],
         parent: 'M-001' as MilestoneId,
-        effort: 'Engineering',
         priority: 'Medium',
         depends_on: [],
       };

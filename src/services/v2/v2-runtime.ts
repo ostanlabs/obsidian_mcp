@@ -32,7 +32,6 @@ import {
   CanvasPath,
   VaultPath,
   Priority,
-  Effort,
   getEntityTypeFromId,
 } from '../../models/v2-types.js';
 
@@ -432,7 +431,6 @@ export class V2Runtime {
     }
     if (entity.type === 'story') {
       metadata.priority = (entity as Story).priority;
-      metadata.effort = (entity as Story).effort;
       metadata.parent_id = (entity as Story).parent;
     }
     if (entity.type === 'task') {
@@ -864,14 +862,14 @@ export class V2Runtime {
     const dependsOn = (entity as any).depends_on as EntityId[] | undefined;
     if (dependsOn && dependsOn.length > 0) {
       for (const depId of dependsOn) {
-        await this.ensureBlocks(depId, entity.id);
+        await this.ensureAffects(depId, entity.id);
       }
     }
 
-    const blocks = (entity as any).blocks as EntityId[] | undefined;
-    if (blocks && blocks.length > 0) {
-      for (const blockedId of blocks) {
-        await this.ensureDependsOn(blockedId, entity.id);
+    const affects = (entity as any).affects as EntityId[] | undefined;
+    if (affects && affects.length > 0) {
+      for (const affectedId of affects) {
+        await this.ensureDependsOn(affectedId, entity.id);
       }
     }
   }
@@ -995,19 +993,19 @@ export class V2Runtime {
   }
 
   /**
-   * Ensure an entity's blocks array includes the given blocked ID.
+   * Ensure an entity's affects array includes the given affected ID.
    */
-  private async ensureBlocks(blockerId: EntityId, blockedId: EntityId): Promise<void> {
-    const blocker = await this.getEntity(blockerId);
-    if (!blocker) return;
+  private async ensureAffects(affecterId: EntityId, affectedId: EntityId): Promise<void> {
+    const affecter = await this.getEntity(affecterId);
+    if (!affecter) return;
 
-    const currentBlocks = (blocker as any).blocks || [];
-    if (currentBlocks.includes(blockedId)) return;
+    const currentAffects = (affecter as any).affects || [];
+    if (currentAffects.includes(affectedId)) return;
 
-    (blocker as any).blocks = [...currentBlocks, blockedId];
-    blocker.updated_at = new Date().toISOString();
-    await this.writeEntityDirect(blocker);
-    console.error(`[V2Runtime] Synced blocks: added ${blockedId} to ${blockerId}`);
+    (affecter as any).affects = [...currentAffects, affectedId];
+    affecter.updated_at = new Date().toISOString();
+    await this.writeEntityDirect(affecter);
+    console.error(`[V2Runtime] Synced affects: added ${affectedId} to ${affecterId}`);
   }
 
   /**
@@ -1475,9 +1473,6 @@ export class V2Runtime {
     if (entity.type === 'milestone' || entity.type === 'story') {
       full.priority = (entity as Milestone | Story).priority;
     }
-    if (entity.type === 'story') {
-      full.effort = (entity as Story).effort;
-    }
 
     // Add document-specific fields
     if (entity.type === 'document') {
@@ -1660,7 +1655,7 @@ export class V2Runtime {
     rationale: string;
     workstream: string;
     decided_by: string;
-    blocks?: EntityId[];
+    affects?: EntityId[];
     supersedes?: EntityId;
   }): Promise<Decision> {
     const id = await this.getNextId('decision') as DecisionId;
@@ -1677,7 +1672,7 @@ export class V2Runtime {
       decided_by: data.decided_by,
       decided_on: now,
       status: 'Decided',
-      blocks: data.blocks || [],
+      affects: data.affects || [],
       supersedes: data.supersedes as DecisionId | undefined,
       archived: false,
       created_at: now,
@@ -1713,7 +1708,7 @@ export class V2Runtime {
     const decisions = await this.getAllDecisions({ includeSuperseded: true });
     // For now, return decisions that reference this document
     // This would need more sophisticated tracking in a real implementation
-    return decisions.filter(d => d.blocks?.includes(docId));
+    return decisions.filter(d => d.affects?.includes(docId));
   }
 
   /** Generate entity ID - uses vault scanning for consistency */
@@ -1739,7 +1734,7 @@ export class V2Runtime {
   /** Get related decisions for an entity */
   async getRelatedDecisions(entityId: EntityId): Promise<Decision[]> {
     const decisions = await this.getAllDecisions();
-    return decisions.filter(d => d.blocks?.includes(entityId));
+    return decisions.filter(d => d.affects?.includes(entityId));
   }
 
   /** Get blocking entities */

@@ -334,8 +334,8 @@ export async function batchUpdate(
             (entity as any).depends_on = mergedDeps;
           }
 
-          // Handle other field updates (title, priority, effort, content, parent, etc.)
-          const fieldsToUpdate = ['title', 'priority', 'effort', 'content', 'workstream',
+          // Handle other field updates (title, priority, content, parent, etc.)
+          const fieldsToUpdate = ['title', 'priority', 'content', 'workstream',
             'target_date', 'owner', 'acceptance_criteria', 'implements', 'enables', 'parent'];
           for (const field of fieldsToUpdate) {
             if (field in resolvedPayload && resolvedPayload[field] !== undefined) {

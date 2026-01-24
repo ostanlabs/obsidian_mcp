@@ -31,7 +31,6 @@ import type {
   EntityFull,
   EntityStatus,
   Workstream,
-  Effort,
 } from './tool-types.js';
 
 // =============================================================================
@@ -119,9 +118,6 @@ function buildSearchResultItem(
   if (fieldSet.has('last_updated')) result.last_updated = entity.updated_at || new Date().toISOString();
   if (fieldSet.has('parent') && 'parent' in entity && entity.parent) {
     result.parent = entity.parent as EntityId;
-  }
-  if (fieldSet.has('effort') && 'effort' in entity) {
-    result.effort = (entity as Story).effort as Effort;
   }
   if (fieldSet.has('priority') && 'priority' in entity) {
     result.priority = (entity as Milestone | Story).priority;
@@ -220,16 +216,6 @@ async function performListMode(
   // Apply workstream filter for multiple workstreams (getAllEntities only supports one)
   if (filters?.workstream && filters.workstream.length > 1) {
     entities = entities.filter(e => filters.workstream!.includes(e.workstream));
-  }
-
-  // Apply effort filter if present
-  if (filters?.effort && filters.effort.length > 0) {
-    entities = entities.filter(e => {
-      if ('effort' in e && e.effort) {
-        return filters.effort!.includes(e.effort as Effort);
-      }
-      return false;
-    });
   }
 
   const totalMatches = entities.length;
@@ -364,8 +350,8 @@ const UNIVERSAL_FIELDS: EntityField[] = ['id', 'type', 'title', 'status', 'works
 /** Fields applicable to specific entity types */
 const TYPE_SPECIFIC_FIELDS: Record<EntityType, EntityField[]> = {
   milestone: ['priority', 'children', 'children_count'],
-  story: ['parent', 'children', 'children_count', 'effort', 'priority', 'task_progress', 'acceptance_criteria', 'implementation_context'],
-  task: ['parent', 'effort', 'acceptance_criteria'],
+  story: ['parent', 'children', 'children_count', 'priority', 'task_progress', 'acceptance_criteria', 'implementation_context'],
+  task: ['parent', 'acceptance_criteria'],
   decision: [],
   document: ['documents', 'implementation_context'],
   feature: ['documented_by', 'implemented_by', 'decided_by', 'test_refs', 'user_story', 'tier', 'phase'],
@@ -434,10 +420,7 @@ export async function getEntity(
     result.content = full.content;
   }
 
-  // Effort and priority
-  if (fieldSet.has('effort') && 'effort' in entity) {
-    result.effort = entity.effort as GetEntityOutput['effort'];
-  }
+  // Priority
   if (fieldSet.has('priority') && 'priority' in entity) {
     result.priority = entity.priority as GetEntityOutput['priority'];
   }

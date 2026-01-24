@@ -89,9 +89,6 @@ export type EntityStatus = MilestoneStatus | StoryStatus | TaskStatus | Decision
 /** Priority levels */
 export type Priority = 'Low' | 'Medium' | 'High' | 'Critical';
 
-/** Effort/workstream types */
-export type Effort = 'Engineering' | 'Business' | 'Infra' | 'Research' | 'Design' | 'Marketing';
-
 /** Document types */
 export type DocumentType = 'spec' | 'adr' | 'vision' | 'guide' | 'research';
 
@@ -305,9 +302,6 @@ export interface Story extends EntityBase {
   id: StoryId;
   status: StoryStatus;
 
-  /** Effort type */
-  effort: Effort;
-
   /** Priority level */
   priority: Priority;
 
@@ -425,8 +419,8 @@ export interface Decision extends EntityBase {
   /** IDs of decisions this depends on */
   depends_on?: DecisionId[];
 
-  /** Entities blocked by this decision (auto-synced from *.depends_on) */
-  blocks?: EntityId[];
+  /** Entities affected/blocked by this decision (auto-synced from *.depends_on) */
+  affects?: EntityId[];
 
   // === SUPERSESSION ===
   /** Previous decision this supersedes */
@@ -434,10 +428,6 @@ export interface Decision extends EntityBase {
 
   /** Decision that superseded this one (auto-synced from Decision.supersedes) */
   superseded_by?: DecisionId;
-
-  // === FEATURE RELATIONSHIPS ===
-  /** Features this decision affects (syncs to Feature.decided_by) */
-  affects?: FeatureId[];
 }
 
 // =============================================================================
@@ -581,9 +571,6 @@ export interface EntityMetadata {
 
   /** Priority (if applicable) */
   priority?: Priority;
-
-  /** Effort type (if applicable) */
-  effort?: Effort;
 
   /** Canvas source path */
   canvas_source: CanvasPath;
