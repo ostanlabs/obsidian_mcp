@@ -62,8 +62,8 @@ function parseBodySections(body: string): BodySections {
   
   let currentSection = '';
   let outcome = '';
-  let acceptance_criteria: string[] = [];
-  let tasks: Task[] = [];
+  const acceptance_criteria: string[] = [];
+  const tasks: Task[] = [];
   let notes = '';
   
   let currentTask: Partial<Task> | null = null;

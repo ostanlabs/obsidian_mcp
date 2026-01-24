@@ -219,7 +219,7 @@ export class CycleDetector {
    */
   private generateBreakSuggestions(
     cyclePath: EntityId[],
-    getDependencies: (id: EntityId) => EntityId[]
+    _getDependencies: (id: EntityId) => EntityId[]
   ): CycleBreakSuggestion[] {
     const suggestions: CycleBreakSuggestion[] = [];
 

@@ -7,7 +7,6 @@
 import {
   Entity,
   EntityId,
-  EntityType,
   Milestone,
   Story,
   Task,
@@ -24,7 +23,6 @@ import {
   FeaturePhase,
   Priority,
   VaultPath,
-  CanvasPath,
   ValidationError,
   getEntityTypeFromId,
 } from '../../models/v2-types.js';
@@ -262,7 +260,7 @@ export class EntityParser {
     fm: FrontmatterData,
     body: string,
     filePath: VaultPath,
-    errors: string[]
+    _errors: string[]
   ): Milestone {
     // Extract objective from body if not in frontmatter
     // The serializer writes objective directly to body (not as a section header)
@@ -296,7 +294,7 @@ export class EntityParser {
     fm: FrontmatterData,
     body: string,
     filePath: VaultPath,
-    errors: string[]
+    _errors: string[]
   ): Story {
     // Extract outcome and notes from body sections if not in frontmatter
     const outcome = fm.outcome || this.extractSection(body, 'Outcome');
@@ -333,7 +331,7 @@ export class EntityParser {
     fm: FrontmatterData,
     body: string,
     filePath: VaultPath,
-    errors: string[]
+    _errors: string[]
   ): Task {
     // Extract description, technical_notes, and notes from body sections if not in frontmatter
     const description = fm.description || this.extractSection(body, 'Description');
@@ -369,7 +367,7 @@ export class EntityParser {
     fm: FrontmatterData,
     body: string,
     filePath: VaultPath,
-    errors: string[]
+    _errors: string[]
   ): Decision {
     // Extract context, decision, and rationale from body sections
     // (they may also be in frontmatter for backwards compatibility)
@@ -410,7 +408,7 @@ export class EntityParser {
     fm: FrontmatterData,
     body: string,
     filePath: VaultPath,
-    errors: string[]
+    _errors: string[]
   ): Document {
     return {
       id: id as any, // Cast to specific ID type
@@ -440,7 +438,7 @@ export class EntityParser {
     fm: FrontmatterData,
     body: string,
     filePath: VaultPath,
-    errors: string[]
+    _errors: string[]
   ): Feature {
     return {
       id: id as any, // Cast to specific ID type

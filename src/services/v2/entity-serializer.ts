@@ -6,7 +6,6 @@
 
 import {
   Entity,
-  EntityType,
   Milestone,
   Story,
   Task,

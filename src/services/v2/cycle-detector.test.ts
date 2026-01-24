@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { CycleDetector, cycleDetector } from './cycle-detector.js';
+import { cycleDetector } from './cycle-detector.js';
 import { Entity, EntityId, StoryId } from '../../models/v2-types.js';
 
 // Helper to create a minimal story entity for testing
@@ -154,7 +154,7 @@ describe('CycleDetector', () => {
         createStory('S-003', []),
       ];
 
-      const getDependencies = (id: EntityId): EntityId[] => [];
+      const getDependencies = (_id: EntityId): EntityId[] => [];
 
       const result = cycleDetector.detectCycles(entities, getDependencies);
 
