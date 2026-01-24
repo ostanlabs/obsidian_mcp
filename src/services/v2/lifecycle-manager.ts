@@ -147,21 +147,59 @@ export class LifecycleManager {
   }
 
   // ---------------------------------------------------------------------------
+  // Schema Information Methods
+  // ---------------------------------------------------------------------------
+
+  /** Get all valid statuses for an entity type */
+  getValidStatuses(entityType: EntityType): string[] {
+    const statusMap: Record<EntityType, string[]> = {
+      milestone: ['Not Started', 'In Progress', 'Completed', 'Blocked'],
+      story: ['Not Started', 'In Progress', 'Completed', 'Blocked'],
+      task: ['Not Started', 'In Progress', 'Completed', 'Blocked'],
+      decision: ['Pending', 'Decided', 'Superseded'],
+      document: ['Draft', 'Review', 'Approved', 'Superseded'],
+      feature: ['Planned', 'In Progress', 'Complete', 'Deferred'],
+    };
+    return statusMap[entityType] || [];
+  }
+
+  /** Check if a status value is valid for an entity type */
+  isValidStatus(entityType: EntityType, status: string): boolean {
+    return this.getValidStatuses(entityType).includes(status);
+  }
+
+  // ---------------------------------------------------------------------------
   // Transition Methods
   // ---------------------------------------------------------------------------
 
   /** Check if a transition is allowed */
-  canTransition(entity: Entity, newStatus: EntityStatus): { allowed: boolean; reason?: string } {
+  canTransition(entity: Entity, newStatus: EntityStatus): { allowed: boolean; reason?: string; validStatuses?: string[]; availableTransitions?: { to: EntityStatus; action: string }[] } {
     const rules = this.transitions.get(entity.type);
     if (!rules) {
       return { allowed: false, reason: 'Unknown entity type' };
     }
 
-    const rule = rules.find(r => r.from === entity.status && r.to === newStatus);
-    if (!rule) {
+    // First check if the status is even valid for this entity type
+    const validStatuses = this.getValidStatuses(entity.type);
+    if (!validStatuses.includes(newStatus)) {
       return {
         allowed: false,
-        reason: `Invalid transition: ${entity.status} → ${newStatus}`,
+        reason: `Invalid status "${newStatus}" for ${entity.type}. Valid statuses are: ${validStatuses.join(', ')}`,
+        validStatuses,
+      };
+    }
+
+    const rule = rules.find(r => r.from === entity.status && r.to === newStatus);
+    if (!rule) {
+      const availableTransitions = this.getAvailableTransitions(entity);
+      const transitionList = availableTransitions.length > 0
+        ? availableTransitions.map(t => `${t.to} (${t.action})`).join(', ')
+        : 'none (entity may be in a terminal state)';
+      return {
+        allowed: false,
+        reason: `Cannot transition ${entity.type} from "${entity.status}" to "${newStatus}". Available transitions from "${entity.status}": ${transitionList}`,
+        validStatuses,
+        availableTransitions,
       };
     }
 

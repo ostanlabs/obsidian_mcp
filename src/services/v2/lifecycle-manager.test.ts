@@ -74,7 +74,7 @@ describe('LifecycleManager', () => {
       const milestone = createMilestone('Not Started');
       const result = manager.canTransition(milestone, 'Completed');
       expect(result.allowed).toBe(false);
-      expect(result.reason).toContain('Invalid transition');
+      expect(result.reason).toContain('Cannot transition');
     });
 
     it('should allow In Progress → Completed when all stories complete', () => {
@@ -155,7 +155,7 @@ describe('LifecycleManager', () => {
 
     it('should throw on invalid transition', async () => {
       const task = createTask('Not Started');
-      await expect(manager.transition(task, 'Completed')).rejects.toThrow('Invalid transition');
+      await expect(manager.transition(task, 'Completed')).rejects.toThrow('Cannot transition');
     });
   });
 });

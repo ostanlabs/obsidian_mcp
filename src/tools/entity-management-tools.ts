@@ -44,6 +44,7 @@ import {
 
 import { generateCssClasses } from '../services/v2/entity-serializer.js';
 import { workstreamNormalizer, NormalizationResult } from '../services/v2/workstream-normalizer.js';
+import { ValidationError, NotFoundError } from '../models/types.js';
 
 // =============================================================================
 // Relationship Validation Constants
@@ -319,7 +320,7 @@ export async function createEntity(
   const validationErrors = validateRelationships(type, data, deps);
   if (validationErrors.length > 0) {
     const errorMessages = validationErrors.map(e => `${e.field}: ${e.message}`).join('; ');
-    throw new Error(`Invalid relationships: ${errorMessages}`);
+    throw new ValidationError(`Invalid relationships: ${errorMessages}`);
   }
 
   // Normalize workstream
@@ -364,7 +365,7 @@ export async function createEntity(
       entity = buildFeature(baseEntity, data);
       break;
     default:
-      throw new Error(`Unknown entity type: ${type}`);
+      throw new ValidationError(`Unknown entity type: ${type}. Valid types are: milestone, story, task, decision, document, feature`);
   }
 
   // Write entity to file
@@ -561,7 +562,7 @@ export async function updateEntity(
   // Get existing entity
   const entity = await deps.getEntity(id);
   if (!entity) {
-    throw new Error(`Entity not found: ${id}`);
+    throw new NotFoundError(`Entity not found: ${id}`);
   }
 
   // Initialize result
@@ -760,7 +761,7 @@ async function handleStatusUpdate(
   // Validate transition
   const validation = deps.validateStatusTransition(entity, newStatus);
   if (!validation.valid) {
-    throw new Error(`Invalid status transition: ${validation.reason}`);
+    throw new ValidationError(validation.reason || 'Invalid status transition');
   }
 
   // Compute cascade effects if requested
@@ -832,7 +833,7 @@ async function handleArchiveOperation(
   if (!force) {
     const children = await deps.getChildren(entity.id);
     if (children.length > 0) {
-      throw new Error(
+      throw new ValidationError(
         `Entity has ${children.length} children. Use archive_options.force=true to archive anyway, or archive_options.cascade=true to archive children.`
       );
     }
@@ -923,7 +924,7 @@ export async function updateEntityStatus(
   // Get existing entity
   const entity = await deps.getEntity(id);
   if (!entity) {
-    throw new Error(`Entity not found: ${id}`);
+    throw new NotFoundError(`Entity not found: ${id}`);
   }
 
   const oldStatus = entity.status;
@@ -931,7 +932,7 @@ export async function updateEntityStatus(
   // Validate transition
   const validation = deps.validateStatusTransition(entity, status);
   if (!validation.valid) {
-    throw new Error(`Invalid status transition: ${validation.reason}`);
+    throw new ValidationError(validation.reason || 'Invalid status transition');
   }
 
   // Update entity - cast to Entity to handle status type variance
@@ -981,14 +982,14 @@ export async function archiveEntity(
   // Get existing entity
   const entity = await deps.getEntity(id);
   if (!entity) {
-    throw new Error(`Entity not found: ${id}`);
+    throw new NotFoundError(`Entity not found: ${id}`);
   }
 
   // Check for children if not forcing
   if (!force) {
     const children = await deps.getChildren(id);
     if (children.length > 0) {
-      throw new Error(
+      throw new ValidationError(
         `Entity has ${children.length} children. Use force=true to archive anyway.`
       );
     }
@@ -1026,10 +1027,10 @@ export async function archiveMilestone(
   // Get milestone
   const milestone = await deps.getEntity(milestone_id);
   if (!milestone) {
-    throw new Error(`Milestone not found: ${milestone_id}`);
+    throw new NotFoundError(`Milestone not found: ${milestone_id}`);
   }
   if (milestone.type !== 'milestone') {
-    throw new Error(`Entity ${milestone_id} is not a milestone`);
+    throw new ValidationError(`Entity ${milestone_id} is not a milestone (type: ${milestone.type})`);
   }
 
   // Compute archive path
