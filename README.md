@@ -76,17 +76,21 @@ your-vault/
 
 ### Configure Workspaces
 
-On first run, the server creates a `workspaces.json` file in your vault. Edit this file to define document workspaces that the AI can access:
+Workspaces define document collections that the AI can access. You can configure them in two ways:
+
+**Option 1: Ask the AI** (recommended)
+> "Add a workspace called 'docs' pointing to /path/to/my/docs folder"
+> "Add a notes workspace for my meeting notes at /path/to/notes"
+
+**Option 2: Edit manually**
+
+On first run, the server creates a `workspaces.json` file in your vault:
 
 ```json
 {
   "docs": {
     "path": "/absolute/path/to/your/vault/docs",
     "description": "Project documentation and reference materials"
-  },
-  "notes": {
-    "path": "/absolute/path/to/your/vault/notes",
-    "description": "Meeting notes and daily logs"
   }
 }
 ```
@@ -157,7 +161,7 @@ Entities are organized by workstream. Values are automatically normalized:
 
 ## Available Tools
 
-The MCP server provides 15 tools organized by function:
+The MCP server provides 16 tools organized by function:
 
 ### Entity Management
 
@@ -206,6 +210,7 @@ The MCP server provides 15 tools organized by function:
 | Tool | Description |
 |------|-------------|
 | `list_workspaces` | List all configured workspaces |
+| `manage_workspaces` | Add, update, or remove workspaces from configuration |
 | `list_files` | List all markdown files in a workspace |
 | `read_docs` | Read a document from a workspace |
 | `update_doc` | Create, update, or delete documents in a workspace |

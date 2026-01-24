@@ -23,6 +23,7 @@ import {
   handleUpdateDoc,
   handleListWorkspaces,
   handleListFiles,
+  handleManageWorkspaces,
 } from './tools/index.js';
 
 // Entity tool implementations
@@ -225,6 +226,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'list_files':
         result = await handleListFiles(config, args as any);
+        break;
+
+      case 'manage_workspaces':
+        result = await handleManageWorkspaces(config, args as any);
+        // Re-index resources after workspace changes
+        await indexAllResources();
         break;
 
       case 'get_resources_index': {

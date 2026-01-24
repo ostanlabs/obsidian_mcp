@@ -34,6 +34,12 @@ export {
   type ListFilesInput,
 } from './list-files.js';
 
+export {
+  manageWorkspacesDefinition,
+  handleManageWorkspaces,
+  type ManageWorkspacesInput,
+} from './manage-workspaces.js';
+
 // =============================================================================
 // Entity Tool Exports
 // =============================================================================
@@ -53,6 +59,7 @@ import { readDocsDefinition } from './read-docs.js';
 import { updateDocDefinition } from './update-doc.js';
 import { listWorkspacesDefinition } from './list-workspaces.js';
 import { listFilesDefinition } from './list-files.js';
+import { manageWorkspacesDefinition } from './manage-workspaces.js';
 
 // Utility tool definitions (cast to Tool[] to handle type literal compatibility)
 export const utilityToolDefinitions: Tool[] = [
@@ -60,6 +67,7 @@ export const utilityToolDefinitions: Tool[] = [
   updateDocDefinition as Tool,
   listWorkspacesDefinition as Tool,
   listFilesDefinition as Tool,
+  manageWorkspacesDefinition as Tool,
 ];
 
 // Entity tool definitions (non-prefixed)
