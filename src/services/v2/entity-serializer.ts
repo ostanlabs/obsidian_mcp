@@ -135,7 +135,6 @@ export class EntitySerializer {
   /** Get story-specific frontmatter */
   private getStoryFrontmatter(entity: Story): Record<string, any> {
     return {
-      effort: entity.effort,
       priority: entity.priority,
       // Hierarchy
       parent: entity.parent,
@@ -173,13 +172,12 @@ export class EntitySerializer {
       decided_on: entity.decided_on,
       // Dependencies
       depends_on: entity.depends_on?.length ? entity.depends_on : undefined,
-      blocks: entity.blocks?.length ? entity.blocks : undefined,
+      // Entities affected by this decision (renamed from blocks)
+      affects: entity.affects?.length ? entity.affects : undefined,
       // Supersession
       supersedes: entity.supersedes,
       superseded_by: entity.superseded_by,
       alternatives: entity.alternatives?.length ? entity.alternatives : undefined,
-      // Feature relationships
-      affects: entity.affects?.length ? entity.affects : undefined,
     };
   }
 
@@ -642,7 +640,7 @@ SORT decided_on DESC
  *
  * CSS classes control:
  * - Border thickness: entity type (milestone=4px, story=2px, task=1px)
- * - Border color: workstream/effort type
+ * - Border color: workstream type
  * - Visual state: status indicators
  */
 export function generateCssClasses(entity: Entity): string[] {
@@ -651,10 +649,10 @@ export function generateCssClasses(entity: Entity): string[] {
   // Type class - controls border thickness and node size
   classes.push(`canvas-${entity.type}`);
 
-  // Effort/workstream class - controls border color
-  const effort = getEffortFromEntity(entity);
-  if (effort) {
-    classes.push(`canvas-effort-${normalizeForCss(effort)}`);
+  // Workstream class - controls border color
+  const workstream = getWorkstreamFromEntity(entity);
+  if (workstream) {
+    classes.push(`canvas-workstream-${normalizeForCss(workstream)}`);
   }
 
   // Status class - controls visual state (opacity, badges, etc.)
@@ -672,19 +670,10 @@ export function generateCssClasses(entity: Entity): string[] {
 }
 
 /**
- * Get effort/workstream from entity for CSS class generation.
+ * Get workstream from entity for CSS class generation.
  */
-function getEffortFromEntity(entity: Entity): string | null {
-  switch (entity.type) {
-    case 'story':
-      return (entity as Story).effort || entity.workstream;
-    case 'task':
-    case 'milestone':
-    case 'decision':
-    case 'document':
-    case 'feature':
-      return entity.workstream;
-  }
+function getWorkstreamFromEntity(entity: Entity): string | null {
+  return entity.workstream || null;
 }
 
 /**

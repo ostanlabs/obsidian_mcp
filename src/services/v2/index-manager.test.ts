@@ -55,7 +55,6 @@ describe('IndexManager', () => {
     updated_at: '2024-01-15T00:00:00Z',
     parent: 'M-001' as MilestoneId,
     outcome: 'User can login',
-    effort: 'Engineering',
     priority: 'High',
     depends_on: [],
     cssclasses: [],
@@ -288,7 +287,6 @@ describe('IndexManager', () => {
         id: 'S-001' as StoryId,
         status: 'Not Started',
         workstream: 'engineering',
-        effort: 'Engineering',
         priority: 'High'
       }), Date.now());
       manager.indexEntity(createTask({
@@ -314,11 +312,8 @@ describe('IndexManager', () => {
       expect(results).toHaveLength(3);
     });
 
-    it('should query by effort', () => {
-      const results = manager.query({ efforts: ['Engineering'] });
-      expect(results).toHaveLength(1);
-      expect(results[0].id).toBe('S-001');
-    });
+    // Note: effort field has been removed from Story in favor of workstream
+    // This test is now obsolete and has been removed
 
     it('should query by priority', () => {
       const results = manager.query({ priorities: ['High'] });
@@ -425,13 +420,8 @@ describe('IndexManager', () => {
       expect(metadata?.priority).toBe('High');
     });
 
-    it('should create metadata with effort for stories', () => {
-      const story = createStory({ effort: 'Engineering' });
-      manager.indexEntity(story, Date.now());
-
-      const metadata = manager.getMetadata('S-001' as StoryId);
-      expect(metadata?.effort).toBe('Engineering');
-    });
+    // Note: effort field has been removed from Story in favor of workstream
+    // This test is now obsolete and has been removed
 
     it('should track in_progress status correctly', () => {
       manager.indexEntity(createMilestone({ status: 'In Progress' }), Date.now());

@@ -19,6 +19,8 @@ import type {
   Document,
 } from '../models/v2-types.js';
 
+import { workstreamNormalizer } from '../services/v2/workstream-normalizer.js';
+
 import type {
   GetDecisionHistoryInput,
   GetDecisionHistoryOutput,
@@ -165,13 +167,18 @@ export async function getDecisionHistory(
   input: GetDecisionHistoryInput,
   deps: DecisionDocumentDependencies
 ): Promise<GetDecisionHistoryOutput> {
-  const { topic, workstream, include_superseded } = input;
+  const { topic, include_superseded } = input;
   // Default to including archived decisions (most decisions are archived after being decided)
   const include_archived = input.include_archived ?? true;
 
+  // Normalize workstream for consistent querying
+  const normalizedWorkstream = input.workstream
+    ? workstreamNormalizer.normalize(input.workstream).normalized
+    : undefined;
+
   // Get all decisions
   const decisions = await deps.getAllDecisions({
-    workstream,
+    workstream: normalizedWorkstream,
     includeSuperseded: include_superseded,
     includeArchived: include_archived,
   });
@@ -187,7 +194,7 @@ export async function getDecisionHistory(
     title: d.title,
     status: d.status,
     decided_on: d.decided_on || d.created_at,
-    blocks: d.blocks || [],
+    affects: d.affects || [],
     superseded_by: undefined as EntityId | undefined, // Would need reverse lookup
   }));
 

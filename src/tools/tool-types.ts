@@ -10,12 +10,11 @@ import {
   EntityType,
   EntityStatus,
   Priority,
-  Effort,
   DocumentType,
 } from '../models/v2-types.js';
 
 // Re-export types needed by tool implementations
-export type { EntityStatus, Priority, Effort };
+export type { EntityStatus, Priority };
 
 /** Workstream identifier (string alias for clarity) */
 export type Workstream = string;
@@ -37,7 +36,6 @@ export interface EntitySummary {
 
 export interface EntityFull extends EntitySummary {
   content: string;
-  effort?: Effort;
   priority?: Priority;
   dependencies?: {
     blocks: EntityId[];
@@ -110,6 +108,8 @@ export interface CreateEntityOutput {
   entity: EntityFull;
   dependencies_created: number;
   canvas_node_added: boolean;
+  /** Messages from automatic processing (e.g., workstream normalization) */
+  messages?: string[];
 }
 
 // update_entity (enhanced - consolidates update_entity_status, archive_entity, restore_from_archive)
@@ -120,11 +120,11 @@ export interface UpdateEntityInput {
   remove_dependencies?: EntityId[];
   add_to?: {
     implements?: EntityId[];
-    blocks?: EntityId[];
+    affects?: EntityId[];
   };
   remove_from?: {
     implements?: EntityId[];
-    blocks?: EntityId[];
+    affects?: EntityId[];
   };
   // Enhanced: Status update with cascade (replaces update_entity_status)
   status?: EntityStatus;
@@ -164,6 +164,8 @@ export interface UpdateEntityOutput {
   changes?: FieldChange[];
   dependencies_added: number;
   dependencies_removed: number;
+  /** Messages from automatic processing (e.g., workstream normalization) */
+  messages?: string[];
   // Enhanced: Status change info
   status_changed?: {
     old_status: EntityStatus;
@@ -274,7 +276,6 @@ export interface BatchOp {
     status?: EntityStatus;
     content?: string;
     priority?: Priority;
-    effort?: Effort;
     // For archive
     archived?: boolean;
     cascade?: boolean;  // Archive children too
@@ -494,7 +495,6 @@ export interface SearchEntitiesInput {
     type?: EntityType[];
     status?: EntityStatus[];
     workstream?: Workstream[];
-    effort?: Effort[];
     archived?: boolean;
   };
 
@@ -518,7 +518,6 @@ export interface SearchResultItem {
   path?: string;  // Only for search mode
   // Additional fields that can be requested
   last_updated?: string;
-  effort?: Effort;
   priority?: string;
   phase?: string;
   tier?: string;
@@ -564,7 +563,6 @@ export type EntityField =
   | 'parent'
   | 'children_count'
   | 'content'
-  | 'effort'
   | 'priority'
   | 'dependencies'
   | 'dependency_details'
@@ -600,7 +598,6 @@ export interface GetEntityOutput {
   parent?: { id: EntityId; title: string };
   children_count?: number;
   content?: string;
-  effort?: Effort;
   priority?: Priority;
   dependencies?: {
     blocks: EntityId[];
@@ -695,7 +692,7 @@ export interface GetDecisionHistoryOutput {
     title: string;
     status: string;
     decided_on: string;
-    blocks: EntityId[];
+    affects: EntityId[];
     superseded_by?: EntityId;
   }>;
   decision_chains: Array<{

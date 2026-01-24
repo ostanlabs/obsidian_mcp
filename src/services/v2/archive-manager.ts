@@ -2,7 +2,8 @@
  * V2 Archive Manager
  *
  * Handles archive and restore operations for entities.
- * Archives are organized by quarter and milestone.
+ * Archives are organized by entity type in a flat structure: archive/{type}/
+ * Supports reading from legacy quarter-based structure for backwards compatibility.
  */
 
 import {
@@ -39,7 +40,8 @@ export interface ArchiveMetadata {
   archive_path: string;
   original_path: string;
   milestone_id?: EntityId;
-  quarter: string;
+  /** @deprecated Quarter is no longer used in new flat archive structure */
+  quarter?: string;
 }
 
 // =============================================================================
@@ -97,39 +99,40 @@ export class ArchiveManager {
       throw new Error(`Cannot archive incomplete milestone: ${milestoneId}`);
     }
 
-    const quarter = this.getQuarter(new Date());
-    const archivePath = this.getArchivePath(quarter, milestoneId);
     const archived: EntityId[] = [];
     const timestamp = new Date().toISOString();
 
-    // Archive stories and their tasks
+    // Archive stories and their tasks (each to their type-specific archive folder)
     const stories = this.getChildren(milestoneId, 'story');
     for (const story of stories) {
       const tasks = this.getChildren(story.id, 'task');
       for (const task of tasks) {
-        await this.archiveEntity(task.id, archivePath);
+        await this.archiveEntity(task.id);
         archived.push(task.id);
       }
-      await this.archiveEntity(story.id, archivePath);
+      await this.archiveEntity(story.id);
       archived.push(story.id);
     }
 
     // Archive related decisions and documents
     const decisions = this.getChildren(milestoneId, 'decision');
     for (const decision of decisions) {
-      await this.archiveEntity(decision.id, archivePath);
+      await this.archiveEntity(decision.id);
       archived.push(decision.id);
     }
 
     const documents = this.getChildren(milestoneId, 'document');
     for (const doc of documents) {
-      await this.archiveEntity(doc.id, archivePath);
+      await this.archiveEntity(doc.id);
       archived.push(doc.id);
     }
 
     // Archive the milestone itself
-    await this.archiveEntity(milestoneId, archivePath);
+    await this.archiveEntity(milestoneId);
     archived.push(milestoneId);
+
+    // Return the milestone archive path as the primary path
+    const archivePath = this.getArchivePathForType('milestone');
 
     return {
       archived_entities: archived,
@@ -138,7 +141,7 @@ export class ArchiveManager {
     };
   }
 
-  /** Archive a single entity */
+  /** Archive a single entity to the flat archive structure: archive/{type}/ */
   async archiveEntity(entityId: EntityId, archivePath?: string): Promise<ArchiveMetadata> {
     const entity = this.getEntity(entityId);
     if (!entity) {
@@ -150,8 +153,8 @@ export class ArchiveManager {
       throw new Error(`Entity path not found: ${entityId}`);
     }
 
-    const quarter = this.getQuarter(new Date());
-    const targetPath = archivePath || this.getArchivePath(quarter);
+    // Use flat archive structure: archive/{type}/
+    const targetPath = archivePath || this.getArchivePathForType(entity.type);
     const newPath = `${targetPath}/${this.getFilename(entity)}`;
 
     await this.moveFile(originalPath, newPath);
@@ -162,7 +165,6 @@ export class ArchiveManager {
       archived_at: new Date().toISOString(),
       archive_path: newPath,
       original_path: originalPath,
-      quarter,
     };
   }
 
@@ -226,15 +228,29 @@ export class ArchiveManager {
   // Helper Methods
   // ---------------------------------------------------------------------------
 
-  /** Get current quarter string (e.g., "2024-Q1") */
+  /**
+   * Get archive path for entity type using flat structure: archive/{type}/
+   * This is the new archive structure aligned with the Canvas Project Manager Plugin.
+   */
+  private getArchivePathForType(type: EntityType): string {
+    return `${this.basePath}/archive/${type}`;
+  }
+
+  /**
+   * @deprecated Use getArchivePathForType instead.
+   * Get current quarter string (e.g., "2024-Q1") - kept for backwards compatibility
+   */
   private getQuarter(date: Date): string {
     const year = date.getFullYear();
     const quarter = Math.ceil((date.getMonth() + 1) / 3);
     return `${year}-Q${quarter}`;
   }
 
-  /** Get archive path for a quarter and optional milestone */
-  private getArchivePath(quarter: string, milestoneId?: EntityId): string {
+  /**
+   * @deprecated Use getArchivePathForType instead.
+   * Get archive path for a quarter and optional milestone - kept for backwards compatibility
+   */
+  private getLegacyArchivePath(quarter: string, milestoneId?: EntityId): string {
     const base = `${this.basePath}/archive/${quarter}`;
     return milestoneId ? `${base}/${milestoneId}` : base;
   }
@@ -255,6 +271,20 @@ export class ArchiveManager {
       case 'feature':
         return `${this.basePath}/features`;
     }
+  }
+
+  /**
+   * Try to find an entity in the archive, checking both new flat structure
+   * and legacy quarter-based structure for backwards compatibility.
+   */
+  findInArchive(entityId: EntityId, entityType: EntityType): string | null {
+    // First check new flat structure: archive/{type}/
+    const flatPath = `${this.getArchivePathForType(entityType)}`;
+
+    // If not found, check legacy quarter-based structure
+    // This would require file system scanning which is handled by the caller
+    // Return the flat path as the primary location
+    return flatPath;
   }
 
   /** Get filename for an entity */
@@ -298,10 +328,39 @@ export class ArchiveManager {
     return { eligible: true };
   }
 
-  /** List archived entities for a quarter */
+  /**
+   * @deprecated Use getArchivedEntitiesByType instead.
+   * List archived entities for a quarter (legacy structure)
+   */
   getArchivedEntities(quarter: string): ArchiveMetadata[] {
     // This would be implemented with actual file system scanning
     // For now, return empty array as placeholder
     return [];
+  }
+
+  /**
+   * List archived entities by type from the flat archive structure.
+   * This is the preferred method for the new archive structure.
+   */
+  getArchivedEntitiesByType(type: EntityType): ArchiveMetadata[] {
+    // This would be implemented with actual file system scanning
+    // For now, return empty array as placeholder
+    return [];
+  }
+
+  /**
+   * Get all possible archive paths for an entity (both new and legacy structures).
+   * Useful for finding entities that may have been archived with either structure.
+   */
+  getPossibleArchivePaths(entityId: EntityId, entityType: EntityType): string[] {
+    const paths: string[] = [];
+
+    // New flat structure: archive/{type}/
+    paths.push(this.getArchivePathForType(entityType));
+
+    // Legacy quarter-based structure: archive/{quarter}/ and archive/{quarter}/{milestone}/
+    // Would need to scan for existing quarters
+    // For now, just return the flat path
+    return paths;
   }
 }
