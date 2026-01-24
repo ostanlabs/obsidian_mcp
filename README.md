@@ -1,15 +1,15 @@
-# Obsidian MCP Server
+# Obsidian Project Management MCP Server
 
-An MCP (Model Context Protocol) server that enables AI assistants to manage hierarchical project entities in Obsidian. Works alongside the [Canvas Structured Items Plugin](https://bitbucket.org/ostanmarc/obsidian-canvas-structured-items/src/master/) for visual project management.
+An MCP (Model Context Protocol) server for AI-native project management in Obsidian. Enables AI assistants to create, update, search, and manage project entities stored as markdown files with automatic relationship tracking.
 
 ## What This Does
 
 This MCP server lets AI assistants:
-- **Manage project entities** — create, update, and track milestones, stories, tasks, decisions, and documents
-- **Handle dependencies** — define relationships between entities, find blocked items, and identify what's ready to start
-- **Track progress** — see project status, workstream health, and completion statistics
+- **Manage project entities** — create, update, and track milestones, stories, tasks, decisions, documents, and features
+- **Handle dependencies** — define relationships between entities with automatic bidirectional sync
+- **Track progress** — see project status, workstream health, and feature coverage
 - **Navigate hierarchies** — traverse parent-child relationships and dependency graphs
-- **Read and write documents** — access reference materials organized in workspaces
+- **Batch operations** — efficient bulk create/update/archive with dry-run preview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -18,13 +18,8 @@ This MCP server lets AI assistants:
 │                                                                     │
 │   ┌──────────┐      ┌──────────────┐      ┌──────────┐            │
 │   │ Obsidian │◄────►│  MCP Server  │◄────►│    AI    │            │
-│   │  Canvas  │      │  (this repo) │      │ Assistant│            │
-│   └────┬─────┘      └──────────────┘      └──────────┘            │
-│        │                                                           │
-│        ▼                                                           │
-│   ┌──────────┐      ┌──────────────┐                              │
-│   │  Plugin  │─────►│    Notion    │  (optional sync)             │
-│   └──────────┘      └──────────────┘                              │
+│   │  Vault   │      │  (this repo) │      │ Assistant│            │
+│   └──────────┘      └──────────────┘      └──────────┘            │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -37,24 +32,11 @@ This MCP server lets AI assistants:
 
 - Node.js 18 or later
 - An Obsidian vault
-- The [Canvas Structured Items Plugin](https://bitbucket.org/ostanmarc/obsidian-canvas-structured-items/src/master/) installed in your vault
 
-### Option 1: Install from npm (Recommended)
-
-```bash
-npm install -g obsidian-accomplishments-mcp
-```
-
-Or run directly with npx:
+### Install from Source
 
 ```bash
-npx obsidian-accomplishments-mcp
-```
-
-### Option 2: Install from Source
-
-```bash
-git clone https://github.com/ostanlabs/obsidian_mcp.git
+git clone <repository-url>
 cd obsidian_mcp
 npm install
 npm run build
@@ -71,7 +53,12 @@ your-vault/
 ├── tasks/                    # Task files (T-xxx.md)
 ├── decisions/                # Decision files (DEC-xxx.md)
 ├── documents/                # Document files (DOC-xxx.md)
-├── archive/                  # Archived entities
+├── features/                 # Feature files (F-xxx.md)
+├── archive/                  # Archived entities (by type)
+│   ├── milestone/
+│   ├── story/
+│   ├── task/
+│   └── ...
 ├── projects/
 │   └── main.canvas           # Your project canvas
 └── workspaces.json           # Workspace configuration (auto-created on first run)
@@ -83,23 +70,6 @@ Add the MCP server to your AI client's configuration.
 
 **For Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
-Using npx (recommended):
-```json
-{
-  "mcpServers": {
-    "obsidian": {
-      "command": "npx",
-      "args": ["-y", "obsidian-accomplishments-mcp@latest"],
-      "env": {
-        "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
-        "DEFAULT_CANVAS": "projects/main.canvas"
-      }
-    }
-  }
-}
-```
-
-Using local install:
 ```json
 {
   "mcpServers": {
@@ -120,7 +90,7 @@ Using local install:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `VAULT_PATH` | Yes | Absolute path to your Obsidian vault |
-| `DEFAULT_CANVAS` | Yes | Path to your main project canvas file (relative to vault) |
+| `DEFAULT_CANVAS` | No | Path to your main project canvas file (relative to vault) |
 
 ### Configure Workspaces
 
@@ -152,117 +122,104 @@ Milestone (M-xxx)
 └── Story (S-xxx)
     └── Task (T-xxx)
 
-Decision (DEC-xxx)  ─── can enable/supersede other entities
-Document (DOC-xxx)  ─── can be implemented by stories
+Feature (F-xxx)     ─── product features with coverage tracking
+Decision (DEC-xxx)  ─── captured choices, can affect other entities
+Document (DOC-xxx)  ─── specs/ADRs, can be implemented by stories
 ```
 
 ### Entity Types
 
-| Type | ID Format | Description |
-|------|-----------|-------------|
-| **Milestone** | `M-001` | High-level project goals with target dates |
-| **Story** | `S-001` | Deliverable work items under milestones |
-| **Task** | `T-001` | Specific work items under stories |
-| **Decision** | `DEC-001` | Architectural/design decisions with rationale |
-| **Document** | `DOC-001` | Specifications, designs, and reference docs |
+| Type | ID Format | Key Fields |
+|------|-----------|------------|
+| **Milestone** | `M-001` | `target_date`, `owner`, `priority` |
+| **Story** | `S-001` | `parent` (milestone), `priority`, `acceptance_criteria` |
+| **Task** | `T-001` | `parent` (story), `estimate_hrs`, `assignee` |
+| **Decision** | `DEC-001` | `decided_by`, `decided_on`, `affects`, `supersedes` |
+| **Document** | `DOC-001` | `doc_type`, `version`, `implemented_by` |
+| **Feature** | `F-001` | `tier`, `phase`, `documented_by`, `implemented_by` |
 
 ### Entity Status
 
-All entities follow a consistent status model:
+| Entity | Statuses |
+|--------|----------|
+| Milestone, Story | `Not Started`, `In Progress`, `Completed`, `Blocked` |
+| Task | `Open`, `InProgress`, `Complete`, `OnHold` |
+| Decision | `Pending`, `Decided`, `Superseded` |
+| Document | `Draft`, `Review`, `Approved`, `Superseded` |
+| Feature | `Planned`, `In Progress`, `Complete`, `Deferred` |
 
-| Status | Description |
-|--------|-------------|
-| `not_started` | Work hasn't begun |
-| `in_progress` | Currently being worked on |
-| `completed` | Work is finished |
-| `blocked` | Waiting on dependencies |
-| `cancelled` | No longer needed |
+### Relationships (Auto-Synced)
 
-Decisions have additional statuses: `pending`, `decided`, `superseded`
+All relationships are bidirectional and automatically synchronized:
+
+| Relationship | Forward Field | Reverse Field |
+|--------------|---------------|---------------|
+| Hierarchy | `parent` | `children` |
+| Dependency | `depends_on` | `blocks` |
+| Implementation | `implements` | `implemented_by` |
+| Supersession | `supersedes` | `superseded_by` |
+| Documentation | `documents` | `documented_by` |
 
 ### Workstreams
 
-Entities can be organized by workstream (e.g., `engineering`, `business`, `infra`, `research`). This enables:
-- Filtering by team/domain
-- Workstream-specific status views
-- Visual grouping on canvas
-
-### Canvas Integration
-
-The `.canvas` file provides a visual project view:
-
-- **Nodes** = Entities (styled by CSS classes)
-- **Arrows** = Dependencies and relationships
-- **Position** = Auto-layout by dependency depth and workstream
-- **CSS Classes** = Visual differentiation by type, status, priority, workstream
+Entities are organized by workstream. Values are automatically normalized:
+- `infrastructure`, `infra` → `infra`
+- `eng`, `engineering` → `engineering`
+- `biz`, `business` → `business`
+- `ops`, `operations` → `operations`
+- `r&d`, `rnd`, `research` → `research`
+- `ux`, `ui`, `design` → `design`
+- `mktg`, `marketing` → `marketing`
 
 ---
 
 ## Available Tools
 
-The MCP server provides 29 tools organized by function:
+The MCP server provides 15 tools organized by function:
 
-### Entity Management (6 tools)
-
-| Tool | Description |
-|------|-------------|
-| `create_entity` | Create a new entity (milestone, story, task, decision, or document) |
-| `update_entity` | Update entity fields, add/remove dependencies |
-| `update_entity_status` | Change entity status with validation |
-| `archive_entity` | Archive an entity (moves to archive folder) |
-| `archive_milestone` | Archive a milestone and all its children |
-| `restore_from_archive` | Restore an archived entity |
-
-### Batch Operations (3 tools)
+### Entity Management
 
 | Tool | Description |
 |------|-------------|
-| `batch_operations` | Create multiple entities with dependencies in one call |
-| `batch_update_status` | Update status of multiple entities |
-| `batch_archive` | Archive multiple entities |
+| `create_entity` | Create a new entity (milestone, story, task, decision, document, or feature) |
+| `update_entity` | Update fields, status, relationships, or archive/restore. Returns before/after diff. |
 
-### Project Understanding (3 tools)
-
-| Tool | Description |
-|------|-------------|
-| `get_project_overview` | High-level project status with counts and health metrics |
-| `get_workstream_status` | Status breakdown for a specific workstream |
-| `analyze_project_state` | Deep analysis with blockers, risks, and suggestions |
-
-### Search & Navigation (4 tools)
+### Batch Operations
 
 | Tool | Description |
 |------|-------------|
-| `search_entities` | Full-text search with filters (type, status, workstream) |
-| `get_entity_summary` | Quick entity overview (id, title, status, parent) |
-| `get_entity_full` | Complete entity with all relationships and content |
-| `navigate_hierarchy` | Traverse entity relationships (parent, children, dependencies) |
+| `batch_update` | Bulk create/update/archive with `dry_run` preview and `include_entities` option |
 
-### Decision & Document Management (5 tools)
+### Project Understanding
 
 | Tool | Description |
 |------|-------------|
-| `create_decision` | Create a decision record with context and rationale |
-| `get_decision_history` | Get decision history for a topic |
-| `supersede_document` | Create new document version based on decision |
-| `get_document_history` | Get document version history |
-| `check_document_freshness` | Check if document is up-to-date with decisions |
+| `get_project_overview` | High-level project status with workstream filtering |
+| `analyze_project_state` | Deep analysis with blockers and recommendations |
+| `get_feature_coverage` | Feature implementation/documentation coverage with `summary_only` option |
 
-### Implementation Handoff (3 tools)
+### Search & Navigation
 
 | Tool | Description |
 |------|-------------|
-| `get_ready_for_implementation` | Find stories/specs ready to implement |
-| `generate_implementation_package` | Create implementation context package |
-| `validate_spec_completeness` | Check if spec is ready for implementation |
+| `search_entities` | Full-text search, list with filters, or navigate hierarchy |
+| `get_entity` | Get single entity with selective field retrieval |
+| `get_entities` | Bulk fetch multiple entities (~75% token savings) |
 
-### Canvas Layout (1 tool)
+### Document Management
 
 | Tool | Description |
 |------|-------------|
-| `auto_layout_canvas` | Reposition nodes using dependency-driven horizontal flow with workstream lanes |
+| `manage_documents` | Decision history, versioning, freshness checks |
 
-### Utility Tools (4 tools)
+### Maintenance
+
+| Tool | Description |
+|------|-------------|
+| `reconcile_relationships` | Fix inconsistent bidirectional relationships |
+| `get_schema` | Get entity schema information |
+
+### Utility Tools
 
 | Tool | Description |
 |------|-------------|
@@ -300,10 +257,10 @@ Once configured, ask your AI assistant things like:
 > "Create a spec document for the API design"
 > "Is DOC-003 up to date with recent decisions?"
 
-### Implementation
-> "What stories are ready for implementation?"
-> "Generate an implementation package for S-005"
-> "Is the spec for S-003 complete enough to implement?"
+### Features
+> "What's the feature coverage for Phase 2?"
+> "Which features are missing documentation?"
+> "Show me F-001's implementation status"
 
 ### Documents
 > "What workspaces are available?"
@@ -315,27 +272,50 @@ Once configured, ask your AI assistant things like:
 ## Development
 
 ```bash
+# Install dependencies
+npm install
+
 # Build the project
 npm run build
 
-# Watch mode for development
-npm run dev
-
 # Run tests
 npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Type check
+npm run typecheck
 ```
 
-The server communicates via MCP protocol over stdio. Test by configuring it in an MCP-compatible client.
+### Project Structure
 
----
-
-## Technical Reference
-
-For detailed API specifications, data models, and implementation details, see [Technical Specification](docs/MCP_TECHNICAL_SPEC.md).
+```
+src/
+├── index.ts              # MCP server entry point
+├── models/
+│   └── v2-types.ts       # Entity type definitions
+├── services/v2/
+│   ├── entity-parser.ts      # Parse markdown to entities
+│   ├── entity-serializer.ts  # Serialize entities to markdown
+│   ├── entity-validator.ts   # Validate entity data
+│   ├── index-manager.ts      # Entity indexing
+│   ├── lifecycle-manager.ts  # Status transitions
+│   ├── archive-manager.ts    # Archive/restore
+│   ├── workstream-normalizer.ts  # Workstream normalization
+│   ├── cycle-detector.ts     # Dependency cycle detection
+│   └── v2-runtime.ts         # Main runtime
+└── tools/
+    ├── index.ts              # Tool definitions
+    ├── entity-management-tools.ts
+    ├── batch-operations-tools.ts
+    ├── project-understanding-tools.ts
+    ├── search-navigation-tools.ts
+    └── decision-document-tools.ts
+```
 
 ---
 
 ## License
 
 MIT
-
