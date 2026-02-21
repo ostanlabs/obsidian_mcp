@@ -50,6 +50,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@ostanlabs/md-retriever": "file:./md_retriever",
     "yaml": "^2.3.4",
     "zod": "^3.22.4"
   },
