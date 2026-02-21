@@ -16,6 +16,16 @@ import { MCPError } from './models/types.js';
 import { getV2Runtime } from './services/v2/v2-runtime.js';
 import type { V2Config } from './models/v2-types.js';
 
+// MSRL imports
+import { MsrlEngine } from '@ostanlabs/md-retriever';
+import type { MsrlEngine as MsrlEngineType } from '@ostanlabs/md-retriever';
+import {
+  msrlToolDefinitions,
+  handleSearchDocs,
+  handleMsrlStatus,
+} from './tools/msrl-tools.js';
+import type { SearchDocsInput } from './tools/msrl-tools.js';
+
 // Tool definitions and handlers
 import {
   allToolDefinitions,
@@ -88,6 +98,34 @@ async function getOrCreateV2Runtime() {
     v2RuntimePromise = getV2Runtime(createV2Config());
   }
   return v2RuntimePromise;
+}
+
+// MSRL engine instance (initialized on startup)
+let msrlEngine: MsrlEngineType | null = null;
+
+/**
+ * Initialize MSRL engine on startup (eager initialization).
+ * This indexes the vault so the first search is fast.
+ */
+async function initializeMsrl(): Promise<void> {
+  try {
+    console.error('Initializing MSRL semantic search engine...');
+    const startTime = Date.now();
+
+    msrlEngine = await MsrlEngine.create({
+      vaultRoot: config.vaultPath,
+      // Use default config for other settings
+    });
+
+    const status = msrlEngine.getStatus();
+    const elapsed = Date.now() - startTime;
+    console.error(
+      `MSRL initialized in ${elapsed}ms: ${status.stats.docs} docs, ${status.stats.leaves} chunks indexed`
+    );
+  } catch (error) {
+    console.error('Failed to initialize MSRL:', error);
+    // Don't fail startup - MSRL tools will return errors if engine is null
+  }
 }
 
 // ============================================================================
@@ -199,7 +237,7 @@ const getResourcesIndexDefinition = {
 // Register tool list handler
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
-    tools: [...allToolDefinitions, getResourcesIndexDefinition],
+    tools: [...allToolDefinitions, getResourcesIndexDefinition, ...msrlToolDefinitions],
   };
 });
 
@@ -291,7 +329,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Search & Navigation
       case 'search_entities': {
         const runtime = await getOrCreateV2Runtime();
-        result = await searchEntities(args as any, runtime.getSearchNavigationDeps());
+        const deps = runtime.getSearchNavigationDeps();
+
+        // Inject semantic search if MSRL is available
+        if (msrlEngine) {
+          deps.semanticSearch = async (query, options) => {
+            const queryResult = await msrlEngine!.query({
+              query,
+              topK: options?.topK,
+              filters: options?.docUriPrefix ? { docUriPrefix: options.docUriPrefix } : undefined,
+            });
+            return queryResult.results.map((r) => ({
+              docUri: r.docUri,
+              headingPath: r.headingPath,
+              excerpt: r.excerpt,
+              score: r.score,
+            }));
+          };
+        }
+
+        result = await searchEntities(args as any, deps);
         break;
       }
       case 'get_entity': {
@@ -323,6 +380,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Schema Introspection
       case 'get_schema': {
         result = getSchema(args as any);
+        break;
+      }
+
+      // MSRL Semantic Search Tools
+      case 'search_docs': {
+        if (!msrlEngine) {
+          throw new MCPError('MSRL engine not initialized', 'NOT_INDEXED', 503);
+        }
+        result = await handleSearchDocs(msrlEngine, args as unknown as SearchDocsInput);
+        break;
+      }
+      case 'msrl_status': {
+        if (!msrlEngine) {
+          result = {
+            state: 'error',
+            snapshot_id: null,
+            snapshot_timestamp: null,
+            stats: { docs: 0, nodes: 0, leaves: 0, shards: 0 },
+            watcher: { enabled: false, debounce_ms: 0 },
+            error: 'MSRL engine not initialized',
+          };
+        } else {
+          result = handleMsrlStatus(msrlEngine);
+        }
         break;
       }
 
@@ -366,6 +447,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   // Index all resources on startup
   await indexAllResources();
+
+  // Initialize MSRL semantic search engine (eager initialization)
+  await initializeMsrl();
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
