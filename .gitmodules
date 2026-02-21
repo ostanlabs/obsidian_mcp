@@ -1,0 +1,3 @@
+[submodule "md_retriever"]
+	path = md_retriever
+	url = git@github.com:ostanlabs/md_structured_retrieval.git
