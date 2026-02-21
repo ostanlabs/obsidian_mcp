@@ -17,12 +17,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
+
+      - name: Build md_retriever submodule
+        working-directory: md_retriever
+        run: |
+          npm ci
+          npm run build
 
       - name: Install dependencies
         run: npm ci
