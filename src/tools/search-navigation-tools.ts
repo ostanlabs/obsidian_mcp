@@ -38,6 +38,16 @@ import type {
 // =============================================================================
 
 /**
+ * Semantic search result from MSRL.
+ */
+export interface SemanticSearchResult {
+  docUri: string;
+  headingPath: string;
+  excerpt: string;
+  score: number;
+}
+
+/**
  * Dependencies for search and navigation tools.
  */
 export interface SearchNavigationDependencies {
@@ -49,6 +59,12 @@ export interface SearchNavigationDependencies {
     archived?: boolean;
     limit?: number;
   }) => Promise<Array<{ entity: Entity; score: number; snippet: string }>>;
+
+  /** Semantic search using MSRL (optional - only available if MSRL is initialized) */
+  semanticSearch?: (query: string, options?: {
+    topK?: number;
+    docUriPrefix?: string;
+  }) => Promise<SemanticSearchResult[]>;
 
   /** Get all entities with optional filters (for list mode) */
   getAllEntities: (options?: {
@@ -139,23 +155,29 @@ function buildSearchResultItem(
 
 /**
  * Full-text search across entities with filters.
- * Supports three modes:
- * 1. Search mode: query is provided - full-text search
- * 2. Navigation mode: from_id + direction - traverse hierarchy
- * 3. List mode: filters only (or no params) - list entities matching filters
+ * Supports four modes:
+ * 1. Semantic search mode: query + semantic=true - MSRL hybrid search
+ * 2. Search mode: query is provided - full-text search (BM25)
+ * 3. Navigation mode: from_id + direction - traverse hierarchy
+ * 4. List mode: filters only (or no params) - list entities matching filters
  */
 export async function searchEntities(
   input: SearchEntitiesInput,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
-  const { query, from_id, direction, depth = 1, filters, limit = 50, offset = 0, fields } = input;
+  const { query, semantic, from_id, direction, depth = 1, filters, limit = 50, offset = 0, fields } = input;
 
   // Navigation mode: if from_id and direction are specified
   if (from_id && direction) {
     return performNavigation(from_id, direction, depth, filters, fields, deps);
   }
 
-  // Search mode: if query is provided
+  // Semantic search mode: if query and semantic=true
+  if (query && semantic) {
+    return performSemanticSearch(query, filters, limit, offset, fields, deps);
+  }
+
+  // Search mode: if query is provided (BM25)
   if (query) {
     const searchResults = await deps.searchEntities(query, {
       types: filters?.type,
@@ -187,6 +209,93 @@ export async function searchEntities(
 
   // List mode: no query, no navigation - just list entities with filters
   return performListMode(filters, limit, offset, fields, deps);
+}
+
+/**
+ * Perform semantic search using MSRL.
+ * Maps MSRL results back to entities.
+ */
+async function performSemanticSearch(
+  query: string,
+  filters: SearchEntitiesInput['filters'] | undefined,
+  limit: number,
+  offset: number,
+  fields: EntityField[] | undefined,
+  deps: SearchNavigationDependencies
+): Promise<SearchEntitiesOutput> {
+  if (!deps.semanticSearch) {
+    throw new Error('Semantic search not available - MSRL engine not initialized');
+  }
+
+  // Build doc URI prefix filter based on entity type filter
+  let docUriPrefix: string | undefined;
+  if (filters?.type && filters.type.length === 1) {
+    // Map entity type to folder prefix
+    const typeToFolder: Record<EntityType, string> = {
+      milestone: 'milestones/',
+      story: 'stories/',
+      task: 'tasks/',
+      decision: 'decisions/',
+      document: 'documents/',
+      feature: 'features/',
+    };
+    docUriPrefix = typeToFolder[filters.type[0]];
+  }
+
+  // Perform semantic search
+  const semanticResults = await deps.semanticSearch(query, {
+    topK: limit + offset,
+    docUriPrefix,
+  });
+
+  // Map MSRL results to entities
+  const results: SearchResultItem[] = [];
+  const processedIds = new Set<EntityId>();
+
+  for (const result of semanticResults) {
+    // Extract entity ID from docUri (e.g., "stories/S-001.md" -> "S-001")
+    const match = result.docUri.match(/([A-Z]+-\d+)\.md$/);
+    if (!match) continue;
+
+    const entityId = match[1] as EntityId;
+
+    // Skip duplicates (same entity might appear multiple times from different chunks)
+    if (processedIds.has(entityId)) continue;
+    processedIds.add(entityId);
+
+    // Get the entity
+    const entity = await deps.getEntity(entityId);
+    if (!entity) continue;
+
+    // Apply remaining filters
+    if (filters?.status && !filters.status.includes(entity.status as EntityStatus)) continue;
+    if (filters?.workstream && !filters.workstream.includes(entity.workstream)) continue;
+    if (filters?.archived !== undefined) {
+      const isArchived = 'archived' in entity && entity.archived === true;
+      if (filters.archived !== isArchived) continue;
+    }
+
+    // Build result item
+    const path = await deps.getEntityPath(entityId);
+    results.push(buildSearchResultItem(entity, fields, {
+      relevance_score: result.score,
+      snippet: result.excerpt,
+      path,
+    }));
+  }
+
+  // Apply pagination
+  const paginatedResults = results.slice(offset, offset + limit);
+
+  return {
+    results: paginatedResults,
+    total_matches: results.length,
+    pagination: {
+      offset,
+      limit,
+      has_more: offset + limit < results.length,
+    },
+  };
 }
 
 /**

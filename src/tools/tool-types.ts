@@ -485,6 +485,9 @@ export interface SearchEntitiesInput {
   // Search mode
   query?: string;
 
+  // Semantic search mode (uses MSRL hybrid search)
+  semantic?: boolean;
+
   // Navigation mode (from navigate_hierarchy)
   from_id?: EntityId;
   direction?: 'up' | 'down' | 'siblings' | 'dependencies';

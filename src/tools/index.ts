@@ -342,14 +342,16 @@ EXAMPLES:
 USE FOR: Finding entities by text, listing by type/status, traversing relationships.
 NOT FOR: Coverage analysis (use get_feature_coverage), project overview (use get_project_overview).
 
-THREE MODES:
-1. SEARCH: query="authentication" - Full-text search
-2. NAVIGATE: from_id="M-001", direction="down" - Traverse hierarchy
-3. LIST: filters={type:["task"], status:["Blocked"]} - List matching entities
+FOUR MODES:
+1. SEMANTIC SEARCH: query="authentication", semantic=true - Hybrid vector + keyword search (best for natural language queries)
+2. SEARCH: query="authentication" - Full-text BM25 search (keyword matching)
+3. NAVIGATE: from_id="M-001", direction="down" - Traverse hierarchy
+4. LIST: filters={type:["task"], status:["Blocked"]} - List matching entities
 
 PAGINATION: Use limit + offset for large result sets.
 
 EXAMPLES:
+- "Find entities about authentication implementation" → query: "authentication implementation", semantic: true
 - "Find entities mentioning 'authentication'" → query: "authentication"
 - "List all blocked tasks" → filters: {type: ["task"], status: ["Blocked"]}
 - "Get children of milestone M-001" → from_id: "M-001", direction: "down"`,
@@ -357,7 +359,8 @@ EXAMPLES:
       type: 'object',
       properties: {
         // Search mode
-        query: { type: 'string', description: 'Full-text search query (search mode)' },
+        query: { type: 'string', description: 'Search query (search mode)' },
+        semantic: { type: 'boolean', description: 'Use semantic (hybrid vector + keyword) search instead of BM25. Better for natural language queries. Default: false' },
         // Navigation mode (from navigate_hierarchy)
         from_id: { type: 'string', description: 'Starting entity ID (navigation mode)' },
         direction: { type: 'string', enum: ['up', 'down', 'siblings', 'dependencies'], description: 'Navigation direction (navigation mode)' },
