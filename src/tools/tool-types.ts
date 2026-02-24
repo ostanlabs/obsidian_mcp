@@ -578,6 +578,7 @@ export interface SearchEntitiesInput extends PaginationInput {
     archived?: boolean;
     include_superseded?: boolean;
     orphaned?: boolean;
+    valid?: boolean;  // Filter by validation status (currently only decisions have validation rules)
   };
 
   // Response control (legacy - prefer max_items from PaginationInput)
@@ -606,6 +607,9 @@ export interface SearchResultItem {
   phase?: string;
   tier?: string;
   content?: string;
+  // Validation status - always included
+  valid?: boolean;  // true for all entities except decisions which have validation rules
+  validation_errors?: string[];  // Only present when valid=false
   [key: string]: unknown;  // Allow dynamic fields
 }
 
