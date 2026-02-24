@@ -43,7 +43,8 @@ jobs:
         run: npm run typecheck
 
       - name: Run tests
-        run: npm run test:run
+        # Use --pool=forks to prevent faiss-node native module V8 locking crash
+        run: npx vitest --run --pool=forks
 
       - name: Build
         run: npm run build
