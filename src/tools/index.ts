@@ -616,13 +616,16 @@ or features (implemented_by) linked to it, those links are updated to point to t
 preventing orphaned references.
 
 ORPHANED ENTITIES: When processing all milestones (no milestone_id), also archives completed
-stories/tasks that have no parent or whose parent doesn't exist.
+stories/tasks that have no parent or whose parent doesn't exist. If archiving these would leave
+decisions/documents/features without any references (orphaned), returns requires_confirmation
+with would_orphan info. Call again with include_orphaned: true to proceed anyway.
 
 EXAMPLES:
 - "Clean up all completed milestones" → {}
 - "Preview cleanup" → dry_run: true
 - "Clean up milestone M-001" → milestone_id: "M-001"
-- "Confirm blocked items resolved" → confirmed_blockers: ["T-005", "S-003"]`,
+- "Confirm blocked items resolved" → confirmed_blockers: ["T-005", "S-003"]
+- "Proceed with orphaning" → include_orphaned: true`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -638,6 +641,10 @@ EXAMPLES:
         dry_run: {
           type: 'boolean',
           description: 'If true, preview what would be archived without making changes. Default: false',
+        },
+        include_orphaned: {
+          type: 'boolean',
+          description: 'If true, proceed with archiving even if it would orphan decisions/documents/features. Required if previous call returned requires_confirmation with would_orphan. Default: false',
         },
       },
     },

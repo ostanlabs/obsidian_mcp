@@ -931,6 +931,9 @@ export interface CleanupCompletedInput {
   confirmed_blockers?: EntityId[];
   /** Preview what would be archived without making changes */
   dry_run?: boolean;
+  /** Include orphaned stories/tasks (those without a parent milestone) in cleanup.
+   * If archiving these would orphan decisions/documents/features, requires explicit confirmation. */
+  include_orphaned?: boolean;
 }
 
 /** Blocked item requiring confirmation */
@@ -943,10 +946,18 @@ export interface BlockedItem {
   blocked_by?: string;
 }
 
+/** Entities that would become orphaned */
+export interface WouldOrphanInfo {
+  decisions: EntityId[];
+  documents: EntityId[];
+  features: EntityId[];
+}
+
 /** Output for cleanup_completed tool when blocked items need confirmation */
 export interface CleanupRequiresConfirmation {
   requires_confirmation: {
-    blocked_items: BlockedItem[];
+    blocked_items?: BlockedItem[];
+    would_orphan?: WouldOrphanInfo;
     message: string;
   };
 }
@@ -975,9 +986,10 @@ export interface CleanupSummary {
 
 /** Output for cleanup_completed tool when operation completes */
 export interface CleanupCompletedOutput {
-  /** Present if blocked items need confirmation before proceeding */
+  /** Present if blocked items or orphan warnings need confirmation before proceeding */
   requires_confirmation?: {
-    blocked_items: BlockedItem[];
+    blocked_items?: BlockedItem[];
+    would_orphan?: WouldOrphanInfo;
     message: string;
   };
   /** Present if operation completed (or dry_run) */

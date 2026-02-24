@@ -289,7 +289,18 @@ describe('MCP Integration Tests', () => {
       const deps = runtime.getEntityManagementDeps();
       const decisionDeps = runtime.getDecisionDocumentDeps();
 
-      // Create a decision using createEntity
+      // Create a milestone and story for decision to affect
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'Database Setup', workstream: 'infrastructure' },
+      }, deps);
+
+      const story = await createEntity({
+        type: 'story',
+        data: { title: 'Setup PostgreSQL', workstream: 'infrastructure', parent: milestone.entity.id },
+      }, deps);
+
+      // Create a decision using createEntity (must have affects)
       const decision = await createEntity({
         type: 'decision',
         data: {
@@ -299,6 +310,7 @@ describe('MCP Integration Tests', () => {
           rationale: 'PostgreSQL offers ACID compliance and excellent performance',
           workstream: 'infrastructure',
           decided_by: 'Engineering Team',
+          affects: [story.entity.id],
         },
       }, deps);
 
@@ -551,7 +563,19 @@ describe('MCP Integration Tests', () => {
       const deps = runtime.getEntityManagementDeps();
       const searchDeps = runtime.getSearchNavigationDeps();
 
-      // Create decision
+      // Create milestone first (parent for story)
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'TypeScript Migration', workstream: 'engineering' },
+      }, deps);
+
+      // Create story (for decision to affect)
+      const decisionTargetStory = await createEntity({
+        type: 'story',
+        data: { title: 'Migrate to TypeScript', workstream: 'engineering', parent: milestone.entity.id },
+      }, deps);
+
+      // Create decision (must have affects - can affect story, task, or document)
       await createEntity({
         type: 'decision',
         data: {
@@ -560,13 +584,8 @@ describe('MCP Integration Tests', () => {
           context: 'Need type safety',
           decision: 'Adopt TypeScript',
           rationale: 'Better developer experience',
+          affects: [decisionTargetStory.entity.id],
         },
-      }, deps);
-
-      // Create milestone first (parent for story)
-      const milestone = await createEntity({
-        type: 'milestone',
-        data: { title: 'TypeScript Migration', workstream: 'engineering' },
       }, deps);
 
       // Create story with parent
@@ -831,7 +850,18 @@ describe('MCP Integration Tests', () => {
       const deps = runtime.getEntityManagementDeps();
       const decisionDeps = runtime.getDecisionDocumentDeps();
 
-      // Create multiple decisions using createEntity
+      // Create a milestone and story for decisions to affect
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'History Test Milestone', workstream: 'history-test' },
+      }, deps);
+
+      const story = await createEntity({
+        type: 'story',
+        data: { title: 'History Test Story', workstream: 'history-test', parent: milestone.entity.id },
+      }, deps);
+
+      // Create multiple decisions using createEntity (must have affects - can affect story, task, or document)
       await createEntity({
         type: 'decision',
         data: {
@@ -841,6 +871,7 @@ describe('MCP Integration Tests', () => {
           rationale: 'Rationale 1',
           workstream: 'history-test',
           decided_by: 'team',
+          affects: [story.entity.id],
         },
       }, deps);
 
@@ -853,6 +884,7 @@ describe('MCP Integration Tests', () => {
           rationale: 'Rationale 2',
           workstream: 'history-test',
           decided_by: 'team',
+          affects: [story.entity.id],
         },
       }, deps);
 
