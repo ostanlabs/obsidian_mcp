@@ -73,9 +73,10 @@ export async function getProjectOverview(
 ): Promise<GetProjectOverviewOutput> {
   const { include_completed, include_archived, workstream: filterWorkstream, group_by } = input;
 
-  // Get all entities (optionally filtered by workstream)
+  // Always fetch completed entities so we can count them for the summary.
+  // The include_completed flag controls whether completed items appear in workstream_detail.
   const entities = await deps.getAllEntities({
-    includeCompleted: include_completed,
+    includeCompleted: true, // Always include for accurate counting
     includeArchived: include_archived,
     workstream: filterWorkstream,
   });
@@ -173,7 +174,8 @@ export async function getProjectOverview(
       filterWorkstream,
       entities,
       group_by || 'status',
-      deps
+      deps,
+      include_completed ?? false
     );
   }
 
@@ -187,9 +189,10 @@ async function buildWorkstreamDetail(
   workstream: string,
   entities: Entity[],
   group_by: 'status' | 'type' | 'priority',
-  deps: ProjectUnderstandingDependencies
+  deps: ProjectUnderstandingDependencies,
+  includeCompleted: boolean
 ): Promise<GetProjectOverviewOutput['workstream_detail']> {
-  // Build summary
+  // Build summary (always includes all entities for accurate counts)
   const byStatus: Record<string, number> = {};
   const byType: Record<string, number> = {};
   let blockedCount = 0;
@@ -216,9 +219,14 @@ async function buildWorkstreamDetail(
     }
   }
 
+  // Filter entities for grouping if includeCompleted is false
+  const entitiesForGrouping = includeCompleted
+    ? entities
+    : entities.filter(e => e.status !== 'Completed' && e.status !== 'Decided' && e.status !== 'Approved');
+
   // Group entities
   const groupMap = new Map<string, EntitySummary[]>();
-  for (const entity of entities) {
+  for (const entity of entitiesForGrouping) {
     let key: string;
     switch (group_by) {
       case 'type':
@@ -241,11 +249,11 @@ async function buildWorkstreamDetail(
     entities,
   }));
 
-  // Find cross-workstream blocking relationships
+  // Find cross-workstream blocking relationships (use filtered entities)
   const blockingOther: EntitySummary[] = [];
   const blockedByOther: EntitySummary[] = [];
 
-  for (const entity of entities) {
+  for (const entity of entitiesForGrouping) {
     const blockedBy = await deps.getBlockedBy(entity.id);
     for (const blocked of blockedBy) {
       if (blocked.workstream !== workstream) {
