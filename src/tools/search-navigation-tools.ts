@@ -75,6 +75,7 @@ export interface SearchNavigationDependencies {
   getAllEntities: (options?: {
     includeCompleted?: boolean;
     includeArchived?: boolean;
+    includeSuperseded?: boolean;
     workstream?: string;
     types?: EntityType[];
   }) => Promise<Entity[]>;
@@ -363,6 +364,7 @@ async function performListMode(
   // Get all entities with basic filters
   let entities = await deps.getAllEntities({
     includeArchived: filters?.archived ?? false,
+    includeSuperseded: filters?.include_superseded ?? false,
     includeCompleted: true,
     types: filters?.type,
     workstream: filters?.workstream?.[0], // getAllEntities only supports single workstream

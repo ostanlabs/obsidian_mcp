@@ -81,6 +81,10 @@ try {
 // Helper to create V2 config
 function createV2Config(): V2Config {
   // VAULT_PATH points directly to the project folder containing milestones/, stories/, etc.
+  // EXCLUDE_ARCHIVED_BY_DEFAULT defaults to true - set to "false" to include archived entities
+  const excludeArchivedEnv = process.env.EXCLUDE_ARCHIVED_BY_DEFAULT;
+  const excludeArchivedByDefault = excludeArchivedEnv !== 'false';
+
   return {
     vaultPath: config.vaultPath,
     entitiesFolder: '',  // Entities are directly in vaultPath subfolders
@@ -88,6 +92,7 @@ function createV2Config(): V2Config {
     canvasFolder: '',
     defaultCanvas: config.defaultCanvas,
     workspaces: {},
+    excludeArchivedByDefault,
   };
 }
 
