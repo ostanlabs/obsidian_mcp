@@ -130,8 +130,8 @@ export interface RelationshipValidationError {
 /**
  * Validate that creating an entity won't result in an orphan.
  * - Stories/Tasks MUST have a parent
- * - Decisions SHOULD have affects (warning only, not error)
- * - Documents/Features can be created without implemented_by (linked via implements later)
+ * - Decisions MUST have at least one item in affects
+ * - Documents/Features can be created without implemented_by (linked via story.implements later)
  */
 export function validateNotOrphaned(
   type: EntityType,
@@ -147,6 +147,20 @@ export function validateNotOrphaned(
       errors.push({
         field: 'parent',
         message: `${type} must have a parent ${parentType}. Creating a ${type} without a parent would make it orphaned.`,
+      });
+    }
+  }
+
+  // Decisions MUST have at least one affected entity (via affects or blocks)
+  if (type === 'decision') {
+    const affects = data.affects as EntityId[] | undefined;
+    const blocks = data.blocks as EntityId[] | undefined;
+    const hasAffects = affects && affects.length > 0;
+    const hasBlocks = blocks && blocks.length > 0;
+    if (!hasAffects && !hasBlocks) {
+      errors.push({
+        field: 'affects',
+        message: `decision must have at least one entity in 'affects' or 'blocks'. A decision without affected entities would be orphaned.`,
       });
     }
   }

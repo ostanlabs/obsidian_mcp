@@ -91,7 +91,7 @@ export async function cleanupCompleted(
   input: CleanupCompletedInput,
   deps: CleanupDependencies
 ): Promise<CleanupCompletedOutput> {
-  const { milestone_id, confirmed_blockers = [], dry_run = false } = input;
+  const { milestone_id, confirmed_blockers = [], dry_run = false, include_orphaned = false } = input;
 
   // Step 1: Find completed milestones
   const allMilestones = await deps.getAllEntities({
@@ -255,10 +255,81 @@ export async function cleanupCompleted(
 
   // Build a map of entity ID -> milestone ID for re-linking
   const entityToMilestone = new Map<EntityId, MilestoneId>();
+  const orphanedEntityIds = new Set<EntityId>(); // Entities being archived with no milestone to re-link to
   for (const info of entitiesToArchive) {
     if (info.milestoneId) {
       entityToMilestone.set(info.entity.id, info.milestoneId);
+    } else {
+      orphanedEntityIds.add(info.entity.id);
     }
+  }
+
+  // Step 5a: Check for entities that would become orphaned by archiving orphaned stories/tasks
+  // These are decisions/documents/features that ONLY reference orphaned entities (no milestone to re-link to)
+  const wouldOrphanDecisions: Decision[] = [];
+  const wouldOrphanDocuments: Document[] = [];
+  const wouldOrphanFeatures: Feature[] = [];
+
+  for (const entity of allDecisions) {
+    const decision = entity as Decision;
+    if (!decision.affects || decision.affects.length === 0) continue;
+
+    // Check if ALL affected entities are orphaned (no milestone to re-link to)
+    const allAffectedAreOrphaned = decision.affects.every(id => orphanedEntityIds.has(id));
+    const someAffectedAreOrphaned = decision.affects.some(id => orphanedEntityIds.has(id));
+
+    if (allAffectedAreOrphaned) {
+      wouldOrphanDecisions.push(decision);
+    } else if (someAffectedAreOrphaned) {
+      // Some but not all - these will have remaining references, so they're OK
+    }
+  }
+
+  for (const entity of allDocuments) {
+    const document = entity as Document;
+    if (!document.implemented_by || document.implemented_by.length === 0) continue;
+
+    const allImplementersAreOrphaned = document.implemented_by.every(id => orphanedEntityIds.has(id as EntityId));
+    if (allImplementersAreOrphaned) {
+      wouldOrphanDocuments.push(document);
+    }
+  }
+
+  for (const entity of allFeatures) {
+    const feature = entity as Feature;
+    if (!feature.implemented_by || feature.implemented_by.length === 0) continue;
+
+    const allImplementersAreOrphaned = feature.implemented_by.every(id => orphanedEntityIds.has(id as EntityId));
+    if (allImplementersAreOrphaned) {
+      wouldOrphanFeatures.push(feature);
+    }
+  }
+
+  // If archiving would orphan entities, return for confirmation
+  const totalWouldOrphan = wouldOrphanDecisions.length + wouldOrphanDocuments.length + wouldOrphanFeatures.length;
+  if (totalWouldOrphan > 0 && !include_orphaned) {
+    const orphanDetails: string[] = [];
+    if (wouldOrphanDecisions.length > 0) {
+      orphanDetails.push(`${wouldOrphanDecisions.length} decision(s): ${wouldOrphanDecisions.map(d => d.id).join(', ')}`);
+    }
+    if (wouldOrphanDocuments.length > 0) {
+      orphanDetails.push(`${wouldOrphanDocuments.length} document(s): ${wouldOrphanDocuments.map(d => d.id).join(', ')}`);
+    }
+    if (wouldOrphanFeatures.length > 0) {
+      orphanDetails.push(`${wouldOrphanFeatures.length} feature(s): ${wouldOrphanFeatures.map(f => f.id).join(', ')}`);
+    }
+    return {
+      requires_confirmation: {
+        would_orphan: {
+          decisions: wouldOrphanDecisions.map(d => d.id),
+          documents: wouldOrphanDocuments.map(d => d.id),
+          features: wouldOrphanFeatures.map(f => f.id),
+        },
+        message: `Archiving orphaned stories/tasks would leave ${totalWouldOrphan} entity/entities without any references (orphaned): ${orphanDetails.join('; ')}. ` +
+          `These entities only reference orphaned stories/tasks with no milestone to re-link to. ` +
+          `Either update these entities to reference other entities first, or call again with include_orphaned=true to archive anyway.`,
+      },
+    };
   }
 
   // Find decisions that affect entities being archived
