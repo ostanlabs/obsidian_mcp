@@ -359,13 +359,20 @@ export async function cleanupCompleted(
   }
 
   // Archive stories/tasks (tasks first, then stories)
+  // Use hybrid archive structure: archive/{quarter}/{type}/
+  const now = new Date();
+  const quarter = Math.ceil((now.getMonth() + 1) / 3);
+  const quarterFolder = `archive/${now.getFullYear()}-Q${quarter}`;
+
   const sortedForArchive = [
     ...entitiesToArchive.filter(i => i.entity.type === 'task'),
     ...entitiesToArchive.filter(i => i.entity.type === 'story'),
   ];
 
   for (const { entity } of sortedForArchive) {
-    await deps.moveToArchive(entity.id);
+    // Hybrid path: archive/2026-Q1/tasks/ or archive/2026-Q1/stories/
+    const archivePath = `${quarterFolder}/${entity.type}s`;
+    await deps.moveToArchive(entity.id, archivePath);
     const removed = await deps.removeFromCanvas(entity.id, defaultCanvas);
     if (removed) removedFromCanvas++;
   }
