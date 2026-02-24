@@ -371,7 +371,8 @@ export async function cleanupCompleted(
 
   for (const { entity } of sortedForArchive) {
     // Hybrid path: archive/2026-Q1/tasks/ or archive/2026-Q1/stories/
-    const archivePath = `${quarterFolder}/${entity.type}s`;
+    const typeFolder = entity.type === 'story' ? 'stories' : `${entity.type}s`;
+    const archivePath = `${quarterFolder}/${typeFolder}`;
     await deps.moveToArchive(entity.id, archivePath);
     const removed = await deps.removeFromCanvas(entity.id, defaultCanvas);
     if (removed) removedFromCanvas++;
