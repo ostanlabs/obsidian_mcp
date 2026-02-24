@@ -360,6 +360,8 @@ FOUR MODES:
 3. NAVIGATE: from_id="M-001", direction="down" - Traverse hierarchy
 4. LIST: filters={type:["task"], status:["Blocked"]} - List matching entities
 
+EXCLUDED BY DEFAULT: Archived milestones/stories/tasks and superseded decisions/documents are excluded. Features are always included. Use filters.archived=true to include archived, or filters.include_superseded=true for superseded.
+
 PAGINATION: Default max_items is 20 (conservative for smaller contexts). Agents with larger context windows can increase max_items up to 200. Legacy limit/offset still supported but max_items/continuation_token preferred.
 
 EXAMPLES:
@@ -385,7 +387,8 @@ EXAMPLES:
             type: { type: 'array', items: { type: 'string', enum: ['milestone', 'story', 'task', 'decision', 'document', 'feature'] } },
             status: { type: 'array', items: { type: 'string' } },
             workstream: { type: 'array', items: { type: 'string' } },
-            archived: { type: 'boolean', description: 'Include archived entities (default: false)' },
+            archived: { type: 'boolean', description: 'Include archived milestones/stories/tasks. Default: false (excluded).' },
+            include_superseded: { type: 'boolean', description: 'Include superseded decisions/documents. Default: false (excluded).' },
           },
         },
         // Pagination (new)

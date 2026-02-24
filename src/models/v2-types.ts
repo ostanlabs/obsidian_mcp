@@ -671,6 +671,13 @@ export interface V2Config {
 
   /** Workspace configurations */
   workspaces: Record<string, WorkspaceConfig>;
+
+  /**
+   * Exclude archived entities by default for milestones, stories, and tasks.
+   * Documents, features, and decisions are always included regardless of this setting.
+   * Default: true
+   */
+  excludeArchivedByDefault?: boolean;
 }
 
 // =============================================================================

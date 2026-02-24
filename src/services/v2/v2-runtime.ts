@@ -560,18 +560,55 @@ export class V2Runtime {
     }
   }
 
+  /** Entity types that should have archived items excluded by default */
+  private static readonly EXCLUDE_ARCHIVED_TYPES: Set<EntityType> = new Set([
+    'milestone', 'story', 'task'
+  ]);
+
+  /** Entity types that should have superseded items excluded by default */
+  private static readonly EXCLUDE_SUPERSEDED_TYPES: Set<EntityType> = new Set([
+    'decision', 'document'
+  ]);
+
   /** Get all entities - loads from disk using ProjectIndex */
   async getAllEntities(options?: {
     includeCompleted?: boolean;
     includeArchived?: boolean;
+    includeSuperseded?: boolean;
     workstream?: string;
     types?: EntityType[];
   }): Promise<Entity[]> {
     // First filter metadata from ProjectIndex (fast)
     let metadataList: EntityMetadata[] = this.index.getAll();
 
-    if (!options?.includeArchived) {
+    // Apply archived filtering based on config and entity type
+    // By default (excludeArchivedByDefault=true), exclude archived for milestones, stories, tasks
+    // Documents, features, and decisions are always included unless explicitly filtered
+    const excludeArchivedByDefault = this.config.excludeArchivedByDefault !== false;
+    if (!options?.includeArchived && excludeArchivedByDefault) {
+      metadataList = metadataList.filter((m: EntityMetadata) => {
+        // Only exclude archived for milestone, story, task
+        if (V2Runtime.EXCLUDE_ARCHIVED_TYPES.has(m.type)) {
+          return !m.archived;
+        }
+        // Always include documents, features, decisions regardless of archived status
+        return true;
+      });
+    } else if (!options?.includeArchived && !excludeArchivedByDefault) {
+      // If excludeArchivedByDefault is false but includeArchived is not set,
+      // still exclude archived (original behavior when explicitly not including)
       metadataList = metadataList.filter((m: EntityMetadata) => !m.archived);
+    }
+
+    // Apply superseded filtering for decisions and documents
+    // By default, exclude superseded decisions and documents
+    if (!options?.includeSuperseded && excludeArchivedByDefault) {
+      metadataList = metadataList.filter((m: EntityMetadata) => {
+        if (V2Runtime.EXCLUDE_SUPERSEDED_TYPES.has(m.type)) {
+          return m.status !== 'Superseded';
+        }
+        return true;
+      });
     }
 
     if (!options?.includeCompleted) {
