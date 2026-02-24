@@ -23,6 +23,75 @@ export type Workstream = string;
 // Common Types
 // =============================================================================
 
+// =============================================================================
+// Pagination Types
+// =============================================================================
+
+/**
+ * Pagination input parameters for reading tools.
+ * Defaults are conservative (max_items: 20) for smaller LLM contexts.
+ * Agents with larger context windows can increase these values.
+ */
+export interface PaginationInput {
+  /**
+   * Maximum number of items to return per page.
+   * Default: 20 (conservative for smaller contexts)
+   * Max: 200
+   */
+  max_items?: number;
+
+  /**
+   * Hard cap on response size in bytes. If set, response will be truncated
+   * even if max_items hasn't been reached. Useful for strict context limits.
+   * Default: none (no size limit beyond max_items)
+   */
+  max_response_size?: number;
+
+  /**
+   * Continuation token from a previous response to fetch the next page.
+   * Mutually exclusive with explicit offset.
+   */
+  continuation_token?: string;
+}
+
+/** Default pagination values */
+export const PAGINATION_DEFAULTS = {
+  /** Default max items per page (conservative for smaller contexts) */
+  MAX_ITEMS: 20,
+  /** Maximum allowed max_items value */
+  MAX_ITEMS_LIMIT: 200,
+  /** Default max response size (no limit) */
+  MAX_RESPONSE_SIZE: undefined as number | undefined,
+} as const;
+
+/**
+ * Pagination output metadata included in paginated responses.
+ */
+export interface PaginationOutput {
+  /** Number of items returned in this response */
+  returned: number;
+
+  /** Total number of items available (if known) */
+  total_items?: number;
+
+  /** Total number of pages based on max_items (if total_items is known) */
+  total_pages?: number;
+
+  /** Current page number (1-based) */
+  page: number;
+
+  /** Whether there are more items after this page */
+  has_more: boolean;
+
+  /** Token to fetch the next page (only present if has_more is true) */
+  continuation_token?: string;
+
+  /** Actual response size in bytes (helps agents tune future requests) */
+  response_size_bytes?: number;
+}
+
+// =============================================================================
+
 export interface EntitySummary {
   id: EntityId;
   type: EntityType;
@@ -357,7 +426,7 @@ export interface BatchUpdateOutput {
 // =============================================================================
 
 // get_project_overview (enhanced - consolidates get_workstream_status)
-export interface GetProjectOverviewInput {
+export interface GetProjectOverviewInput extends PaginationInput {
   include_completed?: boolean;
   include_archived?: boolean;
   canvas_source?: string;
@@ -395,10 +464,14 @@ export interface GetProjectOverviewOutput {
     groups: Array<{
       group_key: string;
       entities: EntitySummary[];
+      /** Pagination for entities within this group (only if truncated) */
+      pagination?: PaginationOutput;
     }>;
     blocking_other_workstreams: EntitySummary[];
     blocked_by_other_workstreams: EntitySummary[];
   };
+  /** Overall pagination info for the response */
+  pagination?: PaginationOutput;
 }
 
 // get_workstream_status (DEPRECATED - use get_project_overview with workstream filter)
@@ -426,7 +499,7 @@ export interface GetWorkstreamStatusOutput {
 }
 
 // analyze_project_state
-export interface AnalyzeProjectStateInput {
+export interface AnalyzeProjectStateInput extends PaginationInput {
   workstream?: Workstream;
   focus?: 'blockers' | 'actions' | 'both';
   depth?: 'summary' | 'detailed';
@@ -459,6 +532,8 @@ export interface AnalyzeProjectStateOutput {
       external_dependencies: EntitySummary[];
     };
     stale_items: EntitySummary[];
+    /** Pagination for critical_path array (only if truncated) */
+    pagination?: PaginationOutput;
   };
   suggested_actions: Array<{
     priority: number;
@@ -473,6 +548,8 @@ export interface AnalyzeProjectStateOutput {
     items_blocked: number;
     items_completed_this_week: number;
   };
+  /** Overall pagination info for the response */
+  pagination?: PaginationOutput;
 }
 
 
@@ -481,7 +558,7 @@ export interface AnalyzeProjectStateOutput {
 // =============================================================================
 
 // search_entities (enhanced - consolidates navigate_hierarchy)
-export interface SearchEntitiesInput {
+export interface SearchEntitiesInput extends PaginationInput {
   // Search mode
   query?: string;
 
@@ -501,9 +578,11 @@ export interface SearchEntitiesInput {
     archived?: boolean;
   };
 
-  // Response control
+  // Response control (legacy - prefer max_items from PaginationInput)
+  /** @deprecated Use max_items instead */
   limit?: number;
-  offset?: number;  // For pagination
+  /** @deprecated Use continuation_token instead */
+  offset?: number;
   include_content?: boolean;
   fields?: EntityField[];  // Control response size
 }
@@ -531,12 +610,8 @@ export interface SearchResultItem {
 export interface SearchEntitiesOutput {
   results: SearchResultItem[];
   total_matches: number;
-  // Pagination info
-  pagination?: {
-    offset: number;
-    limit: number;
-    has_more: boolean;
-  };
+  // Pagination info (new format)
+  pagination: PaginationOutput;
   // Navigation mode fields
   origin?: EntitySummary;  // Only for navigation mode
   path_description?: string;  // Only for navigation mode
@@ -638,7 +713,7 @@ export interface GetEntityOutput {
 }
 
 // get_entities (bulk retrieval)
-export interface GetEntitiesInput {
+export interface GetEntitiesInput extends PaginationInput {
   /** Array of entity IDs to retrieve */
   ids: EntityId[];
   /** Fields to include in response. If not specified, returns summary fields. */
@@ -650,6 +725,8 @@ export interface GetEntitiesOutput {
   entities: Record<EntityId, GetEntityOutput>;
   /** IDs that were not found */
   not_found: EntityId[];
+  /** Pagination info (when paginating through large ID lists) */
+  pagination?: PaginationOutput;
 }
 
 // =============================================================================

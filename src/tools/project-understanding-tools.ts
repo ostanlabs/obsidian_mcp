@@ -28,7 +28,12 @@ import type {
   GetSchemaOutput,
   EntitySchema,
   SchemaFieldDefinition,
+  PaginationInput,
+  PaginationOutput,
 } from './tool-types.js';
+
+import { PAGINATION_DEFAULTS } from './tool-types.js';
+import { applyPagination } from './pagination-utils.js';
 
 // =============================================================================
 // Dependencies Interface
@@ -66,12 +71,17 @@ export interface ProjectUnderstandingDependencies {
 /**
  * Get high-level project status across all workstreams.
  * Enhanced to support workstream filtering and grouping (consolidates get_workstream_status).
+ *
+ * Pagination: Default max_items is 20 (conservative for smaller contexts).
+ * Agents with larger context windows can increase max_items up to 200.
+ * Pagination applies to entities within workstream_detail groups.
  */
 export async function getProjectOverview(
   input: GetProjectOverviewInput,
   deps: ProjectUnderstandingDependencies
 ): Promise<GetProjectOverviewOutput> {
-  const { include_completed, include_archived, workstream: filterWorkstream, group_by } = input;
+  const { include_completed, include_archived, workstream: filterWorkstream, group_by, max_items, max_response_size, continuation_token } = input;
+  const paginationInput: PaginationInput = { max_items, max_response_size, continuation_token };
 
   // Always fetch completed entities so we can count them for the summary.
   // The include_completed flag controls whether completed items appear in workstream_detail.
@@ -175,7 +185,8 @@ export async function getProjectOverview(
       entities,
       group_by || 'status',
       deps,
-      include_completed ?? false
+      include_completed ?? false,
+      paginationInput
     );
   }
 
@@ -184,13 +195,15 @@ export async function getProjectOverview(
 
 /**
  * Build detailed workstream information (extracted from getWorkstreamStatus).
+ * Applies pagination to entities within each group.
  */
 async function buildWorkstreamDetail(
   workstream: string,
   entities: Entity[],
   group_by: 'status' | 'type' | 'priority',
   deps: ProjectUnderstandingDependencies,
-  includeCompleted: boolean
+  includeCompleted: boolean,
+  paginationInput: PaginationInput
 ): Promise<GetProjectOverviewOutput['workstream_detail']> {
   // Build summary (always includes all entities for accurate counts)
   const byStatus: Record<string, number> = {};
@@ -244,10 +257,30 @@ async function buildWorkstreamDetail(
     groupMap.get(key)!.push(deps.toEntitySummary(entity));
   }
 
-  const groups = Array.from(groupMap.entries()).map(([group_key, entities]) => ({
-    group_key,
-    entities,
-  }));
+  // Apply pagination to each group's entities
+  const groups = Array.from(groupMap.entries()).map(([group_key, groupEntities]) => {
+    const { items: paginatedEntities, pagination } = applyPagination({
+      items: groupEntities,
+      pagination: paginationInput,
+      context: `workstream:${workstream}:${group_key}`,
+    });
+
+    // Only include pagination if there are more items
+    const result: {
+      group_key: string;
+      entities: EntitySummary[];
+      pagination?: PaginationOutput;
+    } = {
+      group_key,
+      entities: paginatedEntities,
+    };
+
+    if (pagination.has_more) {
+      result.pagination = pagination;
+    }
+
+    return result;
+  });
 
   // Find cross-workstream blocking relationships (use filtered entities)
   const blockingOther: EntitySummary[] = [];
@@ -404,12 +437,17 @@ export async function getWorkstreamStatus(
 
 /**
  * Deep analysis of project state with blockers and suggested actions.
+ *
+ * Pagination: Default max_items is 20 (conservative for smaller contexts).
+ * Agents with larger context windows can increase max_items up to 200.
+ * Pagination applies to critical_path blockers array.
  */
 export async function analyzeProjectState(
   input: AnalyzeProjectStateInput,
   deps: ProjectUnderstandingDependencies
 ): Promise<AnalyzeProjectStateOutput> {
-  const { workstream, focus = 'both', depth = 'summary' } = input;
+  const { workstream, focus = 'both', depth = 'summary', max_items, max_response_size, continuation_token } = input;
+  const paginationInput: PaginationInput = { max_items, max_response_size, continuation_token };
 
   // Get all entities
   const entities = await deps.getAllEntities({
@@ -537,13 +575,20 @@ export async function analyzeProjectState(
     return updated >= oneWeekAgo && e.status === 'Completed';
   }).length;
 
-  return {
+  // Apply pagination to critical_path
+  const { items: paginatedCriticalPath, pagination } = applyPagination({
+    items: criticalPath,
+    pagination: paginationInput,
+    context: 'analyze_project_state:critical_path',
+  });
+
+  const result: AnalyzeProjectStateOutput = {
     health: {
       overall: overallHealth,
       workstreams: workstreamHealth,
     },
     blockers: {
-      critical_path: criticalPath,
+      critical_path: paginatedCriticalPath,
       by_type: {
         pending_decisions: pendingDecisions,
         incomplete_specs: incompleteSpecs,
@@ -555,10 +600,17 @@ export async function analyzeProjectState(
     stats: {
       decisions_pending: pendingDecisions.length,
       specs_ready: entities.filter((e) => e.type === 'document' && e.status === 'Approved').length,
-      items_blocked: criticalPath.length,
+      items_blocked: criticalPath.length, // Use original count for accurate stats
       items_completed_this_week: completedThisWeek,
     },
   };
+
+  // Add pagination info if there are more items
+  if (pagination.has_more) {
+    result.blockers.pagination = pagination;
+  }
+
+  return result;
 }
 
 // =============================================================================

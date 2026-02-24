@@ -264,6 +264,8 @@ EXAMPLES:
 USE FOR: Dashboard views, overall progress checks, workstream summaries.
 NOT FOR: Searching entities (use search_entities), feature coverage (use get_feature_coverage).
 
+PAGINATION: Default max_items is 20 (conservative for smaller contexts). Agents with larger context windows can increase max_items up to 200.
+
 EXAMPLES:
 - "What's the overall project status?"
 - "Show me the engineering workstream progress"
@@ -278,6 +280,10 @@ EXAMPLES:
         workstream: { type: 'string', description: 'Filter by specific workstream. When specified, returns detailed workstream info in workstream_detail field.' },
         // Enhanced: grouping (from get_workstream_status)
         group_by: { type: 'string', enum: ['status', 'type', 'priority'], description: 'Group entities by this field (only used when workstream is specified)' },
+        // Pagination
+        max_items: { type: 'number', description: 'Maximum items per group (default: 20, max: 200). Increase for larger context windows.' },
+        max_response_size: { type: 'number', description: 'Optional hard cap on response size in bytes.' },
+        continuation_token: { type: 'string', description: 'Token from previous response to get next page.' },
       },
     },
   },
@@ -287,6 +293,8 @@ EXAMPLES:
 
 USE FOR: Finding blockers, getting actionable recommendations, understanding what's stuck.
 NOT FOR: Simple status checks (use get_project_overview), listing entities (use search_entities).
+
+PAGINATION: Default max_items is 20 (conservative for smaller contexts). Agents with larger context windows can increase max_items up to 200.
 
 EXAMPLES:
 - "What's blocking progress in the engineering workstream?"
@@ -298,6 +306,10 @@ EXAMPLES:
         workstream: { type: 'string', description: 'Filter by workstream (optional)' },
         focus: { type: 'string', enum: ['blockers', 'actions', 'both'] },
         depth: { type: 'string', enum: ['summary', 'detailed'] },
+        // Pagination
+        max_items: { type: 'number', description: 'Maximum blockers to return (default: 20, max: 200). Increase for larger context windows.' },
+        max_response_size: { type: 'number', description: 'Optional hard cap on response size in bytes.' },
+        continuation_token: { type: 'string', description: 'Token from previous response to get next page.' },
       },
     },
   },
@@ -348,7 +360,7 @@ FOUR MODES:
 3. NAVIGATE: from_id="M-001", direction="down" - Traverse hierarchy
 4. LIST: filters={type:["task"], status:["Blocked"]} - List matching entities
 
-PAGINATION: Use limit + offset for large result sets.
+PAGINATION: Default max_items is 20 (conservative for smaller contexts). Agents with larger context windows can increase max_items up to 200. Legacy limit/offset still supported but max_items/continuation_token preferred.
 
 EXAMPLES:
 - "Find entities about authentication implementation" → query: "authentication implementation", semantic: true
@@ -376,9 +388,14 @@ EXAMPLES:
             archived: { type: 'boolean', description: 'Include archived entities (default: false)' },
           },
         },
+        // Pagination (new)
+        max_items: { type: 'number', description: 'Maximum results to return (default: 20, max: 200). Increase for larger context windows.' },
+        max_response_size: { type: 'number', description: 'Optional hard cap on response size in bytes.' },
+        continuation_token: { type: 'string', description: 'Token from previous response to get next page.' },
+        // Legacy pagination (deprecated, use max_items/continuation_token instead)
+        limit: { type: 'number', description: 'DEPRECATED: Use max_items instead. Max results to return.' },
+        offset: { type: 'number', description: 'DEPRECATED: Use continuation_token instead. Number of results to skip.' },
         // Response control
-        limit: { type: 'number', description: 'Max results to return (default: 50)' },
-        offset: { type: 'number', description: 'Number of results to skip for pagination (default: 0)' },
         include_content: { type: 'boolean' },
         fields: {
           type: 'array',
@@ -430,6 +447,8 @@ NOT FOR: Single entity (use get_entity), searching (use search_entities).
 
 EFFICIENCY: ~75% token savings vs multiple get_entity calls.
 
+PAGINATION: Default max_items is 20 (conservative for smaller contexts). Agents with larger context windows can increase max_items up to 200.
+
 EXAMPLES:
 - "Get features F-001 through F-005" → ids: ["F-001", "F-002", "F-003", "F-004", "F-005"]
 - "Verify these entities exist" → ids: [...], fields: ["id", "title"]`,
@@ -456,6 +475,10 @@ EXAMPLES:
           },
           description: 'Fields to include in response. If not specified, returns summary fields.',
         },
+        // Pagination
+        max_items: { type: 'number', description: 'Maximum entities to return per page (default: 20, max: 200). Increase for larger context windows.' },
+        max_response_size: { type: 'number', description: 'Optional hard cap on response size in bytes.' },
+        continuation_token: { type: 'string', description: 'Token from previous response to get next page.' },
       },
       required: ['ids'],
     },
