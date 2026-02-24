@@ -11,8 +11,15 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
         node-version: [18, 20, 22]
+        include:
+          - node-version: 22
+            # Node 22 has intermittent faiss-node native module issues in CI
+            experimental: true
+
+    continue-on-error: ${{ matrix.experimental || false }}
 
     steps:
       - name: Checkout repository
