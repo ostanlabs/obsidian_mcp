@@ -1,6 +1,6 @@
 {
   "name": "obsidian-accomplishments-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Model Context Protocol (MCP) server for managing structured project accomplishments in Obsidian",
   "type": "module",
   "main": "dist/index.js",
@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@ostanlabs/md-retriever": "file:./md_retriever",
+    "@ostanlabs/md-retriever": "^0.1.0",
     "yaml": "^2.3.4",
     "zod": "^3.22.4"
   },
