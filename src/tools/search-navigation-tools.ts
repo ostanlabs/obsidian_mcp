@@ -126,7 +126,7 @@ const SEARCH_DEFAULT_FIELDS: EntityField[] = ['id', 'type', 'title', 'status', '
 function buildSearchResultItem(
   entity: Entity,
   requestedFields: EntityField[] | undefined,
-  extras?: { relevance_score?: number; snippet?: string; path?: string }
+  extras?: { relevance_score?: number; snippet?: string; path?: string; valid?: boolean; validation_errors?: string[] }
 ): SearchResultItem {
   const fields = requestedFields || SEARCH_DEFAULT_FIELDS;
   const fieldSet = new Set(fields);
@@ -157,6 +157,14 @@ function buildSearchResultItem(
   if (extras?.relevance_score !== undefined) result.relevance_score = extras.relevance_score;
   if (extras?.snippet !== undefined) result.snippet = extras.snippet;
   if (extras?.path !== undefined) result.path = extras.path;
+
+  // Always include validation status
+  if (extras?.valid !== undefined) {
+    result.valid = extras.valid;
+    if (!extras.valid && extras.validation_errors && extras.validation_errors.length > 0) {
+      result.validation_errors = extras.validation_errors;
+    }
+  }
 
   return result;
 }
@@ -246,11 +254,24 @@ async function performBM25Search(
     limit: PAGINATION_DEFAULTS.MAX_ITEMS_LIMIT * 2, // Get enough for pagination
   });
 
-  // Build result items with paths
+  // Build result items with paths and validation
   const allResults: SearchResultItem[] = [];
   for (const { entity, score, snippet } of searchResults) {
     const path = await deps.getEntityPath(entity.id);
-    allResults.push(buildSearchResultItem(entity, fields, { relevance_score: score, snippet, path }));
+    const validation = await checkIfValid(entity, deps);
+
+    // Apply valid filter if specified
+    if (filters?.valid !== undefined && validation.valid !== filters.valid) {
+      continue;
+    }
+
+    allResults.push(buildSearchResultItem(entity, fields, {
+      relevance_score: score,
+      snippet,
+      path,
+      valid: validation.valid,
+      validation_errors: validation.errors,
+    }));
   }
 
   // Apply pagination
@@ -330,12 +351,22 @@ async function performSemanticSearch(
       if (filters.archived !== isArchived) continue;
     }
 
+    // Compute validation
+    const validation = await checkIfValid(entity, deps);
+
+    // Apply valid filter if specified
+    if (filters?.valid !== undefined && validation.valid !== filters.valid) {
+      continue;
+    }
+
     // Build result item
     const path = await deps.getEntityPath(entityId);
     allResults.push(buildSearchResultItem(entity, fields, {
       relevance_score: result.score,
       snippet: result.excerpt,
       path,
+      valid: validation.valid,
+      validation_errors: validation.errors,
     }));
   }
 
@@ -416,6 +447,127 @@ async function checkIfOrphaned(
 }
 
 /**
+ * Decision validation limits by entity type.
+ * All affected entities must be in the same workstream as the decision.
+ */
+const DECISION_AFFECTS_LIMITS = {
+  document: 1,
+  task: 3,      // Must be within same milestone
+  story: 3,     // Must be within same milestone
+  feature: 3,
+  milestone: 2,
+} as const;
+
+/**
+ * Validation result for an entity.
+ */
+interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+/**
+ * Check if an entity is valid according to business rules.
+ * Currently only decisions have validation rules:
+ * - Max 1 document per decision
+ * - Max 3 tasks per decision (within same milestone)
+ * - Max 3 stories per decision (within same milestone)
+ * - Max 3 features per decision
+ * - Max 2 milestones per decision
+ * - All affected entities must be in the same workstream as the decision
+ * - Tasks/stories must be within the same milestone
+ */
+async function checkIfValid(
+  entity: Entity,
+  deps: SearchNavigationDependencies
+): Promise<ValidationResult> {
+  // All non-decision entities are always valid (for now)
+  if (entity.type !== 'decision') {
+    return { valid: true, errors: [] };
+  }
+
+  const decision = entity as Decision;
+  const errors: string[] = [];
+  const affects = decision.affects || [];
+
+  if (affects.length === 0) {
+    // No affects = valid (orphaned check is separate)
+    return { valid: true, errors: [] };
+  }
+
+  // Group affected entities by type
+  const byType: Record<string, EntityId[]> = {
+    document: [],
+    task: [],
+    story: [],
+    feature: [],
+    milestone: [],
+  };
+
+  // Track milestones for tasks/stories (for same-milestone validation)
+  const taskMilestones = new Set<EntityId>();
+  const storyMilestones = new Set<EntityId>();
+
+  for (const affectedId of affects) {
+    const affected = await deps.getEntity(affectedId);
+    if (!affected) continue; // Skip non-existent entities
+
+    // Check workstream match
+    if (affected.workstream !== decision.workstream) {
+      errors.push(`Cross-workstream dependency: ${affectedId} is in workstream '${affected.workstream}' but decision is in '${decision.workstream}'`);
+    }
+
+    // Group by type
+    if (affected.type in byType) {
+      byType[affected.type].push(affectedId);
+    }
+
+    // Track milestones for tasks/stories
+    if (affected.type === 'task') {
+      const task = affected as Task;
+      if (task.parent) {
+        // Task's parent is a story, need to get story's parent (milestone)
+        const story = await deps.getEntity(task.parent);
+        if (story && story.type === 'story') {
+          const storyEntity = story as Story;
+          if (storyEntity.parent) {
+            taskMilestones.add(storyEntity.parent);
+          }
+        }
+      }
+    } else if (affected.type === 'story') {
+      const story = affected as Story;
+      if (story.parent) {
+        storyMilestones.add(story.parent);
+      }
+    }
+  }
+
+  // Check count limits
+  for (const [type, ids] of Object.entries(byType)) {
+    const limit = DECISION_AFFECTS_LIMITS[type as keyof typeof DECISION_AFFECTS_LIMITS];
+    if (ids.length > limit) {
+      errors.push(`Too many ${type}s: ${ids.length} (max ${limit}). Consider splitting into multiple decisions.`);
+    }
+  }
+
+  // Check same-milestone constraint for tasks
+  if (taskMilestones.size > 1) {
+    errors.push(`Tasks span ${taskMilestones.size} milestones. Tasks in a decision should be within the same milestone.`);
+  }
+
+  // Check same-milestone constraint for stories
+  if (storyMilestones.size > 1) {
+    errors.push(`Stories span ${storyMilestones.size} milestones. Stories in a decision should be within the same milestone.`);
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+/**
  * List entities with optional filters.
  * Internal helper for searchEntities list mode.
  */
@@ -456,10 +608,29 @@ async function performListMode(
     entities = orphanedEntities;
   }
 
-  // Build all results with field filtering
-  const allResults: SearchResultItem[] = entities.map(entity =>
-    buildSearchResultItem(entity, fields)
-  );
+  // Compute validation for all entities and optionally filter by valid status
+  const validationResults = new Map<EntityId, ValidationResult>();
+  for (const entity of entities) {
+    const validation = await checkIfValid(entity, deps);
+    validationResults.set(entity.id, validation);
+  }
+
+  // Apply valid filter if specified
+  if (filters?.valid !== undefined) {
+    entities = entities.filter(e => {
+      const validation = validationResults.get(e.id);
+      return validation?.valid === filters.valid;
+    });
+  }
+
+  // Build all results with field filtering and validation
+  const allResults: SearchResultItem[] = entities.map(entity => {
+    const validation = validationResults.get(entity.id) || { valid: true, errors: [] };
+    return buildSearchResultItem(entity, fields, {
+      valid: validation.valid,
+      validation_errors: validation.errors,
+    });
+  });
 
   // Apply pagination
   const { items, pagination } = applyPagination({
@@ -561,10 +732,29 @@ async function performNavigation(
     });
   }
 
-  // Convert to output format with field filtering
-  const allResults: SearchResultItem[] = filteredResults.map(entity =>
-    buildSearchResultItem(entity, fields)
-  );
+  // Compute validation for all entities and optionally filter by valid status
+  const validationResults = new Map<EntityId, ValidationResult>();
+  for (const entity of filteredResults) {
+    const validation = await checkIfValid(entity, deps);
+    validationResults.set(entity.id, validation);
+  }
+
+  // Apply valid filter if specified
+  if (filters?.valid !== undefined) {
+    filteredResults = filteredResults.filter(e => {
+      const validation = validationResults.get(e.id);
+      return validation?.valid === filters.valid;
+    });
+  }
+
+  // Convert to output format with field filtering and validation
+  const allResults: SearchResultItem[] = filteredResults.map(entity => {
+    const validation = validationResults.get(entity.id) || { valid: true, errors: [] };
+    return buildSearchResultItem(entity, fields, {
+      valid: validation.valid,
+      validation_errors: validation.errors,
+    });
+  });
 
   // Apply pagination
   const { items, pagination } = applyPagination({

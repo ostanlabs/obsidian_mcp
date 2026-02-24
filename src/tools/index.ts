@@ -371,7 +371,9 @@ EXAMPLES:
 - "List all blocked tasks" → filters: {type: ["task"], status: ["Blocked"]}
 - "Get children of milestone M-001" → from_id: "M-001", direction: "down"
 - "Find orphaned stories" → filters: {type: ["story"], orphaned: true}
-- "Find all orphaned entities" → filters: {orphaned: true}`,
+- "Find all orphaned entities" → filters: {orphaned: true}
+- "Find invalid decisions" → filters: {type: ["decision"], valid: false}
+- "List all valid decisions" → filters: {type: ["decision"], valid: true}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -393,6 +395,7 @@ EXAMPLES:
             archived: { type: 'boolean', description: 'Include archived milestones/stories/tasks. Default: false (excluded).' },
             include_superseded: { type: 'boolean', description: 'Include superseded decisions/documents. Default: false (excluded).' },
             orphaned: { type: 'boolean', description: 'Find orphaned entities. Stories/tasks: missing parent. Decisions: empty affects. Documents/features: empty implemented_by.' },
+            valid: { type: 'boolean', description: 'Filter by validation status. Decisions have rules: max 1 doc, 3 stories/tasks/features (same milestone), 2 milestones; no cross-workstream. Other entities always valid.' },
           },
         },
         // Pagination (new)
