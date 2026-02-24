@@ -52,6 +52,6 @@ jobs:
         run: npm run build
 
       - name: Run tests
-        # Use --forceExit to prevent faiss-node native module cleanup crash
-        run: npx vitest --run --forceExit
+        # Use --pool=forks to prevent faiss-node native module V8 locking crash
+        run: npx vitest --run --pool=forks
 
