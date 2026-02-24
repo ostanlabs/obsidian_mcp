@@ -31,7 +31,12 @@ import type {
   EntityFull,
   EntityStatus,
   Workstream,
+  PaginationInput,
+  PaginationOutput,
 } from './tool-types.js';
+
+import { PAGINATION_DEFAULTS } from './tool-types.js';
+import { applyPagination } from './pagination-utils.js';
 
 // =============================================================================
 // Dependencies Interface
@@ -154,61 +159,109 @@ function buildSearchResultItem(
 }
 
 /**
+ * Extract pagination input from SearchEntitiesInput, handling legacy limit/offset.
+ */
+function extractPaginationInput(input: SearchEntitiesInput): PaginationInput {
+  // If new pagination params are provided, use them
+  if (input.max_items !== undefined || input.continuation_token !== undefined || input.max_response_size !== undefined) {
+    return {
+      max_items: input.max_items,
+      max_response_size: input.max_response_size,
+      continuation_token: input.continuation_token,
+    };
+  }
+
+  // Fall back to legacy limit/offset if provided
+  if (input.limit !== undefined || input.offset !== undefined) {
+    // Convert legacy offset to continuation token format
+    const offset = input.offset ?? 0;
+    const maxItems = input.limit ?? PAGINATION_DEFAULTS.MAX_ITEMS;
+    return {
+      max_items: maxItems,
+      // If offset > 0, we need to encode it as a continuation token
+      continuation_token: offset > 0 ? Buffer.from(JSON.stringify({ offset })).toString('base64url') : undefined,
+    };
+  }
+
+  // Use defaults
+  return {};
+}
+
+/**
  * Full-text search across entities with filters.
  * Supports four modes:
  * 1. Semantic search mode: query + semantic=true - MSRL hybrid search
  * 2. Search mode: query is provided - full-text search (BM25)
  * 3. Navigation mode: from_id + direction - traverse hierarchy
  * 4. List mode: filters only (or no params) - list entities matching filters
+ *
+ * Pagination: Default max_items is 20 (conservative for smaller contexts).
+ * Agents with larger context windows can increase max_items up to 200.
  */
 export async function searchEntities(
   input: SearchEntitiesInput,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
-  const { query, semantic, from_id, direction, depth = 1, filters, limit = 50, offset = 0, fields } = input;
+  const { query, semantic, from_id, direction, depth = 1, filters, fields } = input;
+  const paginationInput = extractPaginationInput(input);
 
   // Navigation mode: if from_id and direction are specified
   if (from_id && direction) {
-    return performNavigation(from_id, direction, depth, filters, fields, deps);
+    return performNavigation(from_id, direction, depth, filters, fields, paginationInput, deps);
   }
 
   // Semantic search mode: if query and semantic=true
   if (query && semantic) {
-    return performSemanticSearch(query, filters, limit, offset, fields, deps);
+    return performSemanticSearch(query, filters, fields, paginationInput, deps);
   }
 
   // Search mode: if query is provided (BM25)
   if (query) {
-    const searchResults = await deps.searchEntities(query, {
-      types: filters?.type,
-      statuses: filters?.status,
-      workstreams: filters?.workstream,
-      archived: filters?.archived,
-      limit: limit + offset, // Get enough results to handle offset
-    });
-
-    // Apply offset
-    const paginatedResults = searchResults.slice(offset, offset + limit);
-    const results: SearchResultItem[] = [];
-
-    for (const { entity, score, snippet } of paginatedResults) {
-      const path = await deps.getEntityPath(entity.id);
-      results.push(buildSearchResultItem(entity, fields, { relevance_score: score, snippet, path }));
-    }
-
-    return {
-      results,
-      total_matches: searchResults.length,
-      pagination: {
-        offset,
-        limit,
-        has_more: offset + limit < searchResults.length,
-      },
-    };
+    return performBM25Search(query, filters, fields, paginationInput, deps);
   }
 
   // List mode: no query, no navigation - just list entities with filters
-  return performListMode(filters, limit, offset, fields, deps);
+  return performListMode(filters, fields, paginationInput, deps);
+}
+
+/**
+ * Perform BM25 full-text search.
+ */
+async function performBM25Search(
+  query: string,
+  filters: SearchEntitiesInput['filters'] | undefined,
+  fields: EntityField[] | undefined,
+  paginationInput: PaginationInput,
+  deps: SearchNavigationDependencies
+): Promise<SearchEntitiesOutput> {
+  // Get all matching results (we'll paginate after)
+  const searchResults = await deps.searchEntities(query, {
+    types: filters?.type,
+    statuses: filters?.status,
+    workstreams: filters?.workstream,
+    archived: filters?.archived,
+    limit: PAGINATION_DEFAULTS.MAX_ITEMS_LIMIT * 2, // Get enough for pagination
+  });
+
+  // Build result items with paths
+  const allResults: SearchResultItem[] = [];
+  for (const { entity, score, snippet } of searchResults) {
+    const path = await deps.getEntityPath(entity.id);
+    allResults.push(buildSearchResultItem(entity, fields, { relevance_score: score, snippet, path }));
+  }
+
+  // Apply pagination
+  const { items, pagination } = applyPagination({
+    items: allResults,
+    pagination: paginationInput,
+    context: `search:${query}`,
+  });
+
+  return {
+    results: items,
+    total_matches: allResults.length,
+    pagination,
+  };
 }
 
 /**
@@ -218,9 +271,8 @@ export async function searchEntities(
 async function performSemanticSearch(
   query: string,
   filters: SearchEntitiesInput['filters'] | undefined,
-  limit: number,
-  offset: number,
   fields: EntityField[] | undefined,
+  paginationInput: PaginationInput,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
   if (!deps.semanticSearch) {
@@ -242,14 +294,14 @@ async function performSemanticSearch(
     docUriPrefix = typeToFolder[filters.type[0]];
   }
 
-  // Perform semantic search
+  // Perform semantic search - get enough results for pagination
   const semanticResults = await deps.semanticSearch(query, {
-    topK: limit + offset,
+    topK: PAGINATION_DEFAULTS.MAX_ITEMS_LIMIT * 2,
     docUriPrefix,
   });
 
   // Map MSRL results to entities
-  const results: SearchResultItem[] = [];
+  const allResults: SearchResultItem[] = [];
   const processedIds = new Set<EntityId>();
 
   for (const result of semanticResults) {
@@ -277,7 +329,7 @@ async function performSemanticSearch(
 
     // Build result item
     const path = await deps.getEntityPath(entityId);
-    results.push(buildSearchResultItem(entity, fields, {
+    allResults.push(buildSearchResultItem(entity, fields, {
       relevance_score: result.score,
       snippet: result.excerpt,
       path,
@@ -285,16 +337,16 @@ async function performSemanticSearch(
   }
 
   // Apply pagination
-  const paginatedResults = results.slice(offset, offset + limit);
+  const { items, pagination } = applyPagination({
+    items: allResults,
+    pagination: paginationInput,
+    context: `semantic:${query}`,
+  });
 
   return {
-    results: paginatedResults,
-    total_matches: results.length,
-    pagination: {
-      offset,
-      limit,
-      has_more: offset + limit < results.length,
-    },
+    results: items,
+    total_matches: allResults.length,
+    pagination,
   };
 }
 
@@ -304,9 +356,8 @@ async function performSemanticSearch(
  */
 async function performListMode(
   filters: SearchEntitiesInput['filters'] | undefined,
-  limit: number,
-  offset: number,
   fields: EntityField[] | undefined,
+  paginationInput: PaginationInput,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
   // Get all entities with basic filters
@@ -327,24 +378,22 @@ async function performListMode(
     entities = entities.filter(e => filters.workstream!.includes(e.workstream));
   }
 
-  const totalMatches = entities.length;
-
-  // Apply pagination
-  const paginatedEntities = entities.slice(offset, offset + limit);
-
-  // Build results with field filtering
-  const results: SearchResultItem[] = paginatedEntities.map(entity =>
+  // Build all results with field filtering
+  const allResults: SearchResultItem[] = entities.map(entity =>
     buildSearchResultItem(entity, fields)
   );
 
+  // Apply pagination
+  const { items, pagination } = applyPagination({
+    items: allResults,
+    pagination: paginationInput,
+    context: 'list',
+  });
+
   return {
-    results,
-    total_matches: totalMatches,
-    pagination: {
-      offset,
-      limit,
-      has_more: offset + limit < totalMatches,
-    },
+    results: items,
+    total_matches: allResults.length,
+    pagination,
   };
 }
 
@@ -358,6 +407,7 @@ async function performNavigation(
   depth: number,
   filters: SearchEntitiesInput['filters'] | undefined,
   fields: EntityField[] | undefined,
+  paginationInput: PaginationInput,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
   const origin = await deps.getEntity(from_id);
@@ -434,13 +484,21 @@ async function performNavigation(
   }
 
   // Convert to output format with field filtering
-  const results: SearchResultItem[] = filteredResults.map(entity =>
+  const allResults: SearchResultItem[] = filteredResults.map(entity =>
     buildSearchResultItem(entity, fields)
   );
 
+  // Apply pagination
+  const { items, pagination } = applyPagination({
+    items: allResults,
+    pagination: paginationInput,
+    context: `nav:${from_id}:${direction}`,
+  });
+
   return {
-    results,
-    total_matches: results.length,
+    results: items,
+    total_matches: allResults.length,
+    pagination,
     origin: originSummary,
     path_description: pathDescription,
   };
@@ -613,19 +671,29 @@ export async function getEntity(
 /**
  * Get multiple entities in a single call.
  * More efficient than multiple get_entity calls.
+ *
+ * Pagination: Default max_items is 20 (conservative for smaller contexts).
+ * Agents with larger context windows can increase max_items up to 200.
  */
 export async function getEntities(
   input: GetEntitiesInput,
   deps: SearchNavigationDependencies
 ): Promise<GetEntitiesOutput> {
-  const { ids, fields } = input;
+  const { ids, fields, max_items, max_response_size, continuation_token } = input;
+
+  // Apply pagination to the IDs array
+  const { items: paginatedIds, pagination } = applyPagination({
+    items: ids,
+    pagination: { max_items, max_response_size, continuation_token },
+    context: 'get_entities',
+  });
 
   const entities: Record<EntityId, GetEntityOutput> = {};
   const notFound: EntityId[] = [];
 
-  // Process all IDs in parallel for efficiency
+  // Process paginated IDs in parallel for efficiency
   await Promise.all(
-    ids.map(async (id) => {
+    paginatedIds.map(async (id) => {
       try {
         const entityOutput = await getEntity({ id, fields }, deps);
         entities[id] = entityOutput;
@@ -636,8 +704,12 @@ export async function getEntities(
     })
   );
 
+  // Only include pagination if there are more items or we're not on page 1
+  const includePagination = pagination.has_more || pagination.page > 1;
+
   return {
     entities,
     not_found: notFound,
+    ...(includePagination ? { pagination } : {}),
   };
 }

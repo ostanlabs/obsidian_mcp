@@ -568,5 +568,273 @@ describe('Tools Index Integration Tests', () => {
       ).rejects.toThrow('Workspace not found: nonexistent');
     });
   });
-});
 
+  // ===========================================================================
+  // Pagination Utilities Tests
+  // ===========================================================================
+
+  describe('Pagination Utilities', () => {
+    // Import pagination utilities dynamically to test them
+    let applyPagination: typeof import('./pagination-utils.js').applyPagination;
+    let encodeContinuationToken: typeof import('./pagination-utils.js').encodeContinuationToken;
+    let decodeContinuationToken: typeof import('./pagination-utils.js').decodeContinuationToken;
+    let measureResponseSize: typeof import('./pagination-utils.js').measureResponseSize;
+
+    beforeEach(async () => {
+      const paginationUtils = await import('./pagination-utils.js');
+      applyPagination = paginationUtils.applyPagination;
+      encodeContinuationToken = paginationUtils.encodeContinuationToken;
+      decodeContinuationToken = paginationUtils.decodeContinuationToken;
+      measureResponseSize = paginationUtils.measureResponseSize;
+    });
+
+    describe('encodeContinuationToken / decodeContinuationToken', () => {
+      it('should encode and decode a simple token', () => {
+        const token = { offset: 20 };
+        const encoded = encodeContinuationToken(token);
+        expect(typeof encoded).toBe('string');
+        expect(encoded.length).toBeGreaterThan(0);
+
+        const decoded = decodeContinuationToken(encoded);
+        expect(decoded).toEqual(token);
+      });
+
+      it('should encode and decode a token with context', () => {
+        const token = { offset: 50, context: 'search:auth' };
+        const encoded = encodeContinuationToken(token);
+        const decoded = decodeContinuationToken(encoded);
+        expect(decoded).toEqual(token);
+      });
+
+      it('should return null for invalid token', () => {
+        expect(decodeContinuationToken('invalid-base64!')).toBeNull();
+        expect(decodeContinuationToken('')).toBeNull();
+      });
+
+      it('should return null for token with negative offset', () => {
+        const invalidToken = Buffer.from(JSON.stringify({ offset: -5 })).toString('base64url');
+        expect(decodeContinuationToken(invalidToken)).toBeNull();
+      });
+
+      it('should return null for token without offset', () => {
+        const invalidToken = Buffer.from(JSON.stringify({ foo: 'bar' })).toString('base64url');
+        expect(decodeContinuationToken(invalidToken)).toBeNull();
+      });
+    });
+
+    describe('measureResponseSize', () => {
+      it('should measure size of simple objects', () => {
+        const obj = { id: 'T-001', title: 'Test' };
+        const size = measureResponseSize(obj);
+        expect(size).toBe(Buffer.byteLength(JSON.stringify(obj), 'utf-8'));
+      });
+
+      it('should measure size of arrays', () => {
+        const arr = [{ id: 'T-001' }, { id: 'T-002' }];
+        const size = measureResponseSize(arr);
+        expect(size).toBe(Buffer.byteLength(JSON.stringify(arr), 'utf-8'));
+      });
+
+      it('should handle unicode characters correctly', () => {
+        const obj = { title: '日本語テスト' };
+        const size = measureResponseSize(obj);
+        // UTF-8 encoding: each Japanese character is 3 bytes
+        expect(size).toBeGreaterThan(JSON.stringify(obj).length);
+      });
+    });
+
+    describe('applyPagination', () => {
+      const testItems = Array.from({ length: 50 }, (_, i) => ({
+        id: `T-${String(i + 1).padStart(3, '0')}`,
+        title: `Task ${i + 1}`,
+      }));
+
+      it('should return first page with default max_items (20)', () => {
+        const result = applyPagination({ items: testItems });
+
+        expect(result.items).toHaveLength(20);
+        expect(result.items[0].id).toBe('T-001');
+        expect(result.items[19].id).toBe('T-020');
+        expect(result.pagination.returned).toBe(20);
+        expect(result.pagination.total_items).toBe(50);
+        expect(result.pagination.total_pages).toBe(3);
+        expect(result.pagination.page).toBe(1);
+        expect(result.pagination.has_more).toBe(true);
+        expect(result.pagination.continuation_token).toBeDefined();
+      });
+
+      it('should respect custom max_items', () => {
+        const result = applyPagination({
+          items: testItems,
+          pagination: { max_items: 10 },
+        });
+
+        expect(result.items).toHaveLength(10);
+        expect(result.pagination.returned).toBe(10);
+        expect(result.pagination.total_pages).toBe(5);
+        expect(result.pagination.has_more).toBe(true);
+      });
+
+      it('should enforce max_items limit (200)', () => {
+        const result = applyPagination({
+          items: testItems,
+          pagination: { max_items: 500 },
+        });
+
+        // Should be capped at 50 (all items) since we only have 50 items
+        expect(result.items).toHaveLength(50);
+        expect(result.pagination.has_more).toBe(false);
+      });
+
+      it('should use continuation_token for subsequent pages', () => {
+        // Get first page
+        const page1 = applyPagination({
+          items: testItems,
+          pagination: { max_items: 20 },
+        });
+
+        expect(page1.pagination.continuation_token).toBeDefined();
+
+        // Get second page using continuation token
+        const page2 = applyPagination({
+          items: testItems,
+          pagination: {
+            max_items: 20,
+            continuation_token: page1.pagination.continuation_token,
+          },
+        });
+
+        expect(page2.items).toHaveLength(20);
+        expect(page2.items[0].id).toBe('T-021');
+        expect(page2.items[19].id).toBe('T-040');
+        expect(page2.pagination.page).toBe(2);
+        expect(page2.pagination.has_more).toBe(true);
+
+        // Get third (last) page
+        const page3 = applyPagination({
+          items: testItems,
+          pagination: {
+            max_items: 20,
+            continuation_token: page2.pagination.continuation_token,
+          },
+        });
+
+        expect(page3.items).toHaveLength(10);
+        expect(page3.items[0].id).toBe('T-041');
+        expect(page3.items[9].id).toBe('T-050');
+        expect(page3.pagination.page).toBe(3);
+        expect(page3.pagination.has_more).toBe(false);
+        expect(page3.pagination.continuation_token).toBeUndefined();
+      });
+
+      it('should handle empty items array', () => {
+        const result = applyPagination({ items: [] });
+
+        expect(result.items).toHaveLength(0);
+        expect(result.pagination.returned).toBe(0);
+        expect(result.pagination.total_items).toBe(0);
+        expect(result.pagination.total_pages).toBe(0);
+        expect(result.pagination.page).toBe(1);
+        expect(result.pagination.has_more).toBe(false);
+        expect(result.pagination.continuation_token).toBeUndefined();
+      });
+
+      it('should handle exact page boundary', () => {
+        // 40 items with max_items=20 = exactly 2 pages
+        const items40 = testItems.slice(0, 40);
+        const page1 = applyPagination({
+          items: items40,
+          pagination: { max_items: 20 },
+        });
+
+        expect(page1.pagination.total_pages).toBe(2);
+        expect(page1.pagination.has_more).toBe(true);
+
+        const page2 = applyPagination({
+          items: items40,
+          pagination: {
+            max_items: 20,
+            continuation_token: page1.pagination.continuation_token,
+          },
+        });
+
+        expect(page2.items).toHaveLength(20);
+        expect(page2.pagination.has_more).toBe(false);
+        expect(page2.pagination.continuation_token).toBeUndefined();
+      });
+
+      it('should apply max_response_size cap', () => {
+        // Each item is roughly 30-40 bytes when serialized
+        // Set a small limit to test truncation
+        const result = applyPagination({
+          items: testItems,
+          pagination: { max_items: 50, max_response_size: 200 },
+        });
+
+        // Should return fewer items due to size limit
+        expect(result.items.length).toBeLessThan(50);
+        expect(result.items.length).toBeGreaterThan(0);
+        expect(result.pagination.response_size_bytes).toBeLessThanOrEqual(200);
+        expect(result.pagination.has_more).toBe(true);
+      });
+
+      it('should always return at least one item even if it exceeds max_response_size', () => {
+        const largeItem = { id: 'T-001', title: 'A'.repeat(500) };
+        const result = applyPagination({
+          items: [largeItem],
+          pagination: { max_response_size: 100 },
+        });
+
+        // Should still return the item even though it exceeds the limit
+        expect(result.items).toHaveLength(1);
+        expect(result.pagination.returned).toBe(1);
+      });
+
+      it('should include response_size_bytes in pagination output', () => {
+        const result = applyPagination({
+          items: testItems.slice(0, 5),
+        });
+
+        expect(result.pagination.response_size_bytes).toBeDefined();
+        expect(result.pagination.response_size_bytes).toBeGreaterThan(0);
+      });
+
+      it('should validate context in continuation token', () => {
+        // Get token with context
+        const page1 = applyPagination({
+          items: testItems,
+          pagination: { max_items: 20 },
+          context: 'search:auth',
+        });
+
+        // Use token with different context - should reset to beginning
+        const page2 = applyPagination({
+          items: testItems,
+          pagination: {
+            max_items: 20,
+            continuation_token: page1.pagination.continuation_token,
+          },
+          context: 'search:different',
+        });
+
+        // Should start from beginning due to context mismatch
+        expect(page2.items[0].id).toBe('T-001');
+        expect(page2.pagination.page).toBe(1);
+      });
+
+      it('should handle invalid continuation token gracefully', () => {
+        const result = applyPagination({
+          items: testItems,
+          pagination: {
+            max_items: 20,
+            continuation_token: 'invalid-token',
+          },
+        });
+
+        // Should start from beginning
+        expect(result.items[0].id).toBe('T-001');
+        expect(result.pagination.page).toBe(1);
+      });
+    });
+  });
+});
