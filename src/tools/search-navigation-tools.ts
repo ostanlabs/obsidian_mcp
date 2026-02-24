@@ -15,6 +15,8 @@ import type {
   Document,
   Feature,
   Story,
+  Task,
+  Decision,
   Milestone,
 } from '../models/v2-types.js';
 
@@ -352,6 +354,68 @@ async function performSemanticSearch(
 }
 
 /**
+ * Check if an entity is orphaned based on its type:
+ * - Stories/Tasks: parent is missing or points to non-existent entity
+ * - Decisions: affects is empty or all referenced entities don't exist
+ * - Documents/Features: implemented_by is empty or all referenced entities don't exist
+ * - Milestones: never orphaned (they are top-level)
+ */
+async function checkIfOrphaned(
+  entity: Entity,
+  deps: SearchNavigationDependencies
+): Promise<boolean> {
+  switch (entity.type) {
+    case 'story':
+    case 'task': {
+      const parentId = (entity as Story | Task).parent;
+      if (!parentId) return true; // No parent = orphaned
+      const parent = await deps.getEntity(parentId);
+      return parent === null; // Parent doesn't exist = orphaned
+    }
+
+    case 'decision': {
+      const affects = (entity as Decision).affects;
+      if (!affects || affects.length === 0) return true; // No affects = orphaned
+      // Check if ALL referenced entities don't exist
+      for (const refId of affects) {
+        const ref = await deps.getEntity(refId);
+        if (ref !== null) return false; // At least one exists = not orphaned
+      }
+      return true; // All references are gone = orphaned
+    }
+
+    case 'document': {
+      const implementedBy = (entity as Document).implemented_by;
+      if (!implementedBy || implementedBy.length === 0) return true; // No implementers = orphaned
+      // Check if ALL referenced entities don't exist
+      for (const refId of implementedBy) {
+        const ref = await deps.getEntity(refId);
+        if (ref !== null) return false; // At least one exists = not orphaned
+      }
+      return true; // All references are gone = orphaned
+    }
+
+    case 'feature': {
+      const implementedBy = (entity as Feature).implemented_by;
+      if (!implementedBy || implementedBy.length === 0) return true; // No implementers = orphaned
+      // Check if ALL referenced entities don't exist
+      for (const refId of implementedBy) {
+        const ref = await deps.getEntity(refId);
+        if (ref !== null) return false; // At least one exists = not orphaned
+      }
+      return true; // All references are gone = orphaned
+    }
+
+    case 'milestone':
+      // Milestones are top-level, never orphaned
+      return false;
+
+    default:
+      return false;
+  }
+}
+
+/**
  * List entities with optional filters.
  * Internal helper for searchEntities list mode.
  */
@@ -378,6 +442,18 @@ async function performListMode(
   // Apply workstream filter for multiple workstreams (getAllEntities only supports one)
   if (filters?.workstream && filters.workstream.length > 1) {
     entities = entities.filter(e => filters.workstream!.includes(e.workstream));
+  }
+
+  // Apply orphaned filter - find entities with missing or non-existent parents/references
+  if (filters?.orphaned === true) {
+    const orphanedEntities: Entity[] = [];
+    for (const entity of entities) {
+      const isOrphaned = await checkIfOrphaned(entity, deps);
+      if (isOrphaned) {
+        orphanedEntities.push(entity);
+      }
+    }
+    entities = orphanedEntities;
   }
 
   // Build all results with field filtering

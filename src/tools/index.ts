@@ -369,7 +369,9 @@ EXAMPLES:
 - "Find entities about authentication implementation" → query: "authentication implementation", semantic: true
 - "Find entities mentioning 'authentication'" → query: "authentication"
 - "List all blocked tasks" → filters: {type: ["task"], status: ["Blocked"]}
-- "Get children of milestone M-001" → from_id: "M-001", direction: "down"`,
+- "Get children of milestone M-001" → from_id: "M-001", direction: "down"
+- "Find orphaned stories" → filters: {type: ["story"], orphaned: true}
+- "Find all orphaned entities" → filters: {orphaned: true}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -390,6 +392,7 @@ EXAMPLES:
             workstream: { type: 'array', items: { type: 'string' } },
             archived: { type: 'boolean', description: 'Include archived milestones/stories/tasks. Default: false (excluded).' },
             include_superseded: { type: 'boolean', description: 'Include superseded decisions/documents. Default: false (excluded).' },
+            orphaned: { type: 'boolean', description: 'Find orphaned entities. Stories/tasks: missing parent. Decisions: empty affects. Documents/features: empty implemented_by.' },
           },
         },
         // Pagination (new)

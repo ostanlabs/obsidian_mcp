@@ -577,6 +577,7 @@ export interface SearchEntitiesInput extends PaginationInput {
     workstream?: Workstream[];
     archived?: boolean;
     include_superseded?: boolean;
+    orphaned?: boolean;
   };
 
   // Response control (legacy - prefer max_items from PaginationInput)
