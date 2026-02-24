@@ -589,6 +589,7 @@ EXAMPLES:
   {
     name: 'cleanup_completed',
     description: `Clean up completed milestones by archiving them and their stories/tasks.
+Also archives orphaned completed stories/tasks (those without a valid parent).
 
 USE FOR: Archiving completed work, cleaning up the canvas, end-of-milestone housekeeping.
 NOT FOR: Archiving individual entities (use update_entity with archived: true).
@@ -598,12 +599,16 @@ FLOW:
 2. For each completed milestone, find all stories and tasks
 3. If any are Blocked, return them for confirmation (fail-safe)
 4. Mark non-completed stories/tasks as Completed
-5. Archive all milestones, stories, tasks
-6. Remove archived items from default canvas
-7. Return summary
+5. Find orphaned completed stories/tasks (when processing all milestones)
+6. Archive all milestones, stories, tasks
+7. Remove archived items from default canvas
+8. Return summary
 
 BLOCKED ITEMS: If stories/tasks are Blocked, the tool returns requires_confirmation with the list.
 Call again with confirmed_blockers containing the IDs to proceed.
+
+ORPHANED ENTITIES: When processing all milestones (no milestone_id), also archives completed
+stories/tasks that have no parent or whose parent doesn't exist.
 
 EXAMPLES:
 - "Clean up all completed milestones" → {}
