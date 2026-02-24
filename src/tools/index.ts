@@ -608,8 +608,9 @@ FLOW:
 BLOCKED ITEMS: If stories/tasks are Blocked, the tool returns requires_confirmation with the list.
 Call again with confirmed_blockers containing the IDs to proceed.
 
-RE-LINKING: When archiving a story/task that has decisions (affects) or documents (implemented_by)
-linked to it, those links are updated to point to the milestone instead, preventing orphaned references.
+RE-LINKING: When archiving a story/task that has decisions (affects), documents (implemented_by),
+or features (implemented_by) linked to it, those links are updated to point to the milestone instead,
+preventing orphaned references.
 
 ORPHANED ENTITIES: When processing all milestones (no milestone_id), also archives completed
 stories/tasks that have no parent or whose parent doesn't exist.

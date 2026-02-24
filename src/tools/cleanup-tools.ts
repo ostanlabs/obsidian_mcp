@@ -15,6 +15,7 @@ import type {
   Task,
   Decision,
   Document,
+  Feature,
   CanvasPath,
 } from '../models/v2-types.js';
 
@@ -217,7 +218,7 @@ export async function cleanupCompleted(
       summary: {
         completed: { stories: 0, tasks: 0 },
         archived: { stories: 0, tasks: 0 },
-        relinked: { decisions: 0, documents: 0 },
+        relinked: { decisions: 0, documents: 0, features: 0 },
         removed_from_canvas: 0,
         dry_run,
       },
@@ -245,6 +246,11 @@ export async function cleanupCompleted(
     includeCompleted: true,
     includeArchived: false,
     types: ['document'],
+  });
+  const allFeatures = await deps.getAllEntities({
+    includeCompleted: true,
+    includeArchived: false,
+    types: ['feature'],
   });
 
   // Build a map of entity ID -> milestone ID for re-linking
@@ -311,6 +317,34 @@ export async function cleanupCompleted(
     }
   }
 
+  // Find features that are implemented_by entities being archived
+  const featuresToRelink: { feature: Feature; newImplementedBy: EntityId[] }[] = [];
+  for (const entity of allFeatures) {
+    const feature = entity as Feature;
+    if (!feature.implemented_by || feature.implemented_by.length === 0) continue;
+
+    const newImplementedBy: EntityId[] = [];
+    let needsUpdate = false;
+
+    for (const implementerId of feature.implemented_by) {
+      const milestoneId = entityToMilestone.get(implementerId);
+      if (milestoneId) {
+        // This implementer is being archived - re-link to milestone
+        if (!newImplementedBy.includes(milestoneId)) {
+          newImplementedBy.push(milestoneId);
+        }
+        needsUpdate = true;
+      } else {
+        // Keep the existing reference
+        newImplementedBy.push(implementerId);
+      }
+    }
+
+    if (needsUpdate) {
+      featuresToRelink.push({ feature, newImplementedBy });
+    }
+  }
+
   // Step 6: If dry_run, return what would happen
   if (dry_run) {
     const summary: CleanupSummary = {
@@ -325,6 +359,7 @@ export async function cleanupCompleted(
       relinked: {
         decisions: decisionsToRelink.length,
         documents: documentsToRelink.length,
+        features: featuresToRelink.length,
       },
       removed_from_canvas: entitiesToArchive.length,
       dry_run: true,
@@ -356,6 +391,13 @@ export async function cleanupCompleted(
     document.implemented_by = newImplementedBy as any;
     document.updated_at = timestamp as any;
     await deps.writeEntity(document);
+  }
+
+  // Re-link features to milestones
+  for (const { feature, newImplementedBy } of featuresToRelink) {
+    feature.implemented_by = newImplementedBy as any;
+    feature.updated_at = timestamp as any;
+    await deps.writeEntity(feature);
   }
 
   // Archive stories/tasks (tasks first, then stories)
@@ -391,6 +433,7 @@ export async function cleanupCompleted(
     relinked: {
       decisions: decisionsToRelink.length,
       documents: documentsToRelink.length,
+      features: featuresToRelink.length,
     },
     removed_from_canvas: removedFromCanvas,
     dry_run: false,

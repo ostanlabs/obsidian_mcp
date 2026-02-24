@@ -962,10 +962,11 @@ export interface CleanupSummary {
     stories: number;
     tasks: number;
   };
-  /** Decisions/documents re-linked to milestones */
+  /** Decisions/documents/features re-linked to milestones */
   relinked: {
     decisions: number;
     documents: number;
+    features: number;
   };
   removed_from_canvas: number;
   dry_run: boolean;
