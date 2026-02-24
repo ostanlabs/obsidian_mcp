@@ -917,3 +917,62 @@ export interface EntitySchema {
 export interface GetSchemaOutput {
   schemas: EntitySchema[];
 }
+
+// =============================================================================
+// Category 8: Cleanup Operations
+// =============================================================================
+
+/** Input for cleanup_completed tool */
+export interface CleanupCompletedInput {
+  /** Optional milestone ID to clean up. If not provided, processes all completed milestones. */
+  milestone_id?: EntityId;
+  /** Array of blocked entity IDs that user confirms are resolved */
+  confirmed_blockers?: EntityId[];
+  /** Preview what would be archived without making changes */
+  dry_run?: boolean;
+}
+
+/** Blocked item requiring confirmation */
+export interface BlockedItem {
+  id: EntityId;
+  type: EntityType;
+  title: string;
+  parent_id?: EntityId;
+  parent_title?: string;
+  blocked_by?: string;
+}
+
+/** Output for cleanup_completed tool when blocked items need confirmation */
+export interface CleanupRequiresConfirmation {
+  requires_confirmation: {
+    blocked_items: BlockedItem[];
+    message: string;
+  };
+}
+
+/** Summary of cleanup operation */
+export interface CleanupSummary {
+  completed: {
+    milestones: number;
+    stories: number;
+    tasks: number;
+  };
+  archived: {
+    milestones: number;
+    stories: number;
+    tasks: number;
+  };
+  removed_from_canvas: number;
+  dry_run: boolean;
+}
+
+/** Output for cleanup_completed tool when operation completes */
+export interface CleanupCompletedOutput {
+  /** Present if blocked items need confirmation before proceeding */
+  requires_confirmation?: {
+    blocked_items: BlockedItem[];
+    message: string;
+  };
+  /** Present if operation completed (or dry_run) */
+  summary?: CleanupSummary;
+}
