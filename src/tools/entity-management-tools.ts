@@ -86,6 +86,13 @@ export interface EntityManagementDependencies {
   entityExists: (id: EntityId) => boolean;
   getEntityType: (id: EntityId) => EntityType | null;
 
+  // Query operations (for orphan detection)
+  getAllEntities: (options?: {
+    includeCompleted?: boolean;
+    includeArchived?: boolean;
+    types?: EntityType[];
+  }) => Promise<Entity[]>;
+
   // File operations
   writeEntity: (entity: Entity) => Promise<void>;
   moveToArchive: (id: EntityId, archivePath?: string) => Promise<string>;
@@ -118,6 +125,153 @@ export interface RelationshipValidationError {
   field: string;
   message: string;
   invalidId?: EntityId;
+}
+
+/**
+ * Validate that creating an entity won't result in an orphan.
+ * - Stories/Tasks MUST have a parent
+ * - Decisions SHOULD have affects (warning only, not error)
+ * - Documents/Features can be created without implemented_by (linked via implements later)
+ */
+export function validateNotOrphaned(
+  type: EntityType,
+  data: Record<string, unknown>,
+): RelationshipValidationError[] {
+  const errors: RelationshipValidationError[] = [];
+
+  // Stories and tasks MUST have a parent
+  if (type === 'story' || type === 'task') {
+    const parent = data.parent as EntityId | undefined;
+    if (!parent) {
+      const parentType = type === 'story' ? 'milestone' : 'story';
+      errors.push({
+        field: 'parent',
+        message: `${type} must have a parent ${parentType}. Creating a ${type} without a parent would make it orphaned.`,
+      });
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * Validate that an update won't result in an orphaned entity.
+ * Checks:
+ * - Setting parent to null/undefined for stories/tasks
+ * - Removing all items from affects for decisions
+ * - Removing all items from implemented_by for documents/features
+ */
+export function validateUpdateNotOrphaning(
+  entity: Entity,
+  data: Record<string, unknown> | undefined,
+  remove_from: { implements?: EntityId[]; affects?: EntityId[] } | undefined,
+): RelationshipValidationError[] {
+  const errors: RelationshipValidationError[] = [];
+
+  // Check if parent is being set to null for stories/tasks
+  if ((entity.type === 'story' || entity.type === 'task') && data) {
+    if ('parent' in data && (data.parent === null || data.parent === undefined || data.parent === '')) {
+      errors.push({
+        field: 'parent',
+        message: `Cannot remove parent from ${entity.type}. This would make it orphaned. Delete the entity instead if it's no longer needed.`,
+      });
+    }
+  }
+
+  // Check if all affects are being removed from a decision
+  if (entity.type === 'decision' && remove_from?.affects) {
+    const decision = entity as Decision;
+    const currentAffects = decision.affects || [];
+    const remainingAffects = currentAffects.filter(
+      (id) => !remove_from.affects!.includes(id)
+    );
+    if (currentAffects.length > 0 && remainingAffects.length === 0) {
+      errors.push({
+        field: 'affects',
+        message: `Cannot remove all items from decision's affects. This would make it orphaned. Keep at least one affected entity or delete the decision.`,
+      });
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * Check what entities would become orphaned if a parent entity is archived.
+ * Returns entities that reference the parent being archived.
+ */
+export async function findEntitiesOrphanedByArchive(
+  entityId: EntityId,
+  entityType: EntityType,
+  deps: {
+    getAllEntities: (options?: { includeCompleted?: boolean; includeArchived?: boolean; types?: EntityType[] }) => Promise<Entity[]>;
+  }
+): Promise<{ decisions: Decision[]; documents: Document[]; features: Feature[] }> {
+  const orphanedDecisions: Decision[] = [];
+  const orphanedDocuments: Document[] = [];
+  const orphanedFeatures: Feature[] = [];
+
+  // Only check for stories and tasks being archived (they can be referenced)
+  if (entityType !== 'story' && entityType !== 'task') {
+    return { decisions: orphanedDecisions, documents: orphanedDocuments, features: orphanedFeatures };
+  }
+
+  // Get all decisions and check if they only affect this entity
+  const allDecisions = await deps.getAllEntities({
+    includeCompleted: true,
+    includeArchived: false,
+    types: ['decision'],
+  });
+
+  for (const entity of allDecisions) {
+    const decision = entity as Decision;
+    if (decision.affects && decision.affects.includes(entityId)) {
+      // Check if this is the only affected entity
+      if (decision.affects.length === 1) {
+        orphanedDecisions.push(decision);
+      }
+    }
+  }
+
+  // Get all documents and check if they're only implemented by this entity
+  const allDocuments = await deps.getAllEntities({
+    includeCompleted: true,
+    includeArchived: false,
+    types: ['document'],
+  });
+
+  for (const entity of allDocuments) {
+    const document = entity as Document;
+    // Cast to string array for comparison since implemented_by uses branded types
+    const implementedByIds = (document.implemented_by || []) as unknown as string[];
+    if (implementedByIds.includes(entityId as unknown as string)) {
+      // Check if this is the only implementer
+      if (implementedByIds.length === 1) {
+        orphanedDocuments.push(document);
+      }
+    }
+  }
+
+  // Get all features and check if they're only implemented by this entity
+  const allFeatures = await deps.getAllEntities({
+    includeCompleted: true,
+    includeArchived: false,
+    types: ['feature'],
+  });
+
+  for (const entity of allFeatures) {
+    const feature = entity as Feature;
+    // Cast to string array for comparison since implemented_by uses branded types
+    const implementedByIds = (feature.implemented_by || []) as unknown as string[];
+    if (implementedByIds.includes(entityId as unknown as string)) {
+      // Check if this is the only implementer
+      if (implementedByIds.length === 1) {
+        orphanedFeatures.push(feature);
+      }
+    }
+  }
+
+  return { decisions: orphanedDecisions, documents: orphanedDocuments, features: orphanedFeatures };
 }
 
 /**
@@ -315,6 +469,13 @@ export async function createEntity(
   deps: EntityManagementDependencies
 ): Promise<CreateEntityOutput> {
   const { type, data, options } = input;
+
+  // Validate that entity won't be orphaned (stories/tasks must have parent)
+  const orphanErrors = validateNotOrphaned(type, data);
+  if (orphanErrors.length > 0) {
+    const errorMessages = orphanErrors.map(e => `${e.field}: ${e.message}`).join('; ');
+    throw new ValidationError(`Cannot create orphaned entity: ${errorMessages}`);
+  }
 
   // Validate relationships before creating
   const validationErrors = validateRelationships(type, data, deps);
@@ -563,6 +724,15 @@ export async function updateEntity(
   const entity = await deps.getEntity(id);
   if (!entity) {
     throw new NotFoundError(`Entity not found: ${id}`);
+  }
+
+  // Validate that update won't orphan the entity (unless archiving)
+  if (archived !== true) {
+    const orphanErrors = validateUpdateNotOrphaning(entity, data, remove_from);
+    if (orphanErrors.length > 0) {
+      const errorMessages = orphanErrors.map(e => `${e.field}: ${e.message}`).join('; ');
+      throw new ValidationError(`Update would create orphaned entity: ${errorMessages}`);
+    }
   }
 
   // Initialize result
@@ -837,6 +1007,27 @@ async function handleArchiveOperation(
         `Entity has ${children.length} children. Use archive_options.force=true to archive anyway, or archive_options.cascade=true to archive children.`
       );
     }
+  }
+
+  // Check for entities that would become orphaned by this archive
+  // (decisions/documents/features that only reference this entity)
+  const wouldOrphan = await findEntitiesOrphanedByArchive(entity.id, entity.type, deps);
+  const orphanCount = wouldOrphan.decisions.length + wouldOrphan.documents.length + wouldOrphan.features.length;
+  if (orphanCount > 0) {
+    const orphanDetails: string[] = [];
+    if (wouldOrphan.decisions.length > 0) {
+      orphanDetails.push(`${wouldOrphan.decisions.length} decision(s): ${wouldOrphan.decisions.map(d => d.id).join(', ')}`);
+    }
+    if (wouldOrphan.documents.length > 0) {
+      orphanDetails.push(`${wouldOrphan.documents.length} document(s): ${wouldOrphan.documents.map(d => d.id).join(', ')}`);
+    }
+    if (wouldOrphan.features.length > 0) {
+      orphanDetails.push(`${wouldOrphan.features.length} feature(s): ${wouldOrphan.features.map(f => f.id).join(', ')}`);
+    }
+    throw new ValidationError(
+      `Archiving ${entity.id} would orphan ${orphanCount} entity/entities that only reference it: ${orphanDetails.join('; ')}. ` +
+      `Update these entities to reference another entity first, or use cleanup_completed which handles re-linking automatically.`
+    );
   }
 
   // Move to archive

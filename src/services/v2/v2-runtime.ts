@@ -2115,6 +2115,7 @@ export class V2Runtime {
       getChildren: (id) => this.getChildren(id),
       entityExists: (id) => this.entityExists(id),
       getEntityType: (id) => this.getEntityTypeFromCache(id),
+      getAllEntities: (options) => this.getAllEntities(options),
       writeEntity: (entity) => this.writeEntity(entity),
       moveToArchive: (id, path) => this.moveToArchive(id, path),
       restoreFromArchive: (id) => this.restoreFromArchive(id),

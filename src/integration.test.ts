@@ -211,20 +211,20 @@ describe('MCP Integration Tests', () => {
       const deps = runtime.getEntityManagementDeps();
       const searchDeps = runtime.getSearchNavigationDeps();
 
-      // Create multiple entities
-      await createEntity({
+      // Create multiple entities with proper hierarchy
+      const milestone = await createEntity({
         type: 'milestone',
         data: { title: 'Authentication System', workstream: 'security' },
       }, deps);
 
-      await createEntity({
+      const story = await createEntity({
         type: 'story',
-        data: { title: 'OAuth Integration', workstream: 'security', outcome: 'Support OAuth2 authentication' },
+        data: { title: 'OAuth Integration', workstream: 'security', outcome: 'Support OAuth2 authentication', parent: milestone.id },
       }, deps);
 
       await createEntity({
         type: 'task',
-        data: { title: 'Database Migration', workstream: 'infrastructure', goal: 'Migrate to PostgreSQL' },
+        data: { title: 'Database Migration', workstream: 'infrastructure', goal: 'Migrate to PostgreSQL', parent: story.id },
       }, deps);
 
       // Re-initialize to index new entities
@@ -320,13 +320,20 @@ describe('MCP Integration Tests', () => {
     it('should create decision that enables entities', async () => {
       const deps = runtime.getEntityManagementDeps();
 
-      // Create a story first
+      // Create a milestone first (parent for story)
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'Performance Improvements', workstream: 'engineering' },
+      }, deps);
+
+      // Create a story with parent
       const story = await createEntity({
         type: 'story',
         data: {
           title: 'Implement caching',
           workstream: 'engineering',
           outcome: 'Improve performance with caching',
+          parent: milestone.id,
         },
       }, deps);
 
@@ -421,15 +428,15 @@ describe('MCP Integration Tests', () => {
       const deps = runtime.getEntityManagementDeps();
       const projectDeps = runtime.getProjectUnderstandingDeps();
 
-      // Create some entities
-      await createEntity({
+      // Create some entities with proper hierarchy
+      const milestone = await createEntity({
         type: 'milestone',
         data: { title: 'Q1 Goals', workstream: 'product' },
       }, deps);
 
       await createEntity({
         type: 'story',
-        data: { title: 'Feature A', workstream: 'product', outcome: 'Test outcome' },
+        data: { title: 'Feature A', workstream: 'product', outcome: 'Test outcome', parent: milestone.id },
       }, deps);
 
       await runtime.initialize();
@@ -445,14 +452,19 @@ describe('MCP Integration Tests', () => {
       const deps = runtime.getEntityManagementDeps();
       const projectDeps = runtime.getProjectUnderstandingDeps();
 
-      await createEntity({
+      const milestone = await createEntity({
         type: 'milestone',
         data: { title: 'Security Audit', workstream: 'security' },
       }, deps);
 
+      const story = await createEntity({
+        type: 'story',
+        data: { title: 'Security Story', workstream: 'security', outcome: 'Security tests', parent: milestone.id },
+      }, deps);
+
       await createEntity({
         type: 'task',
-        data: { title: 'Pen Testing', workstream: 'security', goal: 'Run penetration tests' },
+        data: { title: 'Pen Testing', workstream: 'security', goal: 'Run penetration tests', parent: story.id },
       }, deps);
 
       await runtime.initialize();
@@ -551,13 +563,20 @@ describe('MCP Integration Tests', () => {
         },
       }, deps);
 
-      // Create story
+      // Create milestone first (parent for story)
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'TypeScript Migration', workstream: 'engineering' },
+      }, deps);
+
+      // Create story with parent
       const story = await createEntity({
         type: 'story',
         data: {
           title: 'Refactor to TypeScript',
           workstream: 'engineering',
           outcome: 'Codebase uses TypeScript',
+          parent: milestone.id,
         },
       }, deps);
 
@@ -573,6 +592,12 @@ describe('MCP Integration Tests', () => {
 
     it('should handle implements relationship', async () => {
       const deps = runtime.getEntityManagementDeps();
+
+      // Create milestone first (parent for story)
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'API Development', workstream: 'engineering' },
+      }, deps);
 
       // Create document
       const doc = await createEntity({
@@ -593,6 +618,7 @@ describe('MCP Integration Tests', () => {
           workstream: 'engineering',
           implements: [doc.id],
           outcome: 'API matches specification',
+          parent: milestone.id,
         },
       }, deps);
 
@@ -772,10 +798,16 @@ describe('MCP Integration Tests', () => {
     it('should create decision with blocks relationship', async () => {
       const deps = runtime.getEntityManagementDeps();
 
-      // Create a story first
+      // Create milestone first (parent for story)
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'Decisions Milestone', workstream: 'decisions' },
+      }, deps);
+
+      // Create a story with parent
       const story = await createEntity({
         type: 'story',
-        data: { title: 'Story to Enable', workstream: 'decisions' },
+        data: { title: 'Story to Enable', workstream: 'decisions', parent: milestone.id },
       }, deps);
 
       // Create decision that blocks the story using createEntity
@@ -999,10 +1031,16 @@ describe('MCP Integration Tests', () => {
       const deps = runtime.getEntityManagementDeps();
       const batchDeps = runtime.getBatchOperationsDeps();
 
-      // Create a story first
+      // Create milestone first (parent for story)
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'Batch Test Milestone', workstream: 'batch-test' },
+      }, deps);
+
+      // Create a story with parent
       const story = await createEntity({
         type: 'story',
-        data: { title: 'Batch Test Story', workstream: 'batch-test' },
+        data: { title: 'Batch Test Story', workstream: 'batch-test', parent: milestone.id },
       }, deps);
 
       // Update with include_entities=true
@@ -1023,10 +1061,16 @@ describe('MCP Integration Tests', () => {
       const deps = runtime.getEntityManagementDeps();
       const batchDeps = runtime.getBatchOperationsDeps();
 
-      // Create a story first
+      // Create milestone first (parent for story)
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'Batch Test Milestone 2', workstream: 'batch-test' },
+      }, deps);
+
+      // Create a story with parent
       const story = await createEntity({
         type: 'story',
-        data: { title: 'Batch Test Story 2', workstream: 'batch-test' },
+        data: { title: 'Batch Test Story 2', workstream: 'batch-test', parent: milestone.id },
       }, deps);
 
       // Update with include_entities=false (default)
@@ -1045,10 +1089,16 @@ describe('MCP Integration Tests', () => {
       const deps = runtime.getEntityManagementDeps();
       const batchDeps = runtime.getBatchOperationsDeps();
 
-      // Create a story first
+      // Create milestone first (parent for story)
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'Batch Field Milestone', workstream: 'batch-test' },
+      }, deps);
+
+      // Create a story with parent
       const story = await createEntity({
         type: 'story',
-        data: { title: 'Batch Field Test', workstream: 'batch-test' },
+        data: { title: 'Batch Field Test', workstream: 'batch-test', parent: milestone.id },
       }, deps);
 
       // Update with include_entities=true and specific fields
@@ -1071,10 +1121,16 @@ describe('MCP Integration Tests', () => {
       const deps = runtime.getEntityManagementDeps();
       const batchDeps = runtime.getBatchOperationsDeps();
 
-      // Create a story first
+      // Create milestone first (parent for story)
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'Dry Run Milestone', workstream: 'dry-run-test' },
+      }, deps);
+
+      // Create a story with parent
       const story = await createEntity({
         type: 'story',
-        data: { title: 'Dry Run Test', workstream: 'dry-run-test', priority: 'Medium' },
+        data: { title: 'Dry Run Test', workstream: 'dry-run-test', priority: 'Medium', parent: milestone.id },
       }, deps);
 
       // Update with dry_run=true - test multiple fields including non-standard ones
@@ -1131,7 +1187,13 @@ describe('MCP Integration Tests', () => {
     it('should return changes array with update_entity', async () => {
       const deps = runtime.getEntityManagementDeps();
 
-      // Create a story
+      // Create milestone first (parent for story)
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'Changes Test Milestone', workstream: 'core' },
+      }, deps);
+
+      // Create a story with parent
       const story = await createEntity({
         type: 'story',
         data: {
@@ -1139,6 +1201,7 @@ describe('MCP Integration Tests', () => {
           workstream: 'core',
           status: 'Not Started',
           priority: 'Medium',
+          parent: milestone.id,
         },
       }, deps);
 
