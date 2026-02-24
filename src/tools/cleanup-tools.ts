@@ -70,7 +70,7 @@ export interface CleanupDependencies {
 /**
  * Clean up completed milestones by:
  * 1. Marking their stories/tasks as completed (unless blocked)
- * 2. Archiving all completed milestones, stories, tasks
+ * 2. Archiving all completed milestones, stories, tasks (including orphaned ones)
  * 3. Removing archived items from the default canvas
  */
 export async function cleanupCompleted(
@@ -80,13 +80,13 @@ export async function cleanupCompleted(
   const { milestone_id, confirmed_blockers = [], dry_run = false } = input;
 
   // Step 1: Find completed milestones
-  const allEntities = await deps.getAllEntities({
+  const allMilestones = await deps.getAllEntities({
     includeCompleted: true,
     includeArchived: false,
     types: ['milestone'],
   });
 
-  let completedMilestones = allEntities.filter(
+  let completedMilestones = allMilestones.filter(
     (e): e is Milestone => e.type === 'milestone' && e.status === 'Completed'
   );
 
@@ -104,29 +104,21 @@ export async function cleanupCompleted(
     }
   }
 
-  if (completedMilestones.length === 0) {
-    return {
-      summary: {
-        completed: { milestones: 0, stories: 0, tasks: 0 },
-        archived: { milestones: 0, stories: 0, tasks: 0 },
-        removed_from_canvas: 0,
-        dry_run,
-      },
-    };
-  }
-
   // Step 2: Collect all stories and tasks under completed milestones
   const blockedItems: BlockedItem[] = [];
   const entitiesToComplete: Entity[] = [];
   const entitiesToArchive: Entity[] = [];
+  const processedIds = new Set<EntityId>();
 
   for (const milestone of completedMilestones) {
     entitiesToArchive.push(milestone);
+    processedIds.add(milestone.id);
 
     const stories = await deps.getChildren(milestone.id);
     for (const story of stories) {
       if (story.type !== 'story') continue;
       const storyEntity = story as Story;
+      processedIds.add(storyEntity.id);
 
       // Check if story is blocked
       if (storyEntity.status === 'Blocked' && !confirmed_blockers.includes(storyEntity.id)) {
@@ -152,6 +144,7 @@ export async function cleanupCompleted(
       for (const task of tasks) {
         if (task.type !== 'task') continue;
         const taskEntity = task as Task;
+        processedIds.add(taskEntity.id);
 
         // Check if task is blocked
         if (taskEntity.status === 'Blocked' && !confirmed_blockers.includes(taskEntity.id)) {
@@ -173,6 +166,45 @@ export async function cleanupCompleted(
         entitiesToArchive.push(taskEntity);
       }
     }
+  }
+
+  // Step 3: Find orphaned completed stories and tasks (not under any milestone we processed)
+  // Only do this if we're not targeting a specific milestone
+  if (!milestone_id) {
+    const allStoriesAndTasks = await deps.getAllEntities({
+      includeCompleted: true,
+      includeArchived: false,
+      types: ['story', 'task'],
+    });
+
+    for (const entity of allStoriesAndTasks) {
+      // Skip if already processed
+      if (processedIds.has(entity.id)) continue;
+
+      // Only archive if completed
+      if (entity.status !== 'Completed') continue;
+
+      // Check if orphaned (no parent or parent doesn't exist)
+      const parentId = (entity as Story | Task).parent;
+      const isOrphaned = !parentId || !(await deps.getEntity(parentId));
+
+      if (isOrphaned) {
+        entitiesToArchive.push(entity);
+        processedIds.add(entity.id);
+      }
+    }
+  }
+
+  // If no milestones and no orphaned entities, return empty summary
+  if (completedMilestones.length === 0 && entitiesToArchive.length === 0) {
+    return {
+      summary: {
+        completed: { milestones: 0, stories: 0, tasks: 0 },
+        archived: { milestones: 0, stories: 0, tasks: 0 },
+        removed_from_canvas: 0,
+        dry_run,
+      },
+    };
   }
 
   // Step 3: If there are blocked items not in confirmed_blockers, return for confirmation
