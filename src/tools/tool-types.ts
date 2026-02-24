@@ -952,15 +952,20 @@ export interface CleanupRequiresConfirmation {
 
 /** Summary of cleanup operation */
 export interface CleanupSummary {
+  /** Entities marked as completed during cleanup */
   completed: {
-    milestones: number;
     stories: number;
     tasks: number;
   };
+  /** Entities archived during cleanup */
   archived: {
-    milestones: number;
     stories: number;
     tasks: number;
+  };
+  /** Decisions/documents re-linked to milestones */
+  relinked: {
+    decisions: number;
+    documents: number;
   };
   removed_from_canvas: number;
   dry_run: boolean;

@@ -2,7 +2,7 @@
  * Cleanup Tools
  *
  * Category 8: Cleanup Operations
- * - cleanup_completed: Archive completed milestones and their stories/tasks
+ * - cleanup_completed: Archive completed stories/tasks under completed milestones
  */
 
 import type {
@@ -10,8 +10,11 @@ import type {
   EntityId,
   EntityType,
   Milestone,
+  MilestoneId,
   Story,
   Task,
+  Decision,
+  Document,
   CanvasPath,
 } from '../models/v2-types.js';
 
@@ -63,15 +66,25 @@ export interface CleanupDependencies {
   getCurrentTimestamp: () => string;
 }
 
+/** Info about an entity being archived and its milestone for re-linking */
+interface ArchiveInfo {
+  entity: Entity;
+  milestoneId: MilestoneId;
+}
+
 // =============================================================================
 // Cleanup Completed Tool
 // =============================================================================
 
 /**
- * Clean up completed milestones by:
- * 1. Marking their stories/tasks as completed (unless blocked)
- * 2. Archiving all completed milestones, stories, tasks (including orphaned ones)
- * 3. Removing archived items from the default canvas
+ * Clean up completed stories/tasks under completed milestones:
+ * 1. Find completed milestones and their stories/tasks
+ * 2. Mark non-completed stories/tasks as completed (unless blocked)
+ * 3. Re-link any decisions/documents from stories/tasks to the milestone
+ * 4. Archive stories/tasks (NOT milestones)
+ * 5. Remove archived items from the default canvas
+ *
+ * Milestones, decisions, and documents are NOT archived.
  */
 export async function cleanupCompleted(
   input: CleanupCompletedInput,
@@ -105,13 +118,14 @@ export async function cleanupCompleted(
   }
 
   // Step 2: Collect all stories and tasks under completed milestones
+  // Track which milestone each entity belongs to for re-linking
   const blockedItems: BlockedItem[] = [];
   const entitiesToComplete: Entity[] = [];
-  const entitiesToArchive: Entity[] = [];
+  const entitiesToArchive: ArchiveInfo[] = [];
   const processedIds = new Set<EntityId>();
 
   for (const milestone of completedMilestones) {
-    entitiesToArchive.push(milestone);
+    // Don't archive milestones - just track that we processed it
     processedIds.add(milestone.id);
 
     const stories = await deps.getChildren(milestone.id);
@@ -137,7 +151,7 @@ export async function cleanupCompleted(
       if (storyEntity.status !== 'Completed') {
         entitiesToComplete.push(storyEntity);
       }
-      entitiesToArchive.push(storyEntity);
+      entitiesToArchive.push({ entity: storyEntity, milestoneId: milestone.id });
 
       // Get tasks under this story
       const tasks = await deps.getChildren(storyEntity.id);
@@ -163,7 +177,8 @@ export async function cleanupCompleted(
         if (taskEntity.status !== 'Completed') {
           entitiesToComplete.push(taskEntity);
         }
-        entitiesToArchive.push(taskEntity);
+        // Tasks inherit the milestone from their parent story
+        entitiesToArchive.push({ entity: taskEntity, milestoneId: milestone.id });
       }
     }
   }
@@ -189,25 +204,27 @@ export async function cleanupCompleted(
       const isOrphaned = !parentId || !(await deps.getEntity(parentId));
 
       if (isOrphaned) {
-        entitiesToArchive.push(entity);
+        // Orphaned entities have no milestone to re-link to
+        entitiesToArchive.push({ entity, milestoneId: '' as MilestoneId });
         processedIds.add(entity.id);
       }
     }
   }
 
-  // If no milestones and no orphaned entities, return empty summary
-  if (completedMilestones.length === 0 && entitiesToArchive.length === 0) {
+  // If no entities to archive, return empty summary
+  if (entitiesToArchive.length === 0) {
     return {
       summary: {
-        completed: { milestones: 0, stories: 0, tasks: 0 },
-        archived: { milestones: 0, stories: 0, tasks: 0 },
+        completed: { stories: 0, tasks: 0 },
+        archived: { stories: 0, tasks: 0 },
+        relinked: { decisions: 0, documents: 0 },
         removed_from_canvas: 0,
         dry_run,
       },
     };
   }
 
-  // Step 3: If there are blocked items not in confirmed_blockers, return for confirmation
+  // Step 4: If there are blocked items not in confirmed_blockers, return for confirmation
   if (blockedItems.length > 0) {
     return {
       requires_confirmation: {
@@ -217,18 +234,97 @@ export async function cleanupCompleted(
     };
   }
 
-  // Step 4: If dry_run, return what would happen
+  // Step 5: Find decisions and documents that need re-linking
+  // Get all decisions and documents to check their relationships
+  const allDecisions = await deps.getAllEntities({
+    includeCompleted: true,
+    includeArchived: false,
+    types: ['decision'],
+  });
+  const allDocuments = await deps.getAllEntities({
+    includeCompleted: true,
+    includeArchived: false,
+    types: ['document'],
+  });
+
+  // Build a map of entity ID -> milestone ID for re-linking
+  const entityToMilestone = new Map<EntityId, MilestoneId>();
+  for (const info of entitiesToArchive) {
+    if (info.milestoneId) {
+      entityToMilestone.set(info.entity.id, info.milestoneId);
+    }
+  }
+
+  // Find decisions that affect entities being archived
+  const decisionsToRelink: { decision: Decision; newAffects: EntityId[] }[] = [];
+  for (const entity of allDecisions) {
+    const decision = entity as Decision;
+    if (!decision.affects || decision.affects.length === 0) continue;
+
+    const newAffects: EntityId[] = [];
+    let needsUpdate = false;
+
+    for (const affectedId of decision.affects) {
+      const milestoneId = entityToMilestone.get(affectedId);
+      if (milestoneId) {
+        // This affected entity is being archived - re-link to milestone
+        if (!newAffects.includes(milestoneId)) {
+          newAffects.push(milestoneId);
+        }
+        needsUpdate = true;
+      } else {
+        // Keep the existing reference
+        newAffects.push(affectedId);
+      }
+    }
+
+    if (needsUpdate) {
+      decisionsToRelink.push({ decision, newAffects });
+    }
+  }
+
+  // Find documents that are implemented_by entities being archived
+  const documentsToRelink: { document: Document; newImplementedBy: EntityId[] }[] = [];
+  for (const entity of allDocuments) {
+    const document = entity as Document;
+    if (!document.implemented_by || document.implemented_by.length === 0) continue;
+
+    const newImplementedBy: EntityId[] = [];
+    let needsUpdate = false;
+
+    for (const implementerId of document.implemented_by) {
+      const milestoneId = entityToMilestone.get(implementerId);
+      if (milestoneId) {
+        // This implementer is being archived - re-link to milestone
+        if (!newImplementedBy.includes(milestoneId)) {
+          newImplementedBy.push(milestoneId);
+        }
+        needsUpdate = true;
+      } else {
+        // Keep the existing reference
+        newImplementedBy.push(implementerId);
+      }
+    }
+
+    if (needsUpdate) {
+      documentsToRelink.push({ document, newImplementedBy });
+    }
+  }
+
+  // Step 6: If dry_run, return what would happen
   if (dry_run) {
     const summary: CleanupSummary = {
       completed: {
-        milestones: 0,
         stories: entitiesToComplete.filter(e => e.type === 'story').length,
         tasks: entitiesToComplete.filter(e => e.type === 'task').length,
       },
       archived: {
-        milestones: entitiesToArchive.filter(e => e.type === 'milestone').length,
-        stories: entitiesToArchive.filter(e => e.type === 'story').length,
-        tasks: entitiesToArchive.filter(e => e.type === 'task').length,
+        stories: entitiesToArchive.filter(i => i.entity.type === 'story').length,
+        tasks: entitiesToArchive.filter(i => i.entity.type === 'task').length,
+      },
+      relinked: {
+        decisions: decisionsToRelink.length,
+        documents: documentsToRelink.length,
       },
       removed_from_canvas: entitiesToArchive.length,
       dry_run: true,
@@ -236,7 +332,7 @@ export async function cleanupCompleted(
     return { summary };
   }
 
-  // Step 5: Execute the cleanup
+  // Step 7: Execute the cleanup
   const timestamp = deps.getCurrentTimestamp();
   const defaultCanvas = deps.getDefaultCanvasPath();
   let removedFromCanvas = 0;
@@ -248,14 +344,27 @@ export async function cleanupCompleted(
     await deps.writeEntity(entity);
   }
 
-  // Archive all entities (tasks first, then stories, then milestones)
+  // Re-link decisions to milestones
+  for (const { decision, newAffects } of decisionsToRelink) {
+    decision.affects = newAffects;
+    decision.updated_at = timestamp as any;
+    await deps.writeEntity(decision);
+  }
+
+  // Re-link documents to milestones
+  for (const { document, newImplementedBy } of documentsToRelink) {
+    document.implemented_by = newImplementedBy as any;
+    document.updated_at = timestamp as any;
+    await deps.writeEntity(document);
+  }
+
+  // Archive stories/tasks (tasks first, then stories)
   const sortedForArchive = [
-    ...entitiesToArchive.filter(e => e.type === 'task'),
-    ...entitiesToArchive.filter(e => e.type === 'story'),
-    ...entitiesToArchive.filter(e => e.type === 'milestone'),
+    ...entitiesToArchive.filter(i => i.entity.type === 'task'),
+    ...entitiesToArchive.filter(i => i.entity.type === 'story'),
   ];
 
-  for (const entity of sortedForArchive) {
+  for (const { entity } of sortedForArchive) {
     await deps.moveToArchive(entity.id);
     const removed = await deps.removeFromCanvas(entity.id, defaultCanvas);
     if (removed) removedFromCanvas++;
@@ -264,14 +373,16 @@ export async function cleanupCompleted(
   // Build summary
   const summary: CleanupSummary = {
     completed: {
-      milestones: 0,
       stories: entitiesToComplete.filter(e => e.type === 'story').length,
       tasks: entitiesToComplete.filter(e => e.type === 'task').length,
     },
     archived: {
-      milestones: entitiesToArchive.filter(e => e.type === 'milestone').length,
-      stories: entitiesToArchive.filter(e => e.type === 'story').length,
-      tasks: entitiesToArchive.filter(e => e.type === 'task').length,
+      stories: entitiesToArchive.filter(i => i.entity.type === 'story').length,
+      tasks: entitiesToArchive.filter(i => i.entity.type === 'task').length,
+    },
+    relinked: {
+      decisions: decisionsToRelink.length,
+      documents: documentsToRelink.length,
     },
     removed_from_canvas: removedFromCanvas,
     dry_run: false,
