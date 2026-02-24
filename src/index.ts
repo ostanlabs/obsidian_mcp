@@ -54,6 +54,7 @@ import {
   getEntities,
 } from './tools/search-navigation-tools.js';
 import { manageDocuments } from './tools/decision-document-tools.js';
+import { cleanupCompleted } from './tools/cleanup-tools.js';
 
 // Create server instance
 const server = new Server(
@@ -385,6 +386,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Schema Introspection
       case 'get_schema': {
         result = getSchema(args as any);
+        break;
+      }
+
+      // Cleanup Operations
+      case 'cleanup_completed': {
+        const runtime = await getOrCreateV2Runtime();
+        result = await cleanupCompleted(args as any, runtime.getCleanupDeps());
         break;
       }
 

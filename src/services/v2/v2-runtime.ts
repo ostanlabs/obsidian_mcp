@@ -49,6 +49,7 @@ import type { BatchOperationsDependencies } from '../../tools/batch-operations-t
 import type { ProjectUnderstandingDependencies, FeatureCoverageDependencies } from '../../tools/project-understanding-tools.js';
 import type { SearchNavigationDependencies } from '../../tools/search-navigation-tools.js';
 import type { DecisionDocumentDependencies } from '../../tools/decision-document-tools.js';
+import type { CleanupDependencies } from '../../tools/cleanup-tools.js';
 import type { EntitySummary, EntityFull, Workstream } from '../../tools/tool-types.js';
 
 import { getConfig } from '../../utils/config.js';
@@ -2256,6 +2257,31 @@ export class V2Runtime {
       getAllFeatures: (options) => this.getAllFeatures(options),
       getEntity: (id) => this.getEntity(id),
       getAllDocuments: (options) => this.getAllDocuments(options),
+    };
+  }
+
+  /** Get cleanup dependencies */
+  getCleanupDeps(): CleanupDependencies {
+    return {
+      getAllEntities: (options) => this.getAllEntities(options),
+      getEntity: (id) => this.getEntity(id),
+      getChildren: (id) => this.getChildren(id),
+      updateEntityStatus: async (id, status) => {
+        const entity = await this.getEntity(id);
+        if (entity) {
+          entity.status = status as any;
+          entity.updated_at = this.getCurrentTimestamp() as any;
+          await this.writeEntity(entity);
+        }
+      },
+      writeEntity: (entity) => this.writeEntity(entity),
+      moveToArchive: (id, archivePath) => this.moveToArchive(id, archivePath),
+      removeFromCanvas: (id, canvasPath) => this.canvasManager.removeNode(
+        this.index.get(id)?.vault_path || '',
+        canvasPath
+      ),
+      getDefaultCanvasPath: () => this.config.defaultCanvas as CanvasPath,
+      getCurrentTimestamp: () => this.getCurrentTimestamp(),
     };
   }
 }

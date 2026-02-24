@@ -49,6 +49,7 @@ export * from './batch-operations-tools.js';
 export * from './project-understanding-tools.js';
 export * from './search-navigation-tools.js';
 export * from './decision-document-tools.js';
+export * from './cleanup-tools.js';
 export * from './tool-types.js';
 
 // =============================================================================
@@ -579,6 +580,51 @@ EXAMPLES:
         relationships_only: {
           type: 'boolean',
           description: 'If true, only return relationship definitions (not all fields)',
+        },
+      },
+    },
+  },
+
+  // Category 8: Cleanup Operations
+  {
+    name: 'cleanup_completed',
+    description: `Clean up completed milestones by archiving them and their stories/tasks.
+
+USE FOR: Archiving completed work, cleaning up the canvas, end-of-milestone housekeeping.
+NOT FOR: Archiving individual entities (use update_entity with archived: true).
+
+FLOW:
+1. Find completed milestones (all or specific one)
+2. For each completed milestone, find all stories and tasks
+3. If any are Blocked, return them for confirmation (fail-safe)
+4. Mark non-completed stories/tasks as Completed
+5. Archive all milestones, stories, tasks
+6. Remove archived items from default canvas
+7. Return summary
+
+BLOCKED ITEMS: If stories/tasks are Blocked, the tool returns requires_confirmation with the list.
+Call again with confirmed_blockers containing the IDs to proceed.
+
+EXAMPLES:
+- "Clean up all completed milestones" → {}
+- "Preview cleanup" → dry_run: true
+- "Clean up milestone M-001" → milestone_id: "M-001"
+- "Confirm blocked items resolved" → confirmed_blockers: ["T-005", "S-003"]`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        milestone_id: {
+          type: 'string',
+          description: 'Optional milestone ID to clean up. If not provided, processes all completed milestones.',
+        },
+        confirmed_blockers: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of blocked entity IDs that user confirms are resolved. Required if previous call returned requires_confirmation.',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'If true, preview what would be archived without making changes. Default: false',
         },
       },
     },
