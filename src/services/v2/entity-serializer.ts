@@ -103,7 +103,7 @@ export class EntitySerializer {
     return {
       id: entity.id,
       type: entity.type,
-      title: entity.title,
+      title: this.ensureTitleQuoted(entity.title),
       workstream: entity.workstream,
       status: entity.status,
       archived: entity.archived || undefined,
@@ -562,6 +562,17 @@ SORT decided_on DESC
     if (str.includes('\n')) return true;
     if (str.startsWith(' ') || str.endsWith(' ')) return true;
     return false;
+  }
+
+  /**
+   * Ensure title is always quoted to prevent YAML parsing issues.
+   * Titles often contain colons (e.g., "Phase 1: MVP") which break YAML.
+   */
+  private ensureTitleQuoted(title: string): string {
+    // Already quoted - return as-is
+    if (this.isAlreadyQuoted(title)) return title;
+    // Quote the title
+    return `"${this.escapeString(title)}"`;
   }
 
   /** Check if string is already wrapped in quotes */
