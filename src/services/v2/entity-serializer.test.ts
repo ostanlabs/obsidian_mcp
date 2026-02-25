@@ -160,6 +160,56 @@ describe('EntitySerializer', () => {
       expect(result).toMatch(/---\n[\s\S]*---\n/);
     });
   });
+
+  describe('Colon Handling in Values', () => {
+    it('should wrap values containing colons in quotes', () => {
+      const task = createTask();
+      task.goal = 'Step 1: Do something important';
+      const result = serializer.serialize(task);
+
+      // Value with colon should be quoted
+      expect(result).toContain('goal: "Step 1: Do something important"');
+    });
+
+    it('should not double-quote already quoted values', () => {
+      const task = createTask();
+      task.goal = '"Already quoted: value"';
+      const result = serializer.serialize(task);
+
+      // Should not have triple quotes
+      expect(result).not.toContain('"""');
+      // Should preserve the original quoted value
+      expect(result).toContain('goal: "Already quoted: value"');
+    });
+
+    it('should handle single-quoted values', () => {
+      const task = createTask();
+      task.goal = "'Single quoted: value'";
+      const result = serializer.serialize(task);
+
+      // Should not add extra quotes
+      expect(result).not.toContain("\"'Single");
+      expect(result).toContain("goal: 'Single quoted: value'");
+    });
+
+    it('should handle values with multiple colons', () => {
+      const task = createTask();
+      task.goal = 'Time: 10:30:00 - Meeting';
+      const result = serializer.serialize(task);
+
+      expect(result).toContain('goal: "Time: 10:30:00 - Meeting"');
+    });
+
+    it('should handle values without colons normally', () => {
+      const task = createTask();
+      task.goal = 'Simple goal without special chars';
+      const result = serializer.serialize(task);
+
+      // Should not be quoted
+      expect(result).toContain('goal: Simple goal without special chars');
+      expect(result).not.toContain('goal: "Simple goal');
+    });
+  });
 });
 
 describe('generateCssClasses', () => {

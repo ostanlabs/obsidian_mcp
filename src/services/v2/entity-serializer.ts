@@ -552,12 +552,24 @@ SORT decided_on DESC
 
   /** Check if string needs quoting */
   private needsQuoting(str: string): boolean {
+    // Already quoted - don't double-quote
+    if (this.isAlreadyQuoted(str)) return false;
+
     // Quote if contains special characters or looks like other types
     if (/^[\d.]+$/.test(str)) return true; // Looks like number
     if (/^(true|false|null|yes|no|on|off)$/i.test(str)) return true;
     if (/[:#\[\]{}|>&*!?,]/.test(str)) return true;
     if (str.includes('\n')) return true;
     if (str.startsWith(' ') || str.endsWith(' ')) return true;
+    return false;
+  }
+
+  /** Check if string is already wrapped in quotes */
+  private isAlreadyQuoted(str: string): boolean {
+    // Check for double quotes
+    if (str.startsWith('"') && str.endsWith('"') && str.length >= 2) return true;
+    // Check for single quotes
+    if (str.startsWith("'") && str.endsWith("'") && str.length >= 2) return true;
     return false;
   }
 
