@@ -105,7 +105,7 @@ describe('Tools Index Integration Tests', () => {
     it('should export utilityToolDefinitions with utility tools', () => {
       expect(utilityToolDefinitions).toBeDefined();
       expect(Array.isArray(utilityToolDefinitions)).toBe(true);
-      expect(utilityToolDefinitions.length).toBe(5);
+      expect(utilityToolDefinitions.length).toBe(6);
 
       const toolNames = utilityToolDefinitions.map((t) => t.name);
       expect(toolNames).toContain('read_docs');
@@ -113,6 +113,7 @@ describe('Tools Index Integration Tests', () => {
       expect(toolNames).toContain('list_workspaces');
       expect(toolNames).toContain('list_files');
       expect(toolNames).toContain('manage_workspaces');
+      expect(toolNames).toContain('rebuild_index');
     });
 
     it('should export entityToolDefinitions with entity tools', () => {
