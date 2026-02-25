@@ -81,10 +81,15 @@ export const entityToolDefinitions: Tool[] = [
 USE FOR: Creating new work items, decisions, or documentation.
 NOT FOR: Bulk creation (use batch_update), updating existing entities (use update_entity).
 
+REQUIRED RELATIONSHIPS (to prevent orphaned entities):
+- story: MUST have 'parent' (MilestoneId)
+- task: MUST have 'parent' (StoryId)
+- decision: MUST have at least one of 'affects' or 'blocks'
+
 EXAMPLES:
 - "Create a new milestone for Q1 planning"
-- "Add a task to implement authentication"
-- "Record a decision about database choice"`,
+- "Add a task to implement authentication" → requires parent story
+- "Record a decision about database choice" → requires affects or blocks`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -94,11 +99,20 @@ EXAMPLES:
           properties: {
             title: { type: 'string', description: 'Entity title' },
             workstream: { type: 'string', description: 'Workstream identifier' },
-            parent: { type: 'string', description: 'Parent entity ID. Story: MilestoneId. Task: StoryId. Auto-syncs children on parent.' },
+            // Hierarchy
+            parent: { type: 'string', description: 'Parent entity ID. REQUIRED for story (MilestoneId) and task (StoryId). Auto-syncs children on parent.' },
+            // Dependencies
             depends_on: { type: 'array', items: { type: 'string' }, description: 'IDs of entities this depends on. Auto-syncs blocks on target. Milestone: MilestoneId|DecisionId. Story: any EntityId. Task: DecisionId only.' },
             blocks: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this entity blocks (auto-syncs depends_on on target)' },
-            implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs this entity implements (milestone, story). Auto-syncs implemented_by on document.' },
+            // Implementation relationships
+            implements: { type: 'array', items: { type: 'string' }, description: 'Document/Feature IDs this entity implements (milestone, story). Auto-syncs implemented_by on target.' },
+            implemented_by: { type: 'array', items: { type: 'string' }, description: 'Milestone/Story IDs that implement this (document, feature). Auto-syncs implements on target.' },
+            // Decision relationships
+            affects: { type: 'array', items: { type: 'string' }, description: 'Entity IDs affected by this decision (decision only). REQUIRED for decisions - at least one of affects/blocks must be set.' },
             supersedes: { type: 'string', description: 'Decision ID this supersedes (decision only). Auto-syncs superseded_by on target.' },
+            // Document relationships
+            documented_by: { type: 'array', items: { type: 'string' }, description: 'Document IDs that document this (feature only).' },
+            decided_by: { type: 'array', items: { type: 'string' }, description: 'Decision IDs that decided this (feature only).' },
             previous_version: { type: 'string', description: 'Document ID of previous version (document only). Auto-syncs next_version on target.' },
           },
           required: ['title', 'workstream'],
