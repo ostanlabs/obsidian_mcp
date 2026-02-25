@@ -69,6 +69,29 @@ export const utilityToolDefinitions: Tool[] = [
   listWorkspacesDefinition as Tool,
   listFilesDefinition as Tool,
   manageWorkspacesDefinition as Tool,
+  {
+    name: 'rebuild_index',
+    description: `Rebuild the in-memory entity index from scratch by re-scanning all vault files.
+
+USE FOR: Fixing index inconsistencies, recovering from corrupted state, forcing a fresh scan.
+NOT FOR: Normal operations (the index auto-updates via file watchers).
+
+WHEN TO USE:
+- Index seems out of sync with actual files
+- After manual file operations outside the MCP server
+- After recovering from errors
+- When search results seem stale or incorrect
+
+RETURNS:
+- entities_before: Number of entities in index before rebuild
+- entities_after: Number of entities in index after rebuild
+- duration_ms: Time taken to rebuild in milliseconds`,
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  } as Tool,
 ];
 
 // Entity tool definitions (non-prefixed)

@@ -278,6 +278,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         await indexAllResources();
         break;
 
+      case 'rebuild_index': {
+        const runtime = await getOrCreateV2Runtime();
+        result = await runtime.rebuildIndex();
+        break;
+      }
+
       case 'get_resources_index': {
         const workspace = (args as { workspace?: string })?.workspace;
         let filteredResources = resourceCache;

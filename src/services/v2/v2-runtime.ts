@@ -188,6 +188,39 @@ export class V2Runtime {
     return this.canvasManager;
   }
 
+  /**
+   * Rebuild the index from scratch by clearing all in-memory data and re-scanning the vault.
+   * Use this when the index gets out of sync with the actual files on disk.
+   * @returns Statistics about the rebuild operation
+   */
+  async rebuildIndex(): Promise<{
+    entities_before: number;
+    entities_after: number;
+    duration_ms: number;
+  }> {
+    const startTime = Date.now();
+    const entitiesBefore = this.index.size;
+
+    // Clear all indexes
+    this.index.clear();
+    this.searchIndex.clear();
+    this.duplicateIds.clear();
+
+    // Re-scan the vault
+    await this.scanVault();
+
+    const duration = Date.now() - startTime;
+    const entitiesAfter = this.index.size;
+
+    console.error(`[V2Runtime] Index rebuilt: ${entitiesBefore} -> ${entitiesAfter} entities in ${duration}ms`);
+
+    return {
+      entities_before: entitiesBefore,
+      entities_after: entitiesAfter,
+      duration_ms: duration,
+    };
+  }
+
   /** Scan vault and build indexes */
   private async scanVault(): Promise<void> {
     const folders = this.pathResolver.getAllAbsoluteEntityFolders();
