@@ -126,7 +126,7 @@ const SEARCH_DEFAULT_FIELDS: EntityField[] = ['id', 'type', 'title', 'status', '
 function buildSearchResultItem(
   entity: Entity,
   requestedFields: EntityField[] | undefined,
-  extras?: { relevance_score?: number; snippet?: string; path?: string; valid?: boolean; validation_errors?: string[] }
+  extras?: { relevance_score?: number; snippet?: string; path?: string; validation?: ValidationResult }
 ): SearchResultItem {
   const fields = requestedFields || SEARCH_DEFAULT_FIELDS;
   const fieldSet = new Set(fields);
@@ -158,11 +158,13 @@ function buildSearchResultItem(
   if (extras?.snippet !== undefined) result.snippet = extras.snippet;
   if (extras?.path !== undefined) result.path = extras.path;
 
-  // Always include validation status
-  if (extras?.valid !== undefined) {
-    result.valid = extras.valid;
-    if (!extras.valid && extras.validation_errors && extras.validation_errors.length > 0) {
-      result.validation_errors = extras.validation_errors;
+  // Always include validation status as an object
+  if (extras?.validation !== undefined) {
+    result.validation = {
+      valid: extras.validation.valid,
+    };
+    if (!extras.validation.valid && extras.validation.errors.length > 0) {
+      result.validation.reason = extras.validation.errors.join('; ');
     }
   }
 
@@ -269,8 +271,7 @@ async function performBM25Search(
       relevance_score: score,
       snippet,
       path,
-      valid: validation.valid,
-      validation_errors: validation.errors,
+      validation,
     }));
   }
 
@@ -365,8 +366,7 @@ async function performSemanticSearch(
       relevance_score: result.score,
       snippet: result.excerpt,
       path,
-      valid: validation.valid,
-      validation_errors: validation.errors,
+      validation,
     }));
   }
 
@@ -626,10 +626,7 @@ async function performListMode(
   // Build all results with field filtering and validation
   const allResults: SearchResultItem[] = entities.map(entity => {
     const validation = validationResults.get(entity.id) || { valid: true, errors: [] };
-    return buildSearchResultItem(entity, fields, {
-      valid: validation.valid,
-      validation_errors: validation.errors,
-    });
+    return buildSearchResultItem(entity, fields, { validation });
   });
 
   // Apply pagination
@@ -750,10 +747,7 @@ async function performNavigation(
   // Convert to output format with field filtering and validation
   const allResults: SearchResultItem[] = filteredResults.map(entity => {
     const validation = validationResults.get(entity.id) || { valid: true, errors: [] };
-    return buildSearchResultItem(entity, fields, {
-      valid: validation.valid,
-      validation_errors: validation.errors,
-    });
+    return buildSearchResultItem(entity, fields, { validation });
   });
 
   // Apply pagination

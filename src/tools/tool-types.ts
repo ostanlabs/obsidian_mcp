@@ -608,8 +608,10 @@ export interface SearchResultItem {
   tier?: string;
   content?: string;
   // Validation status - always included
-  valid?: boolean;  // true for all entities except decisions which have validation rules
-  validation_errors?: string[];  // Only present when valid=false
+  validation?: {
+    valid: boolean;  // true for all entities except decisions which have validation rules
+    reason?: string;  // Only present when valid=false, describes the validation issue(s)
+  };
   [key: string]: unknown;  // Allow dynamic fields
 }
 
