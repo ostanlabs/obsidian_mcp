@@ -97,23 +97,44 @@ EXAMPLES:
         data: {
           type: 'object',
           properties: {
+            // Common fields
             title: { type: 'string', description: 'Entity title' },
             workstream: { type: 'string', description: 'Workstream identifier' },
+            status: { type: 'string', description: 'Initial status. Defaults vary by type.' },
             // Hierarchy
             parent: { type: 'string', description: 'Parent entity ID. REQUIRED for story (MilestoneId) and task (StoryId). Auto-syncs children on parent.' },
             // Dependencies
-            depends_on: { type: 'array', items: { type: 'string' }, description: 'IDs of entities this depends on. Auto-syncs blocks on target. Milestone: MilestoneId|DecisionId. Story: any EntityId. Task: DecisionId only.' },
+            depends_on: { type: 'array', items: { type: 'string' }, description: 'IDs of entities this depends on. Auto-syncs blocks on target.' },
             blocks: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this entity blocks (auto-syncs depends_on on target)' },
             // Implementation relationships
             implements: { type: 'array', items: { type: 'string' }, description: 'Document/Feature IDs this entity implements (milestone, story). Auto-syncs implemented_by on target.' },
             implemented_by: { type: 'array', items: { type: 'string' }, description: 'Milestone/Story IDs that implement this (document, feature). Auto-syncs implements on target.' },
-            // Decision relationships
-            affects: { type: 'array', items: { type: 'string' }, description: 'Entity IDs affected by this decision (decision only). REQUIRED for decisions - at least one of affects/blocks must be set.' },
+            // Shared fields (multiple entity types)
+            priority: { type: 'string', enum: ['P0', 'P1', 'P2', 'P3'], description: 'Priority level (milestone, story).' },
+            owner: { type: 'string', description: 'Owner/assignee (milestone, document).' },
+            // Milestone-specific fields
+            objective: { type: 'string', description: 'Milestone objective/goal (milestone only).' },
+            target_date: { type: 'string', description: 'Target completion date ISO format (milestone only).' },
+            // Story-specific fields
+            acceptance_criteria: { type: 'array', items: { type: 'string' }, description: 'Acceptance criteria list (story only).' },
+            outcome: { type: 'string', description: 'Expected outcome description (story only).' },
+            // Task-specific fields
+            goal: { type: 'string', description: 'Task goal/outcome (task only).' },
+            estimate_hrs: { type: 'number', description: 'Estimated hours (task only).' },
+            assignee: { type: 'string', description: 'Assigned person (task only).' },
+            description: { type: 'string', description: 'Task description (task only).' },
+            // Decision-specific fields
+            affects: { type: 'array', items: { type: 'string' }, description: 'Entity IDs affected by this decision (decision only). REQUIRED - at least one of affects/blocks must be set.' },
             supersedes: { type: 'string', description: 'Decision ID this supersedes (decision only). Auto-syncs superseded_by on target.' },
-            // Document relationships
+            // Document-specific fields
+            doc_type: { type: 'string', enum: ['spec', 'adr', 'guide', 'research'], description: 'Document type (document only).' },
+            previous_version: { type: 'string', description: 'Document ID of previous version (document only). Auto-syncs next_version on target.' },
+            // Feature-specific fields
+            user_story: { type: 'string', description: 'User story format: "As a... I want... so that..." (feature only).' },
+            tier: { type: 'string', enum: ['OSS', 'Premium'], description: 'Feature tier (feature only).' },
+            phase: { type: 'string', enum: ['MVP', 'V1', 'V2', 'Future'], description: 'Implementation phase (feature only).' },
             documented_by: { type: 'array', items: { type: 'string' }, description: 'Document IDs that document this (feature only).' },
             decided_by: { type: 'array', items: { type: 'string' }, description: 'Decision IDs that decided this (feature only).' },
-            previous_version: { type: 'string', description: 'Document ID of previous version (document only). Auto-syncs next_version on target.' },
           },
           required: ['title', 'workstream'],
         },
