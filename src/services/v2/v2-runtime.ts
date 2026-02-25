@@ -197,6 +197,7 @@ export class V2Runtime {
     entities_before: number;
     entities_after: number;
     duration_ms: number;
+    folders_scanned: string[];
   }> {
     const startTime = Date.now();
     const entitiesBefore = this.index.size;
@@ -205,6 +206,9 @@ export class V2Runtime {
     this.index.clear();
     this.searchIndex.clear();
     this.duplicateIds.clear();
+
+    // Get folders that will be scanned
+    const foldersScanned = this.pathResolver.getAllAbsoluteEntityFolders();
 
     // Re-scan the vault
     await this.scanVault();
@@ -218,6 +222,7 @@ export class V2Runtime {
       entities_before: entitiesBefore,
       entities_after: entitiesAfter,
       duration_ms: duration,
+      folders_scanned: foldersScanned,
     };
   }
 

@@ -481,12 +481,87 @@ async function checkIfValid(
   entity: Entity,
   deps: SearchNavigationDependencies
 ): Promise<ValidationResult> {
-  // All non-decision entities are always valid (for now)
-  if (entity.type !== 'decision') {
+  // Story validation: check cross-milestone dependencies
+  if (entity.type === 'story') {
+    return checkStoryValid(entity as Story, deps);
+  }
+
+  // Decision validation
+  if (entity.type === 'decision') {
+    return checkDecisionValid(entity as Decision, deps);
+  }
+
+  // All other entities are always valid (for now)
+  return { valid: true, errors: [] };
+}
+
+/**
+ * Validate a story's dependencies.
+ * Stories should not have depends_on or blocks relationships with stories from different milestones.
+ * Cross-milestone dependencies should be expressed at the milestone level instead.
+ */
+async function checkStoryValid(
+  story: Story,
+  deps: SearchNavigationDependencies
+): Promise<ValidationResult> {
+  const errors: string[] = [];
+  const storyMilestone = story.parent; // Story's parent is its milestone
+
+  if (!storyMilestone) {
+    // Story without a milestone - can't validate cross-milestone deps
     return { valid: true, errors: [] };
   }
 
-  const decision = entity as Decision;
+  // Check depends_on for cross-milestone story dependencies
+  const dependsOn = story.depends_on || [];
+  for (const depId of dependsOn) {
+    const depEntity = await deps.getEntity(depId);
+    if (!depEntity || depEntity.type !== 'story') continue;
+
+    const depStory = depEntity as Story;
+    if (depStory.parent && depStory.parent !== storyMilestone) {
+      errors.push(
+        `Cross-milestone dependency: depends_on ${depId} (milestone ${depStory.parent}) but this story is in milestone ${storyMilestone}. ` +
+        `Consider adding milestone-level dependency instead: ${storyMilestone} depends_on ${depStory.parent}`
+      );
+    }
+  }
+
+  // Check blocks for cross-milestone story dependencies
+  const blocks = story.blocks || [];
+  for (const blockId of blocks) {
+    const blockEntity = await deps.getEntity(blockId);
+    if (!blockEntity || blockEntity.type !== 'story') continue;
+
+    const blockStory = blockEntity as Story;
+    if (blockStory.parent && blockStory.parent !== storyMilestone) {
+      errors.push(
+        `Cross-milestone dependency: blocks ${blockId} (milestone ${blockStory.parent}) but this story is in milestone ${storyMilestone}. ` +
+        `Consider adding milestone-level dependency instead: ${blockStory.parent} depends_on ${storyMilestone}`
+      );
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+/**
+ * Validate a decision's affects field.
+ * Rules:
+ * - Max 1 document per decision
+ * - Max 3 tasks per decision (within same milestone)
+ * - Max 3 stories per decision (within same milestone)
+ * - Max 3 features per decision
+ * - Max 2 milestones per decision
+ * - All affected entities must be in the same workstream as the decision
+ */
+async function checkDecisionValid(
+  decision: Decision,
+  deps: SearchNavigationDependencies
+): Promise<ValidationResult> {
   const errors: string[] = [];
   const affects = decision.affects || [];
 
