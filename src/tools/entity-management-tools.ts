@@ -30,6 +30,8 @@ import {
   CreateEntityOutput,
   UpdateEntityInput,
   UpdateEntityOutput,
+  UpdateEntityFullOutput,
+  UpdateEntityPartialOutput,
   UpdateEntityStatusInput,
   UpdateEntityStatusOutput,
   ArchiveEntityInput,
@@ -40,6 +42,11 @@ import {
   RestoreFromArchiveOutput,
   EntityFull,
   FieldChange,
+  // V2 Unified entity tool types
+  EntityInput,
+  EntityOutput,
+  EntityCreateOutput,
+  EntityUpdateOutput,
 } from './tool-types.js';
 
 import { generateCssClasses } from '../services/v2/entity-serializer.js';
@@ -714,6 +721,7 @@ function buildFeature(
  * - Status updates with validation and cascade (replaces update_entity_status)
  * - Archive operations (replaces archive_entity, archive_milestone)
  * - Restore operations (replaces restore_from_archive)
+ * - Minimal response by default (return_full=false) to reduce context window usage
  */
 export async function updateEntity(
   input: UpdateEntityInput,
@@ -732,6 +740,8 @@ export async function updateEntity(
     archived,
     archive_options,
     restore_options,
+    return_full = false,  // Default to minimal response
+    return_fields,
   } = input;
 
   // Get existing entity
@@ -749,22 +759,29 @@ export async function updateEntity(
     }
   }
 
-  // Initialize result
+  // Track dependencies for full response
+  let dependenciesAdded = 0;
+  let dependenciesRemoved = 0;
+
+  // Initialize minimal result
   const result: UpdateEntityOutput = {
     id,
-    entity: null as unknown as EntityFull, // Will be set at the end
-    dependencies_added: 0,
-    dependencies_removed: 0,
+    status: 'ok',
   };
 
   // Handle archive operation (takes precedence)
   if (archived === true) {
     const archiveResult = await handleArchiveOperation(entity, archive_options, deps);
     result.archive_result = archiveResult;
-    // After archiving, get the updated entity
-    const archivedEntity = await deps.getEntity(id);
-    if (archivedEntity) {
-      result.entity = await deps.toEntityFull(archivedEntity);
+
+    // Add entity to response if requested
+    if (return_full || return_fields) {
+      const archivedEntity = await deps.getEntity(id);
+      if (archivedEntity) {
+        const entityFull = await deps.toEntityFull(archivedEntity);
+        (result as UpdateEntityFullOutput | UpdateEntityPartialOutput).entity =
+          return_fields ? filterEntityFields(entityFull, return_fields) : entityFull;
+      }
     }
     return result;
   }
@@ -773,10 +790,15 @@ export async function updateEntity(
   if (archived === false && entity.archived) {
     const restoreResult = await handleRestoreOperation(entity, restore_options, deps);
     result.restore_result = restoreResult;
-    // After restoring, get the updated entity
-    const restoredEntity = await deps.getEntity(id);
-    if (restoredEntity) {
-      result.entity = await deps.toEntityFull(restoredEntity);
+
+    // Add entity to response if requested
+    if (return_full || return_fields) {
+      const restoredEntity = await deps.getEntity(id);
+      if (restoredEntity) {
+        const entityFull = await deps.toEntityFull(restoredEntity);
+        (result as UpdateEntityFullOutput | UpdateEntityPartialOutput).entity =
+          return_fields ? filterEntityFields(entityFull, return_fields) : entityFull;
+      }
     }
     return result;
   }
@@ -811,13 +833,13 @@ export async function updateEntity(
     if (add_dependencies) {
       const newDeps = [...new Set([...currentDeps, ...add_dependencies])];
       (updatedEntity as { depends_on: EntityId[] }).depends_on = newDeps;
-      result.dependencies_added = newDeps.length - currentDeps.length;
+      dependenciesAdded = newDeps.length - currentDeps.length;
     }
 
     if (remove_dependencies) {
       const filtered = currentDeps.filter((d) => !remove_dependencies.includes(d));
       (updatedEntity as { depends_on: EntityId[] }).depends_on = filtered;
-      result.dependencies_removed = currentDeps.length - filtered.length;
+      dependenciesRemoved = currentDeps.length - filtered.length;
     }
   }
 
@@ -861,16 +883,42 @@ export async function updateEntity(
   // Write updated entity
   await deps.writeEntity(updatedEntity);
 
-  // Convert to full representation
-  result.entity = await deps.toEntityFull(updatedEntity);
-
   // Add normalization message if workstream was normalized
   if (workstreamNormalizationMessage) {
     result.messages = result.messages || [];
     result.messages.push(workstreamNormalizationMessage);
   }
 
+  // Build response based on return_full / return_fields
+  if (return_full) {
+    // Full response with entity and dependency counts
+    const entityFull = await deps.toEntityFull(updatedEntity);
+    (result as UpdateEntityFullOutput).entity = entityFull;
+    (result as UpdateEntityFullOutput).dependencies_added = dependenciesAdded;
+    (result as UpdateEntityFullOutput).dependencies_removed = dependenciesRemoved;
+  } else if (return_fields && return_fields.length > 0) {
+    // Partial response with only requested fields
+    const entityFull = await deps.toEntityFull(updatedEntity);
+    (result as UpdateEntityPartialOutput).entity = filterEntityFields(entityFull, return_fields);
+  }
+  // else: minimal response (just id, status, changes) - already set
+
   return result;
+}
+
+/**
+ * Filter an EntityFull to only include specified fields.
+ */
+function filterEntityFields(entity: EntityFull, fields: string[]): Partial<EntityFull> {
+  const filtered: Partial<EntityFull> = {};
+  const entityRecord = entity as unknown as Record<string, unknown>;
+  const filteredRecord = filtered as unknown as Record<string, unknown>;
+  for (const field of fields) {
+    if (field in entityRecord) {
+      filteredRecord[field] = entityRecord[field];
+    }
+  }
+  return filtered;
 }
 
 // =============================================================================
@@ -1340,4 +1388,217 @@ export async function restoreFromArchive(
     restored: true,
     restored_children: restoredChildren,
   };
+}
+
+// =============================================================================
+// V2 Unified Entity Tool (consolidates create_entity, get_entity, update_entity)
+// =============================================================================
+
+/**
+ * Unified entity tool handler.
+ * Routes to create, get, or update based on action parameter.
+ * Uses flat schema for entity fields (no nested 'data' object).
+ */
+export async function handleEntity(
+  input: EntityInput,
+  deps: EntityManagementDependencies
+): Promise<EntityOutput> {
+  const { action } = input;
+
+  switch (action) {
+    case 'create':
+      return handleEntityCreate(input, deps);
+    case 'get':
+      return handleEntityGet(input, deps);
+    case 'update':
+      return handleEntityUpdate(input, deps);
+    default:
+      throw new ValidationError(
+        `Invalid action: ${action}. Valid actions are: create, get, update`
+      );
+  }
+}
+
+/**
+ * Handle entity create action.
+ * Converts flat input to CreateEntityInput format and delegates to createEntity.
+ */
+async function handleEntityCreate(
+  input: EntityInput,
+  deps: EntityManagementDependencies
+): Promise<EntityCreateOutput> {
+  const { type, return_full = false, return_fields } = input;
+
+  if (!type) {
+    throw new ValidationError('type is required for create action');
+  }
+
+  // Build data object from flat fields
+  const data: Record<string, unknown> = {};
+
+  // Required fields
+  if (input.title) data.title = input.title;
+  if (input.workstream) data.workstream = input.workstream;
+
+  // Relationship fields
+  if (input.parent) data.parent = input.parent;
+  if (input.depends_on) data.depends_on = input.depends_on;
+  if (input.blocks) data.blocks = input.blocks;
+  if (input.implements) data.implements = input.implements;
+  if (input.enables) data.enables = input.enables;
+  if (input.affects) data.affects = input.affects;
+
+  // Common optional fields
+  if (input.status) data.status = input.status;
+  if (input.priority) data.priority = input.priority;
+  if (input.owner) data.owner = input.owner;
+  if (input.notes) data.notes = input.notes;
+
+  // Type-specific fields
+  if (input.target_date) data.target_date = input.target_date;
+  if (input.outcome) data.outcome = input.outcome;
+  if (input.goal) data.goal = input.goal;
+  if (input.description) data.description = input.description;
+  if (input.technical_notes) data.technical_notes = input.technical_notes;
+  if (input.acceptance_criteria) data.acceptance_criteria = input.acceptance_criteria;
+  if (input.context) data.context = input.context;
+  if (input.decision) data.decision = input.decision;
+  if (input.rationale) data.rationale = input.rationale;
+  if (input.doc_type) data.doc_type = input.doc_type;
+  if (input.version) data.version = input.version;
+  if (input.content) data.content = input.content;
+  if (input.user_story) data.user_story = input.user_story;
+  if (input.tier) data.tier = input.tier;
+  if (input.phase) data.phase = input.phase;
+  if (input.estimated_hrs !== undefined) data.estimated_hrs = input.estimated_hrs;
+  if (input.actual_hrs !== undefined) data.actual_hrs = input.actual_hrs;
+
+  // Validate required fields
+  if (!data.title) {
+    throw new ValidationError('title is required for create action');
+  }
+  if (!data.workstream) {
+    throw new ValidationError('workstream is required for create action');
+  }
+
+  // Build CreateEntityInput
+  const createInput: CreateEntityInput = {
+    type,
+    data: data as CreateEntityInput['data'],
+    options: {
+      canvas_source: input.canvas_source,
+      add_to_canvas: input.add_to_canvas,
+    },
+  };
+
+  // Delegate to existing createEntity function
+  const result = await createEntity(createInput, deps);
+
+  // Build output based on return options
+  const output: EntityCreateOutput = {
+    id: result.id,
+    dependencies_created: result.dependencies_created,
+    canvas_node_added: result.canvas_node_added,
+    messages: result.messages,
+  };
+
+  // Include entity if requested
+  if (return_full) {
+    output.entity = result.entity;
+  } else if (return_fields && return_fields.length > 0) {
+    output.entity = filterEntityFields(result.entity, return_fields);
+  }
+
+  return output;
+}
+
+/**
+ * Handle entity get action.
+ * This delegates to the search-navigation-tools getEntity function.
+ * The actual implementation is in the MCP handler that routes to the appropriate tool.
+ */
+async function handleEntityGet(
+  input: EntityInput,
+  deps: EntityManagementDependencies
+): Promise<EntityOutput> {
+  // Note: The get action is handled by search-navigation-tools.getEntity
+  // This function is a placeholder that throws an error if called directly.
+  // The MCP handler should route 'get' actions to the search-navigation-tools.
+  throw new ValidationError(
+    'Entity get action should be routed to search-navigation-tools.getEntity. ' +
+    'This is an internal error - please report it.'
+  );
+}
+
+/**
+ * Handle entity update action.
+ * Converts flat input to UpdateEntityInput format and delegates to updateEntity.
+ */
+async function handleEntityUpdate(
+  input: EntityInput,
+  deps: EntityManagementDependencies
+): Promise<EntityUpdateOutput> {
+  const { id, return_full = false, return_fields } = input;
+
+  if (!id) {
+    throw new ValidationError('id is required for update action');
+  }
+
+  // Build data object from flat fields (only include fields that are explicitly set)
+  const data: Record<string, unknown> = {};
+
+  if (input.title !== undefined) data.title = input.title;
+  if (input.workstream !== undefined) data.workstream = input.workstream;
+  if (input.parent !== undefined) data.parent = input.parent;
+  if (input.depends_on !== undefined) data.depends_on = input.depends_on;
+  if (input.blocks !== undefined) data.blocks = input.blocks;
+  if (input.implements !== undefined) data.implements = input.implements;
+  if (input.enables !== undefined) data.enables = input.enables;
+  if (input.affects !== undefined) data.affects = input.affects;
+  if (input.priority !== undefined) data.priority = input.priority;
+  if (input.owner !== undefined) data.owner = input.owner;
+  if (input.notes !== undefined) data.notes = input.notes;
+  if (input.target_date !== undefined) data.target_date = input.target_date;
+  if (input.outcome !== undefined) data.outcome = input.outcome;
+  if (input.goal !== undefined) data.goal = input.goal;
+  if (input.description !== undefined) data.description = input.description;
+  if (input.technical_notes !== undefined) data.technical_notes = input.technical_notes;
+  if (input.acceptance_criteria !== undefined) data.acceptance_criteria = input.acceptance_criteria;
+  if (input.context !== undefined) data.context = input.context;
+  if (input.decision !== undefined) data.decision = input.decision;
+  if (input.rationale !== undefined) data.rationale = input.rationale;
+  if (input.doc_type !== undefined) data.doc_type = input.doc_type;
+  if (input.version !== undefined) data.version = input.version;
+  if (input.content !== undefined) data.content = input.content;
+  if (input.user_story !== undefined) data.user_story = input.user_story;
+  if (input.tier !== undefined) data.tier = input.tier;
+  if (input.phase !== undefined) data.phase = input.phase;
+  if (input.estimated_hrs !== undefined) data.estimated_hrs = input.estimated_hrs;
+  if (input.actual_hrs !== undefined) data.actual_hrs = input.actual_hrs;
+
+  // Build UpdateEntityInput
+  const updateInput: UpdateEntityInput = {
+    id,
+    data: Object.keys(data).length > 0 ? data : undefined,
+    add_dependencies: input.add_dependencies,
+    remove_dependencies: input.remove_dependencies,
+    add_to: input.add_to,
+    remove_from: input.remove_from,
+    status: input.status,
+    cascade: input.cascade,
+    archived: input.archived,
+    archive_options: input.force || input.cascade ? {
+      force: input.force,
+      cascade: input.cascade,
+      canvas_source: input.canvas_source,
+    } : undefined,
+    return_full,
+    return_fields,
+  };
+
+  // Delegate to existing updateEntity function
+  const result = await updateEntity(updateInput, deps);
+
+  // Convert to EntityUpdateOutput format
+  return result as EntityUpdateOutput;
 }

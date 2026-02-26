@@ -21,6 +21,7 @@ import {
   updateEntityStatus,
   archiveEntity,
   restoreFromArchive,
+  handleEntity,
 } from './tools/entity-management-tools.js';
 import {
   searchEntities,
@@ -113,16 +114,18 @@ describe('MCP Integration Tests', () => {
       expect(fullResult.id).toBe(createResult.id);
       expect(fullResult.title).toBe('Q1 Release');
 
-      // UPDATE
+      // UPDATE (with return_full to get entity in response)
       const updateResult = await updateEntity({
         id: createResult.id,
         data: {
           title: 'Q1 Release - Updated',
         },
+        return_full: true,
       }, deps);
 
-      expect(updateResult.entity.title).toBe('Q1 Release - Updated');
+      expect(updateResult.status).toBe('ok');
       expect(updateResult.id).toBe(createResult.id);
+      expect('entity' in updateResult && updateResult.entity?.title).toBe('Q1 Release - Updated');
 
       // UPDATE STATUS
       const statusResult = await updateEntityStatus({
@@ -138,6 +141,91 @@ describe('MCP Integration Tests', () => {
       expect(files.length).toBeGreaterThanOrEqual(1);
       // After update, title is "Q1 Release - Updated" which becomes "Q1_Release_-_Updated.md"
       expect(files.some(f => f.includes('Q1_Release'))).toBe(true);
+    });
+
+    it('should return minimal response by default (no entity)', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      // Create a milestone
+      const createResult = await createEntity({
+        type: 'milestone',
+        data: { title: 'Minimal Response Test', workstream: 'engineering' },
+      }, deps);
+
+      // Update without return_full (default: minimal response)
+      const updateResult = await updateEntity({
+        id: createResult.id,
+        data: { title: 'Minimal Response Test - Updated' },
+      }, deps);
+
+      // Verify minimal response structure
+      expect(updateResult.status).toBe('ok');
+      expect(updateResult.id).toBe(createResult.id);
+      expect(updateResult.changes).toBeDefined();
+      expect(updateResult.changes!.length).toBeGreaterThan(0);
+      expect(updateResult.changes!.some(c => c.field === 'title')).toBe(true);
+
+      // Verify entity is NOT included in minimal response
+      expect('entity' in updateResult).toBe(false);
+      expect('dependencies_added' in updateResult).toBe(false);
+      expect('dependencies_removed' in updateResult).toBe(false);
+    });
+
+    it('should return full entity when return_full=true', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      // Create a milestone
+      const createResult = await createEntity({
+        type: 'milestone',
+        data: { title: 'Full Response Test', workstream: 'engineering' },
+      }, deps);
+
+      // Update with return_full=true
+      const updateResult = await updateEntity({
+        id: createResult.id,
+        data: { title: 'Full Response Test - Updated' },
+        return_full: true,
+      }, deps);
+
+      // Verify full response structure
+      expect(updateResult.status).toBe('ok');
+      expect(updateResult.id).toBe(createResult.id);
+      expect('entity' in updateResult).toBe(true);
+      expect((updateResult as { entity: { title: string } }).entity.title).toBe('Full Response Test - Updated');
+      expect('dependencies_added' in updateResult).toBe(true);
+      expect('dependencies_removed' in updateResult).toBe(true);
+    });
+
+    it('should return only specified fields when return_fields is provided', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      // Create a milestone
+      const createResult = await createEntity({
+        type: 'milestone',
+        data: { title: 'Partial Response Test', workstream: 'engineering', priority: 'High' },
+      }, deps);
+
+      // Update with return_fields
+      const updateResult = await updateEntity({
+        id: createResult.id,
+        data: { title: 'Partial Response Test - Updated' },
+        return_fields: ['id', 'title', 'status'],
+      }, deps);
+
+      // Verify partial response structure
+      expect(updateResult.status).toBe('ok');
+      expect(updateResult.id).toBe(createResult.id);
+      expect('entity' in updateResult).toBe(true);
+
+      const entity = (updateResult as { entity: Record<string, unknown> }).entity;
+      expect(entity.id).toBe(createResult.id);
+      expect(entity.title).toBe('Partial Response Test - Updated');
+      expect(entity.status).toBeDefined();
+
+      // Verify fields NOT requested are NOT included
+      expect('workstream' in entity).toBe(false);
+      expect('priority' in entity).toBe(false);
+      expect('children' in entity).toBe(false);
     });
 
     it('should create a full hierarchy: milestone → story → task', async () => {
@@ -277,6 +365,110 @@ describe('MCP Integration Tests', () => {
       expect(full.id).toBe(milestone.id);
       // Content may be empty or contain the objective
       expect(full.title).toBe('Q2 Goals');
+    });
+
+    it('should return etag and latest_update in search results', async () => {
+      const deps = runtime.getEntityManagementDeps();
+      const searchDeps = runtime.getSearchNavigationDeps();
+
+      // Create an entity
+      const milestone = await createEntity({
+        type: 'milestone',
+        data: { title: 'Etag Test Milestone', workstream: 'engineering' },
+      }, deps);
+
+      // Re-initialize to index new entities
+      await runtime.initialize();
+
+      // Search for the entity
+      const results = await searchEntities({
+        query: 'Etag Test',
+        limit: 10,
+      }, searchDeps);
+
+      // Should have etag and latest_update
+      expect(results.etag).toBeDefined();
+      expect(typeof results.etag).toBe('string');
+      expect(results.etag!.length).toBeGreaterThan(0);
+
+      expect(results.latest_update).toBeDefined();
+      expect(typeof results.latest_update).toBe('string');
+      // Should be a valid ISO timestamp
+      expect(new Date(results.latest_update!).toISOString()).toBe(results.latest_update);
+    });
+
+    it('should filter entities by since timestamp', async () => {
+      const deps = runtime.getEntityManagementDeps();
+      const searchDeps = runtime.getSearchNavigationDeps();
+
+      // Create first entity
+      const milestone1 = await createEntity({
+        type: 'milestone',
+        data: { title: 'Since Test Old', workstream: 'engineering' },
+      }, deps);
+
+      // Wait a bit to ensure different timestamps
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const midpoint = new Date().toISOString();
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Create second entity after midpoint
+      const milestone2 = await createEntity({
+        type: 'milestone',
+        data: { title: 'Since Test New', workstream: 'engineering' },
+      }, deps);
+
+      // Re-initialize to index new entities
+      await runtime.initialize();
+
+      // Search without since - should find both
+      const allResults = await searchEntities({
+        filters: { type: ['milestone'] },
+        limit: 100,
+      }, searchDeps);
+
+      const allTitles = allResults.results.map(r => r.title);
+      expect(allTitles).toContain('Since Test Old');
+      expect(allTitles).toContain('Since Test New');
+
+      // Search with since - should only find the newer one
+      const sinceResults = await searchEntities({
+        filters: { type: ['milestone'] },
+        since: midpoint,
+        limit: 100,
+      }, searchDeps);
+
+      const sinceTitles = sinceResults.results.map(r => r.title);
+      expect(sinceTitles).not.toContain('Since Test Old');
+      expect(sinceTitles).toContain('Since Test New');
+    });
+
+    it('should return consistent etag for same result set', async () => {
+      const deps = runtime.getEntityManagementDeps();
+      const searchDeps = runtime.getSearchNavigationDeps();
+
+      // Create an entity
+      await createEntity({
+        type: 'milestone',
+        data: { title: 'Consistent Etag Test', workstream: 'engineering' },
+      }, deps);
+
+      // Re-initialize to index new entities
+      await runtime.initialize();
+
+      // Search twice
+      const results1 = await searchEntities({
+        query: 'Consistent Etag',
+        limit: 10,
+      }, searchDeps);
+
+      const results2 = await searchEntities({
+        query: 'Consistent Etag',
+        limit: 10,
+      }, searchDeps);
+
+      // Etags should be the same for the same result set
+      expect(results1.etag).toBe(results2.etag);
     });
   });
 
@@ -511,6 +703,103 @@ describe('MCP Integration Tests', () => {
 
       // AnalyzeProjectStateOutput has health.overall
       expect(analysis.health.overall).toBeDefined();
+    });
+
+    it('should return only requested fields when fields parameter is provided', async () => {
+      const deps = runtime.getEntityManagementDeps();
+      const projectDeps = runtime.getProjectUnderstandingDeps();
+
+      // Create some entities
+      await createEntity({
+        type: 'milestone',
+        data: { title: 'Test Milestone', workstream: 'engineering' },
+      }, deps);
+
+      await runtime.initialize();
+
+      // Request only health and stats
+      const analysis = await analyzeProjectState({ fields: ['health', 'stats'] }, projectDeps);
+
+      // Should have health and stats
+      expect(analysis.health).toBeDefined();
+      expect(analysis.health.overall).toBeDefined();
+      expect(analysis.stats).toBeDefined();
+      expect(analysis.stats.decisions_pending).toBeDefined();
+
+      // Should NOT have blockers or suggested_actions
+      expect(analysis.blockers).toBeUndefined();
+      expect(analysis.suggested_actions).toBeUndefined();
+    });
+
+    it('should return all fields when no fields parameter is provided', async () => {
+      const deps = runtime.getEntityManagementDeps();
+      const projectDeps = runtime.getProjectUnderstandingDeps();
+
+      await createEntity({
+        type: 'milestone',
+        data: { title: 'Test Milestone', workstream: 'engineering' },
+      }, deps);
+
+      await runtime.initialize();
+
+      // No fields parameter = all fields
+      const analysis = await analyzeProjectState({}, projectDeps);
+
+      expect(analysis.health).toBeDefined();
+      expect(analysis.blockers).toBeDefined();
+      expect(analysis.suggested_actions).toBeDefined();
+      expect(analysis.stats).toBeDefined();
+    });
+
+    it('should include all blocker sub-fields when blockers field is requested', async () => {
+      const deps = runtime.getEntityManagementDeps();
+      const projectDeps = runtime.getProjectUnderstandingDeps();
+
+      await createEntity({
+        type: 'milestone',
+        data: { title: 'Test Milestone', workstream: 'engineering' },
+      }, deps);
+
+      await runtime.initialize();
+
+      // Request only blockers
+      const analysis = await analyzeProjectState({ fields: ['blockers'] }, projectDeps);
+
+      // Should have blockers with all sub-fields
+      expect(analysis.blockers).toBeDefined();
+      expect(analysis.blockers.critical_path).toBeDefined();
+      expect(analysis.blockers.by_type).toBeDefined();
+      expect(analysis.blockers.by_type.pending_decisions).toBeDefined();
+      expect(analysis.blockers.by_type.incomplete_specs).toBeDefined();
+      expect(analysis.blockers.stale_items).toBeDefined();
+
+      // Should NOT have other top-level fields
+      expect(analysis.health).toBeUndefined();
+      expect(analysis.suggested_actions).toBeUndefined();
+      expect(analysis.stats).toBeUndefined();
+    });
+
+    it('should return only specific blocker sub-fields when requested', async () => {
+      const deps = runtime.getEntityManagementDeps();
+      const projectDeps = runtime.getProjectUnderstandingDeps();
+
+      await createEntity({
+        type: 'milestone',
+        data: { title: 'Test Milestone', workstream: 'engineering' },
+      }, deps);
+
+      await runtime.initialize();
+
+      // Request only critical_path
+      const analysis = await analyzeProjectState({ fields: ['critical_path'] }, projectDeps);
+
+      // Should have blockers with critical_path populated
+      expect(analysis.blockers).toBeDefined();
+      expect(analysis.blockers.critical_path).toBeDefined();
+      // Other blocker sub-fields should be empty arrays
+      expect(analysis.blockers.by_type.pending_decisions).toEqual([]);
+      expect(analysis.blockers.by_type.incomplete_specs).toEqual([]);
+      expect(analysis.blockers.stale_items).toEqual([]);
     });
   });
 
@@ -1296,6 +1585,648 @@ describe('MCP Integration Tests', () => {
       const content = (entity as any).content || '';
       const implementedByMatches = content.match(/## 🔗 Implemented By/g);
       expect(implementedByMatches?.length || 0).toBeLessThanOrEqual(1);
+    });
+  });
+
+  // ===========================================================================
+  // Scenario 16: V2 Unified Entity Tool
+  // ===========================================================================
+  describe('Scenario 16: V2 Unified Entity Tool', () => {
+    it('should create entity with flat schema', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      // Create milestone using unified entity tool with flat schema
+      const result = await handleEntity({
+        action: 'create',
+        type: 'milestone',
+        title: 'V2 Test Milestone',
+        workstream: 'engineering',
+        priority: 'High',
+        target_date: '2024-06-01',
+      }, deps);
+
+      expect(result).toBeDefined();
+      expect('id' in result).toBe(true);
+      expect((result as any).id).toMatch(/^M-\d+$/);
+      expect((result as any).dependencies_created).toBe(0);
+    });
+
+    it('should create entity with minimal response by default', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      // Create without return_full - should NOT include entity
+      const result = await handleEntity({
+        action: 'create',
+        type: 'milestone',
+        title: 'Minimal Response Test',
+        workstream: 'engineering',
+      }, deps);
+
+      expect(result).toBeDefined();
+      expect('id' in result).toBe(true);
+      // By default, entity should not be included
+      expect((result as any).entity).toBeUndefined();
+    });
+
+    it('should create entity with full response when return_full=true', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      const result = await handleEntity({
+        action: 'create',
+        type: 'milestone',
+        title: 'Full Response Test',
+        workstream: 'engineering',
+        return_full: true,
+      }, deps);
+
+      expect(result).toBeDefined();
+      expect('id' in result).toBe(true);
+      expect((result as any).entity).toBeDefined();
+      expect((result as any).entity.title).toBe('Full Response Test');
+    });
+
+    it('should update entity with flat schema', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      // First create a milestone
+      const createResult = await handleEntity({
+        action: 'create',
+        type: 'milestone',
+        title: 'Update Test Milestone',
+        workstream: 'engineering',
+      }, deps);
+
+      const id = (createResult as any).id;
+
+      // Update using unified entity tool
+      const updateResult = await handleEntity({
+        action: 'update',
+        id,
+        title: 'Updated Milestone Title',
+        priority: 'Critical',
+      }, deps);
+
+      expect(updateResult).toBeDefined();
+      expect((updateResult as any).id).toBe(id);
+      expect((updateResult as any).status).toBe('ok');
+      expect((updateResult as any).changes).toBeDefined();
+      expect((updateResult as any).changes.length).toBeGreaterThan(0);
+    });
+
+    it('should archive entity via update action', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      // Create a milestone
+      const createResult = await handleEntity({
+        action: 'create',
+        type: 'milestone',
+        title: 'Archive Test Milestone',
+        workstream: 'engineering',
+      }, deps);
+
+      const id = (createResult as any).id;
+
+      // Archive using unified entity tool
+      const archiveResult = await handleEntity({
+        action: 'update',
+        id,
+        archived: true,
+      }, deps);
+
+      expect(archiveResult).toBeDefined();
+      expect((archiveResult as any).id).toBe(id);
+      expect((archiveResult as any).archive_result).toBeDefined();
+      expect((archiveResult as any).archive_result.archived).toBe(true);
+    });
+
+    it('should validate required fields for create', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      // Missing type
+      await expect(handleEntity({
+        action: 'create',
+        title: 'No Type',
+        workstream: 'engineering',
+      } as any, deps)).rejects.toThrow(/type is required/);
+
+      // Missing title
+      await expect(handleEntity({
+        action: 'create',
+        type: 'milestone',
+        workstream: 'engineering',
+      }, deps)).rejects.toThrow(/title is required/);
+
+      // Missing workstream
+      await expect(handleEntity({
+        action: 'create',
+        type: 'milestone',
+        title: 'No Workstream',
+      }, deps)).rejects.toThrow(/workstream is required/);
+    });
+
+    it('should validate required id for update', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      await expect(handleEntity({
+        action: 'update',
+        title: 'No ID',
+      } as any, deps)).rejects.toThrow(/id is required/);
+    });
+
+    it('should create story with parent relationship', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      // Create milestone first
+      const milestoneResult = await handleEntity({
+        action: 'create',
+        type: 'milestone',
+        title: 'Parent Milestone',
+        workstream: 'engineering',
+      }, deps);
+
+      const milestoneId = (milestoneResult as any).id;
+
+      // Create story with parent
+      const storyResult = await handleEntity({
+        action: 'create',
+        type: 'story',
+        title: 'Child Story',
+        workstream: 'engineering',
+        parent: milestoneId,
+        outcome: 'Test outcome',
+      }, deps);
+
+      expect(storyResult).toBeDefined();
+      expect((storyResult as any).id).toMatch(/^S-\d+$/);
+    });
+
+    it('should reject orphaned story (no parent)', async () => {
+      const deps = runtime.getEntityManagementDeps();
+
+      await expect(handleEntity({
+        action: 'create',
+        type: 'story',
+        title: 'Orphan Story',
+        workstream: 'engineering',
+      }, deps)).rejects.toThrow(/orphaned/i);
+    });
+  });
+
+  // ===========================================================================
+  // Scenario 17: V2 Unified Entities Tool (bulk operations)
+  // ===========================================================================
+  describe('Scenario 17: V2 Unified Entities Tool', () => {
+    it('should fetch multiple entities with get action', async () => {
+      const entityDeps = runtime.getEntityManagementDeps();
+      const entitiesDeps = runtime.getEntitiesDeps();
+
+      // Create some entities first
+      const m1 = await handleEntity({
+        action: 'create',
+        type: 'milestone',
+        title: 'Entities Test M1',
+        workstream: 'engineering',
+      }, entityDeps);
+
+      const m2 = await handleEntity({
+        action: 'create',
+        type: 'milestone',
+        title: 'Entities Test M2',
+        workstream: 'engineering',
+      }, entityDeps);
+
+      // Fetch both using entities tool
+      const { handleEntities } = await import('./tools/batch-operations-tools.js');
+      const result = await handleEntities({
+        action: 'get',
+        ids: [(m1 as any).id, (m2 as any).id],
+      }, entitiesDeps);
+
+      expect(result).toBeDefined();
+      expect((result as any).count).toBe(2);
+      expect((result as any).entities).toHaveLength(2);
+    });
+
+    it('should return not_found for missing entities', async () => {
+      const entitiesDeps = runtime.getEntitiesDeps();
+      const { handleEntities } = await import('./tools/batch-operations-tools.js');
+
+      const result = await handleEntities({
+        action: 'get',
+        ids: ['M-999', 'S-999'] as any,
+      }, entitiesDeps);
+
+      expect(result).toBeDefined();
+      expect((result as any).count).toBe(0);
+      expect((result as any).not_found).toContain('M-999');
+      expect((result as any).not_found).toContain('S-999');
+    });
+
+    it('should filter fields in get action', async () => {
+      const entityDeps = runtime.getEntityManagementDeps();
+      const entitiesDeps = runtime.getEntitiesDeps();
+
+      // Create entity
+      const m1 = await handleEntity({
+        action: 'create',
+        type: 'milestone',
+        title: 'Fields Test Milestone',
+        workstream: 'engineering',
+      }, entityDeps);
+
+      const { handleEntities } = await import('./tools/batch-operations-tools.js');
+      const result = await handleEntities({
+        action: 'get',
+        ids: [(m1 as any).id],
+        fields: ['id', 'title'],
+      }, entitiesDeps);
+
+      expect(result).toBeDefined();
+      const entity = (result as any).entities[0];
+      expect(entity.id).toBe((m1 as any).id);
+      expect(entity.title).toBe('Fields Test Milestone');
+      // Should not have other fields
+      expect(entity.workstream).toBeUndefined();
+    });
+
+    it('should perform batch operations', async () => {
+      const entitiesDeps = runtime.getEntitiesDeps();
+      const { handleEntities } = await import('./tools/batch-operations-tools.js');
+
+      // Create multiple entities in batch
+      const result = await handleEntities({
+        action: 'batch',
+        ops: [
+          {
+            client_id: 'batch-m1',
+            op: 'create',
+            type: 'milestone',
+            payload: {
+              title: 'Batch Milestone 1',
+              workstream: 'engineering',
+            },
+          },
+          {
+            client_id: 'batch-m2',
+            op: 'create',
+            type: 'milestone',
+            payload: {
+              title: 'Batch Milestone 2',
+              workstream: 'engineering',
+            },
+          },
+        ],
+      }, entitiesDeps);
+
+      expect(result).toBeDefined();
+      expect((result as any).summary.total).toBe(2);
+      expect((result as any).summary.succeeded).toBe(2);
+      expect((result as any).summary.failed).toBe(0);
+    });
+
+    it('should validate required fields for get action', async () => {
+      const entitiesDeps = runtime.getEntitiesDeps();
+      const { handleEntities } = await import('./tools/batch-operations-tools.js');
+
+      await expect(handleEntities({
+        action: 'get',
+        // Missing ids
+      } as any, entitiesDeps)).rejects.toThrow(/ids is required/);
+    });
+
+    it('should validate required fields for batch action', async () => {
+      const entitiesDeps = runtime.getEntitiesDeps();
+      const { handleEntities } = await import('./tools/batch-operations-tools.js');
+
+      await expect(handleEntities({
+        action: 'batch',
+        // Missing ops
+      } as any, entitiesDeps)).rejects.toThrow(/ops is required/);
+    });
+  });
+
+  // ===========================================================================
+  // Scenario 18: Content Mode for Entity Get
+  // ===========================================================================
+  describe('Scenario 18: Content Mode for Entity Get', () => {
+    it('should return no content with content_mode=none (default)', async () => {
+      const deps = runtime.getSearchNavigationDeps();
+      const { getEntity } = await import('./tools/search-navigation-tools.js');
+
+      // Create a document with content
+      const entityDeps = runtime.getEntityManagementDeps();
+      const createResult = await handleEntity({
+        action: 'create',
+        type: 'document',
+        title: 'Content Mode Test Doc',
+        workstream: 'engineering',
+        content: 'This is the full document content with authentication details.',
+      }, entityDeps);
+
+      const id = (createResult as any).id;
+
+      // Get with default content_mode (none)
+      const result = await getEntity({ id }, deps);
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe(id);
+      expect(result.content).toBeUndefined();
+    });
+
+    it('should return full content with content_mode=full', async () => {
+      const deps = runtime.getSearchNavigationDeps();
+      const { getEntity } = await import('./tools/search-navigation-tools.js');
+
+      // Create a document with content
+      const entityDeps = runtime.getEntityManagementDeps();
+      const createResult = await handleEntity({
+        action: 'create',
+        type: 'document',
+        title: 'Full Content Test Doc',
+        workstream: 'engineering',
+        content: 'This is the full document content.',
+      }, entityDeps);
+
+      const id = (createResult as any).id;
+
+      // Get with content_mode=full
+      const result = await getEntity({ id, content_mode: 'full' }, deps);
+
+      expect(result).toBeDefined();
+      expect(result.content).toBeDefined();
+      expect(result.content).toContain('full document content');
+    });
+
+    it('should return semantic excerpt with content_mode=semantic', async () => {
+      const deps = runtime.getSearchNavigationDeps();
+      const { getEntity } = await import('./tools/search-navigation-tools.js');
+
+      // Create a document with multiple paragraphs
+      const entityDeps = runtime.getEntityManagementDeps();
+      const createResult = await handleEntity({
+        action: 'create',
+        type: 'document',
+        title: 'Semantic Content Test Doc',
+        workstream: 'engineering',
+        content: `# Introduction
+
+This document covers various topics.
+
+## Authentication
+
+The authentication system uses OAuth2 for secure login.
+Users can authenticate using their credentials.
+
+## Database
+
+The database uses PostgreSQL for data storage.
+All data is encrypted at rest.
+
+## Conclusion
+
+This concludes the document.`,
+      }, entityDeps);
+
+      const id = (createResult as any).id;
+
+      // Get with content_mode=semantic and query
+      const result = await getEntity({
+        id,
+        content_mode: 'semantic',
+        query: 'authentication OAuth2',
+      }, deps);
+
+      expect(result).toBeDefined();
+      expect(result.content).toBeDefined();
+      // Should contain authentication-related content
+      expect(result.content!.toLowerCase()).toContain('authentication');
+      // Should NOT contain unrelated content (or at least prioritize auth content)
+      // The semantic extraction should return relevant paragraphs
+    });
+
+    it('should throw error when content_mode=semantic without query', async () => {
+      const deps = runtime.getSearchNavigationDeps();
+      const { getEntity } = await import('./tools/search-navigation-tools.js');
+
+      // Create a document
+      const entityDeps = runtime.getEntityManagementDeps();
+      const createResult = await handleEntity({
+        action: 'create',
+        type: 'document',
+        title: 'Error Test Doc',
+        workstream: 'engineering',
+      }, entityDeps);
+
+      const id = (createResult as any).id;
+
+      // Get with content_mode=semantic but no query
+      await expect(getEntity({
+        id,
+        content_mode: 'semantic',
+        // Missing query
+      }, deps)).rejects.toThrow(/query.*required/i);
+    });
+
+    it('should work with entity tool get action', async () => {
+      const entityDeps = runtime.getEntityManagementDeps();
+      const searchDeps = runtime.getSearchNavigationDeps();
+      const { getEntity } = await import('./tools/search-navigation-tools.js');
+
+      // Create a document
+      const createResult = await handleEntity({
+        action: 'create',
+        type: 'document',
+        title: 'Entity Tool Content Mode Test',
+        workstream: 'engineering',
+        content: 'Document about API design patterns.',
+      }, entityDeps);
+
+      const id = (createResult as any).id;
+
+      // Get via entity tool (which routes to getEntity)
+      const result = await getEntity({
+        id,
+        content_mode: 'full',
+      }, searchDeps);
+
+      expect(result).toBeDefined();
+      expect(result.content).toContain('API design patterns');
+    });
+  });
+
+  // ===========================================================================
+  // Scenario 19: read_docs outline_only and search modes
+  // ===========================================================================
+  describe('Scenario 19: read_docs outline_only and search modes', () => {
+    let docsConfig: V2Config;
+    let docsDir: string;
+
+    beforeEach(async () => {
+      // Create a docs workspace directory
+      docsDir = path.join(tempDir, 'docs');
+      await fs.mkdir(docsDir, { recursive: true });
+
+      // Create config with docs workspace
+      docsConfig = {
+        ...config,
+        workspaces: {
+          docs: {
+            path: docsDir,
+            description: 'Documentation workspace',
+          },
+        },
+      };
+    });
+
+    it('should return only outline when outline_only=true', async () => {
+      const { handleReadDocs } = await import('./tools/read-docs.js');
+      const { handleUpdateDoc } = await import('./tools/update-doc.js');
+
+      // Create a test document with headings
+      await handleUpdateDoc(docsConfig, {
+        workspace: 'docs',
+        name: 'outline-test',
+        operation: 'create',
+        content: `# Main Title
+
+Introduction paragraph.
+
+## Section One
+
+Content for section one.
+
+### Subsection 1.1
+
+More content here.
+
+## Section Two
+
+Content for section two.
+
+# Another Main Section
+
+Final content.`,
+      });
+
+      // Read with outline_only
+      const result = await handleReadDocs(docsConfig, {
+        workspace: 'docs',
+        doc_name: 'outline-test',
+        outline_only: true,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.content).toBe(''); // No content in outline mode
+      expect(result.outline).toBeDefined();
+      expect(result.outline!.length).toBe(5); // 5 headings
+      expect(result.outline![0]).toEqual({ level: 1, text: 'Main Title', line: 0 });
+      expect(result.outline![1]).toEqual({ level: 2, text: 'Section One', line: 4 });
+      expect(result.outline![2]).toEqual({ level: 3, text: 'Subsection 1.1', line: 8 });
+      expect(result.outline![3]).toEqual({ level: 2, text: 'Section Two', line: 12 });
+      expect(result.outline![4]).toEqual({ level: 1, text: 'Another Main Section', line: 16 });
+    });
+
+    it('should return matching sections when search is provided', async () => {
+      const { handleReadDocs } = await import('./tools/read-docs.js');
+      const { handleUpdateDoc } = await import('./tools/update-doc.js');
+
+      // Create a test document with multiple sections
+      await handleUpdateDoc(docsConfig, {
+        workspace: 'docs',
+        name: 'search-test',
+        operation: 'create',
+        content: `# API Documentation
+
+This document covers the API.
+
+## Authentication
+
+The authentication system uses OAuth2 for secure login.
+Users must authenticate before accessing protected endpoints.
+
+## Database
+
+The database uses PostgreSQL for data storage.
+All data is encrypted at rest.
+
+## Authorization
+
+After authentication, users are authorized based on roles.
+Authorization checks happen on every request.
+
+## Logging
+
+All requests are logged for debugging.`,
+      });
+
+      // Search for authentication-related content
+      const result = await handleReadDocs(docsConfig, {
+        workspace: 'docs',
+        doc_name: 'search-test',
+        search: 'authentication OAuth2',
+      });
+
+      expect(result).toBeDefined();
+      expect(result.search_info).toBeDefined();
+      expect(result.search_info!.query).toBe('authentication OAuth2');
+      expect(result.search_info!.matches).toBeGreaterThan(0);
+      expect(result.search_info!.sections_returned).toBeGreaterThan(0);
+      // Content should contain authentication-related sections
+      expect(result.content.toLowerCase()).toContain('authentication');
+      expect(result.content.toLowerCase()).toContain('oauth2');
+      // Should include outline for context
+      expect(result.outline).toBeDefined();
+    });
+
+    it('should return empty content when search has no matches', async () => {
+      const { handleReadDocs } = await import('./tools/read-docs.js');
+      const { handleUpdateDoc } = await import('./tools/update-doc.js');
+
+      await handleUpdateDoc(docsConfig, {
+        workspace: 'docs',
+        name: 'no-match-test',
+        operation: 'create',
+        content: `# Simple Document
+
+Just some basic content here.`,
+      });
+
+      const result = await handleReadDocs(docsConfig, {
+        workspace: 'docs',
+        doc_name: 'no-match-test',
+        search: 'xyznonexistent123',
+      });
+
+      expect(result).toBeDefined();
+      expect(result.content).toBe('');
+      expect(result.search_info!.matches).toBe(0);
+      expect(result.search_info!.sections_returned).toBe(0);
+    });
+
+    it('should still support default pagination mode', async () => {
+      const { handleReadDocs } = await import('./tools/read-docs.js');
+      const { handleUpdateDoc } = await import('./tools/update-doc.js');
+
+      await handleUpdateDoc(docsConfig, {
+        workspace: 'docs',
+        name: 'pagination-test',
+        operation: 'create',
+        content: `# Document
+
+Line 1
+Line 2
+Line 3`,
+      });
+
+      const result = await handleReadDocs(docsConfig, {
+        workspace: 'docs',
+        doc_name: 'pagination-test',
+      });
+
+      expect(result).toBeDefined();
+      expect(result.content).toContain('# Document');
+      expect(result.content).toContain('Line 1');
+      expect(result.line_count).toBe(5);
     });
   });
 

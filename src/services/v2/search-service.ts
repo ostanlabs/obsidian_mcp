@@ -177,7 +177,8 @@ export class SearchIndex {
 
   /** Tokenize text into searchable tokens */
   private tokenize(text: string): string[] {
-    if (!text) return [];
+    // Defensive: ensure text is a string (handles malformed YAML where title could be an array)
+    if (!text || typeof text !== 'string') return [];
     return text
       .toLowerCase()
       .replace(/[^\w\s-]/g, ' ')

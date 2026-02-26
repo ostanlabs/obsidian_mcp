@@ -441,13 +441,30 @@ export async function getWorkstreamStatus(
  * Pagination: Default max_items is 20 (conservative for smaller contexts).
  * Agents with larger context windows can increase max_items up to 200.
  * Pagination applies to critical_path blockers array.
+ *
+ * Fields parameter allows selective retrieval to reduce response size.
  */
 export async function analyzeProjectState(
   input: AnalyzeProjectStateInput,
   deps: ProjectUnderstandingDependencies
 ): Promise<AnalyzeProjectStateOutput> {
-  const { workstream, focus = 'both', depth = 'summary', max_items, max_response_size, continuation_token } = input;
+  const { workstream, focus = 'both', depth = 'summary', max_items, max_response_size, continuation_token, fields } = input;
   const paginationInput: PaginationInput = { max_items, max_response_size, continuation_token };
+
+  // Determine which fields to include
+  const includeAll = !fields || fields.length === 0;
+  const fieldSet = new Set<string>(fields || []);
+
+  // Helper to check if a field should be included
+  const shouldInclude = (field: string): boolean => {
+    if (includeAll) return true;
+    // 'blockers' includes all blocker sub-fields
+    if (field === 'critical_path' || field === 'pending_decisions' ||
+        field === 'incomplete_specs' || field === 'stale_items') {
+      return fieldSet.has(field) || fieldSet.has('blockers');
+    }
+    return fieldSet.has(field);
+  };
 
   // Get all entities
   const entities = await deps.getAllEntities({
@@ -582,32 +599,52 @@ export async function analyzeProjectState(
     context: 'analyze_project_state:critical_path',
   });
 
-  const result: AnalyzeProjectStateOutput = {
-    health: {
+  // Build result with only requested fields
+  const result: AnalyzeProjectStateOutput = {} as AnalyzeProjectStateOutput;
+
+  // Health section
+  if (shouldInclude('health')) {
+    result.health = {
       overall: overallHealth,
       workstreams: workstreamHealth,
-    },
-    blockers: {
-      critical_path: paginatedCriticalPath,
+    };
+  }
+
+  // Blockers section - build conditionally
+  const needsBlockers = shouldInclude('blockers') || shouldInclude('critical_path') ||
+    shouldInclude('pending_decisions') || shouldInclude('incomplete_specs') ||
+    shouldInclude('stale_items');
+
+  if (needsBlockers) {
+    result.blockers = {
+      critical_path: shouldInclude('critical_path') ? paginatedCriticalPath : [],
       by_type: {
-        pending_decisions: pendingDecisions,
-        incomplete_specs: incompleteSpecs,
-        external_dependencies: externalDeps,
+        pending_decisions: shouldInclude('pending_decisions') ? pendingDecisions : [],
+        incomplete_specs: shouldInclude('incomplete_specs') ? incompleteSpecs : [],
+        external_dependencies: externalDeps, // Always include if blockers requested
       },
-      stale_items: staleItems,
-    },
-    suggested_actions: suggestedActions,
-    stats: {
+      stale_items: shouldInclude('stale_items') ? staleItems : [],
+    };
+
+    // Add pagination info if there are more items
+    if (pagination.has_more && shouldInclude('critical_path')) {
+      result.blockers.pagination = pagination;
+    }
+  }
+
+  // Suggested actions
+  if (shouldInclude('suggested_actions')) {
+    result.suggested_actions = suggestedActions;
+  }
+
+  // Stats
+  if (shouldInclude('stats')) {
+    result.stats = {
       decisions_pending: pendingDecisions.length,
       specs_ready: entities.filter((e) => e.type === 'document' && e.status === 'Approved').length,
       items_blocked: criticalPath.length, // Use original count for accurate stats
       items_completed_this_week: completedThisWeek,
-    },
-  };
-
-  // Add pagination info if there are more items
-  if (pagination.has_more) {
-    result.blockers.pagination = pagination;
+    };
   }
 
   return result;

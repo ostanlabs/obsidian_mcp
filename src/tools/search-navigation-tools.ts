@@ -41,6 +41,88 @@ import { PAGINATION_DEFAULTS } from './tool-types.js';
 import { applyPagination } from './pagination-utils.js';
 
 // =============================================================================
+// Semantic Content Extraction
+// =============================================================================
+
+/**
+ * Extract relevant content excerpt based on a query.
+ * Uses simple keyword matching to find and return relevant paragraphs.
+ *
+ * Algorithm:
+ * 1. Split content into paragraphs
+ * 2. Score each paragraph based on query term matches
+ * 3. Return top-scoring paragraphs with context
+ *
+ * @param content Full content to search
+ * @param query Search query
+ * @param maxLength Maximum length of returned excerpt (default: 1000 chars)
+ * @returns Relevant excerpt or empty string if no matches
+ */
+function extractSemanticContent(content: string, query: string, maxLength: number = 1000): string {
+  if (!content || !query) return '';
+
+  // Tokenize query into terms
+  const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length >= 2);
+  if (queryTerms.length === 0) return '';
+
+  // Split content into paragraphs (by double newline or heading)
+  const paragraphs = content.split(/\n\n+|\n(?=#)/);
+
+  // Score each paragraph
+  const scored = paragraphs.map((para, index) => {
+    const paraLower = para.toLowerCase();
+    let score = 0;
+
+    for (const term of queryTerms) {
+      // Count occurrences of each term
+      const regex = new RegExp(term, 'gi');
+      const matches = paraLower.match(regex);
+      if (matches) {
+        score += matches.length;
+      }
+    }
+
+    // Boost score for headings
+    if (para.startsWith('#')) {
+      score *= 1.5;
+    }
+
+    return { para, score, index };
+  });
+
+  // Sort by score descending
+  scored.sort((a, b) => b.score - a.score);
+
+  // Collect top paragraphs until we hit maxLength
+  const result: string[] = [];
+  let totalLength = 0;
+
+  for (const { para, score } of scored) {
+    if (score === 0) break; // No more matches
+
+    if (totalLength + para.length > maxLength && result.length > 0) {
+      break;
+    }
+
+    result.push(para);
+    totalLength += para.length;
+  }
+
+  if (result.length === 0) {
+    return ''; // No relevant content found
+  }
+
+  // Sort by original order to maintain document flow
+  const originalOrder = result.map(para => ({
+    para,
+    index: paragraphs.indexOf(para),
+  }));
+  originalOrder.sort((a, b) => a.index - b.index);
+
+  return originalOrder.map(o => o.para).join('\n\n');
+}
+
+// =============================================================================
 // Dependencies Interface
 // =============================================================================
 
@@ -172,6 +254,69 @@ function buildSearchResultItem(
 }
 
 /**
+ * Compute etag from search results for cache validation.
+ * Uses a simple hash of entity IDs and their update timestamps.
+ */
+function computeEtag(entities: Entity[]): string {
+  if (entities.length === 0) return 'empty';
+
+  // Create a deterministic string from sorted entity IDs and their update times
+  const sortedData = entities
+    .map(e => `${e.id}:${e.updated_at || e.created_at || ''}`)
+    .sort()
+    .join('|');
+
+  // Simple hash function (djb2)
+  let hash = 5381;
+  for (let i = 0; i < sortedData.length; i++) {
+    hash = ((hash << 5) + hash) + sortedData.charCodeAt(i);
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+
+  return Math.abs(hash).toString(36);
+}
+
+/**
+ * Get the latest update timestamp from a list of entities.
+ */
+function getLatestUpdate(entities: Entity[]): string | undefined {
+  if (entities.length === 0) return undefined;
+
+  let latest: Date | undefined;
+  for (const entity of entities) {
+    const timestamp = entity.updated_at || entity.created_at;
+    if (timestamp) {
+      const date = new Date(timestamp);
+      if (!latest || date > latest) {
+        latest = date;
+      }
+    }
+  }
+
+  return latest?.toISOString();
+}
+
+/**
+ * Filter entities by 'since' timestamp (only return entities updated after this time).
+ */
+function filterBySince(entities: Entity[], since: string | undefined): Entity[] {
+  if (!since) return entities;
+
+  const sinceDate = new Date(since);
+  if (isNaN(sinceDate.getTime())) {
+    // Invalid date, return all entities
+    return entities;
+  }
+
+  return entities.filter(entity => {
+    const timestamp = entity.updated_at || entity.created_at;
+    if (!timestamp) return false;
+    const entityDate = new Date(timestamp);
+    return entityDate > sinceDate;
+  });
+}
+
+/**
  * Extract pagination input from SearchEntitiesInput, handling legacy limit/offset.
  */
 function extractPaginationInput(input: SearchEntitiesInput): PaginationInput {
@@ -215,26 +360,26 @@ export async function searchEntities(
   input: SearchEntitiesInput,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
-  const { query, semantic, from_id, direction, depth = 1, filters, fields } = input;
+  const { query, semantic, from_id, direction, depth = 1, filters, fields, since } = input;
   const paginationInput = extractPaginationInput(input);
 
   // Navigation mode: if from_id and direction are specified
   if (from_id && direction) {
-    return performNavigation(from_id, direction, depth, filters, fields, paginationInput, deps);
+    return performNavigation(from_id, direction, depth, filters, fields, paginationInput, since, deps);
   }
 
   // Semantic search mode: if query and semantic=true
   if (query && semantic) {
-    return performSemanticSearch(query, filters, fields, paginationInput, deps);
+    return performSemanticSearch(query, filters, fields, paginationInput, since, deps);
   }
 
   // Search mode: if query is provided (BM25)
   if (query) {
-    return performBM25Search(query, filters, fields, paginationInput, deps);
+    return performBM25Search(query, filters, fields, paginationInput, since, deps);
   }
 
   // List mode: no query, no navigation - just list entities with filters
-  return performListMode(filters, fields, paginationInput, deps);
+  return performListMode(filters, fields, paginationInput, since, deps);
 }
 
 /**
@@ -245,6 +390,7 @@ async function performBM25Search(
   filters: SearchEntitiesInput['filters'] | undefined,
   fields: EntityField[] | undefined,
   paginationInput: PaginationInput,
+  since: string | undefined,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
   // Get all matching results (we'll paginate after)
@@ -256,9 +402,19 @@ async function performBM25Search(
     limit: PAGINATION_DEFAULTS.MAX_ITEMS_LIMIT * 2, // Get enough for pagination
   });
 
+  // Extract entities for since filtering and etag computation
+  let matchedEntities = searchResults.map(r => r.entity);
+
+  // Apply 'since' filter if provided
+  matchedEntities = filterBySince(matchedEntities, since);
+  const matchedEntityIds = new Set(matchedEntities.map(e => e.id));
+
   // Build result items with paths and validation
   const allResults: SearchResultItem[] = [];
   for (const { entity, score, snippet } of searchResults) {
+    // Skip entities filtered out by 'since'
+    if (!matchedEntityIds.has(entity.id)) continue;
+
     const path = await deps.getEntityPath(entity.id);
     const validation = await checkIfValid(entity, deps);
 
@@ -282,10 +438,16 @@ async function performBM25Search(
     context: `search:${query}`,
   });
 
+  // Compute etag and latest_update from matched entities
+  const etag = computeEtag(matchedEntities);
+  const latest_update = getLatestUpdate(matchedEntities);
+
   return {
     results: items,
     total_matches: allResults.length,
     pagination,
+    etag,
+    latest_update,
   };
 }
 
@@ -298,6 +460,7 @@ async function performSemanticSearch(
   filters: SearchEntitiesInput['filters'] | undefined,
   fields: EntityField[] | undefined,
   paginationInput: PaginationInput,
+  since: string | undefined,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
   if (!deps.semanticSearch) {
@@ -327,6 +490,7 @@ async function performSemanticSearch(
 
   // Map MSRL results to entities
   const allResults: SearchResultItem[] = [];
+  const matchedEntities: Entity[] = [];
   const processedIds = new Set<EntityId>();
 
   for (const result of semanticResults) {
@@ -344,6 +508,13 @@ async function performSemanticSearch(
     const entity = await deps.getEntity(entityId);
     if (!entity) continue;
 
+    // Apply 'since' filter
+    if (since) {
+      const sinceDate = new Date(since);
+      const entityDate = new Date(entity.updated_at || entity.created_at || '');
+      if (!isNaN(sinceDate.getTime()) && entityDate <= sinceDate) continue;
+    }
+
     // Apply remaining filters
     if (filters?.status && !filters.status.includes(entity.status as EntityStatus)) continue;
     if (filters?.workstream && !filters.workstream.includes(entity.workstream)) continue;
@@ -359,6 +530,9 @@ async function performSemanticSearch(
     if (filters?.valid !== undefined && validation.valid !== filters.valid) {
       continue;
     }
+
+    // Track matched entities for etag computation
+    matchedEntities.push(entity);
 
     // Build result item
     const path = await deps.getEntityPath(entityId);
@@ -377,10 +551,16 @@ async function performSemanticSearch(
     context: `semantic:${query}`,
   });
 
+  // Compute etag and latest_update from matched entities
+  const etag = computeEtag(matchedEntities);
+  const latest_update = getLatestUpdate(matchedEntities);
+
   return {
     results: items,
     total_matches: allResults.length,
     pagination,
+    etag,
+    latest_update,
   };
 }
 
@@ -650,6 +830,7 @@ async function performListMode(
   filters: SearchEntitiesInput['filters'] | undefined,
   fields: EntityField[] | undefined,
   paginationInput: PaginationInput,
+  since: string | undefined,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
   // Get all entities with basic filters
@@ -660,6 +841,9 @@ async function performListMode(
     types: filters?.type,
     workstream: filters?.workstream?.[0], // getAllEntities only supports single workstream
   });
+
+  // Apply 'since' filter if provided
+  entities = filterBySince(entities, since);
 
   // Apply additional filters that getAllEntities doesn't support
   if (filters?.status && filters.status.length > 0) {
@@ -711,10 +895,16 @@ async function performListMode(
     context: 'list',
   });
 
+  // Compute etag and latest_update from matched entities
+  const etag = computeEtag(entities);
+  const latest_update = getLatestUpdate(entities);
+
   return {
     results: items,
     total_matches: allResults.length,
     pagination,
+    etag,
+    latest_update,
   };
 }
 
@@ -729,6 +919,7 @@ async function performNavigation(
   filters: SearchEntitiesInput['filters'] | undefined,
   fields: EntityField[] | undefined,
   paginationInput: PaginationInput,
+  since: string | undefined,
   deps: SearchNavigationDependencies
 ): Promise<SearchEntitiesOutput> {
   const origin = await deps.getEntity(from_id);
@@ -789,10 +980,12 @@ async function performNavigation(
     }
   }
 
+  // Apply 'since' filter if provided
+  let filteredResults = filterBySince(rawResults, since);
+
   // Apply filters to results
-  let filteredResults = rawResults;
   if (filters) {
-    filteredResults = rawResults.filter(entity => {
+    filteredResults = filteredResults.filter(entity => {
       if (filters.type && !filters.type.includes(entity.type)) return false;
       if (filters.status && !filters.status.includes(entity.status as EntityStatus)) return false;
       if (filters.workstream && !filters.workstream.includes(entity.workstream)) return false;
@@ -832,12 +1025,18 @@ async function performNavigation(
     context: `nav:${from_id}:${direction}`,
   });
 
+  // Compute etag and latest_update from matched entities
+  const etag = computeEtag(filteredResults);
+  const latest_update = getLatestUpdate(filteredResults);
+
   return {
     results: items,
     total_matches: allResults.length,
     pagination,
     origin: originSummary,
     path_description: pathDescription,
+    etag,
+    latest_update,
   };
 }
 
@@ -869,11 +1068,16 @@ export async function getEntity(
   input: GetEntityInput,
   deps: SearchNavigationDependencies
 ): Promise<GetEntityOutput> {
-  const { id, fields = DEFAULT_FIELDS } = input;
+  const { id, fields = DEFAULT_FIELDS, content_mode = 'none', query } = input;
 
   const entity = await deps.getEntity(id);
   if (!entity) {
     throw new Error(`Entity not found: ${id}`);
+  }
+
+  // Validate semantic mode requires query
+  if (content_mode === 'semantic' && !query) {
+    throw new Error('query parameter is required when content_mode is "semantic"');
   }
 
   // Always include base fields
@@ -918,11 +1122,16 @@ export async function getEntity(
     }
   }
 
-  // Content
-  if (fieldSet.has('content')) {
+  // Content - handle content_mode
+  // Note: content_mode takes precedence over fields.includes('content')
+  if (content_mode === 'full' || (content_mode === 'none' && fieldSet.has('content'))) {
     const full = await deps.toEntityFull(entity);
     result.content = full.content;
+  } else if (content_mode === 'semantic' && query) {
+    const full = await deps.toEntityFull(entity);
+    result.content = extractSemanticContent(full.content, query);
   }
+  // content_mode === 'none' and no 'content' in fields: no content included
 
   // Priority
   if (fieldSet.has('priority') && 'priority' in entity) {

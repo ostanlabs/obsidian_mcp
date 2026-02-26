@@ -96,23 +96,189 @@ RETURNS:
 
 // Entity tool definitions (non-prefixed)
 export const entityToolDefinitions: Tool[] = [
-  // Category 1: Entity Management
+  // ==========================================================================
+  // V2 Unified Entity Tool (consolidates create_entity, get_entity, update_entity)
+  // ==========================================================================
+  {
+    name: 'entity',
+    description: `Unified tool for entity operations: create, get, or update.
+
+ACTIONS:
+- create: Create a new entity (milestone, story, task, decision, document, feature)
+- get: Retrieve an entity with optional field selection and content modes
+- update: Modify an entity's fields, status, relationships, or archive/restore
+
+USE THIS INSTEAD OF: create_entity, get_entity, update_entity (deprecated)
+
+FLAT SCHEMA: Entity fields are at the top level (no nested 'data' object).
+
+EXAMPLES:
+- Create: { action: "create", type: "task", title: "Implement auth", workstream: "backend", parent: "S-001" }
+- Get: { action: "get", id: "T-001", fields: ["content", "dependencies"] }
+- Get with semantic: { action: "get", id: "DOC-001", content_mode: "semantic", query: "authentication" }
+- Update: { action: "update", id: "T-001", status: "Complete" }
+- Archive: { action: "update", id: "T-001", archived: true }
+
+REQUIRED RELATIONSHIPS (for create):
+- story: MUST have 'parent' (MilestoneId)
+- task: MUST have 'parent' (StoryId)
+- decision: MUST have at least one of 'affects' or 'blocks'`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['create', 'get', 'update'], description: 'Action to perform' },
+        // For create (required)
+        type: { type: 'string', enum: ['milestone', 'story', 'task', 'decision', 'document', 'feature'], description: 'Entity type (required for create)' },
+        // For get/update (required)
+        id: { type: 'string', description: 'Entity ID (required for get/update)' },
+        // Entity fields (flat)
+        title: { type: 'string', description: 'Entity title' },
+        workstream: { type: 'string', description: 'Workstream identifier' },
+        parent: { type: 'string', description: 'Parent entity ID (required for story/task)' },
+        depends_on: { type: 'array', items: { type: 'string' }, description: 'IDs of entities this depends on' },
+        blocks: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this entity blocks' },
+        implements: { type: 'array', items: { type: 'string' }, description: 'Document/Feature IDs this implements' },
+        enables: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this enables' },
+        affects: { type: 'array', items: { type: 'string' }, description: 'Entity IDs affected (for decisions)' },
+        status: { type: 'string', description: 'Entity status' },
+        priority: { type: 'string', enum: ['P0', 'P1', 'P2', 'P3'], description: 'Priority level' },
+        target_date: { type: 'string', description: 'Target date (ISO format)' },
+        owner: { type: 'string', description: 'Owner/assignee' },
+        outcome: { type: 'string', description: 'Expected outcome (story)' },
+        notes: { type: 'string', description: 'Notes' },
+        goal: { type: 'string', description: 'Task goal' },
+        description: { type: 'string', description: 'Description' },
+        technical_notes: { type: 'string', description: 'Technical notes (task)' },
+        acceptance_criteria: { type: 'array', items: { type: 'string' }, description: 'Acceptance criteria (story)' },
+        context: { type: 'string', description: 'Context (decision)' },
+        decision: { type: 'string', description: 'Decision text (decision)' },
+        rationale: { type: 'string', description: 'Rationale (decision)' },
+        doc_type: { type: 'string', description: 'Document type' },
+        version: { type: 'string', description: 'Version' },
+        content: { type: 'string', description: 'Content (document/feature)' },
+        user_story: { type: 'string', description: 'User story (feature)' },
+        tier: { type: 'string', enum: ['OSS', 'Premium'], description: 'Feature tier' },
+        phase: { type: 'string', enum: ['MVP', 'V1', 'V2', 'Future'], description: 'Feature phase' },
+        estimated_hrs: { type: 'number', description: 'Estimated hours' },
+        actual_hrs: { type: 'number', description: 'Actual hours' },
+        // Relationship modifications (for update)
+        add_dependencies: { type: 'array', items: { type: 'string' }, description: 'Add to depends_on' },
+        remove_dependencies: { type: 'array', items: { type: 'string' }, description: 'Remove from depends_on' },
+        add_to: { type: 'object', properties: { implements: { type: 'array', items: { type: 'string' } }, affects: { type: 'array', items: { type: 'string' } } }, description: 'Add to array fields' },
+        remove_from: { type: 'object', properties: { implements: { type: 'array', items: { type: 'string' } }, affects: { type: 'array', items: { type: 'string' } } }, description: 'Remove from array fields' },
+        // Archive/restore (for update)
+        archived: { type: 'boolean', description: 'Set to true to archive, false to restore' },
+        cascade: { type: 'boolean', description: 'Cascade archive/status to children' },
+        force: { type: 'boolean', description: 'Force archive even with children' },
+        // For get
+        fields: { type: 'array', items: { type: 'string' }, description: 'Fields to include (for get)' },
+        content_mode: { type: 'string', enum: ['none', 'full', 'semantic'], description: 'Content mode: none (default), full, or semantic' },
+        query: { type: 'string', description: 'Query for semantic content (required when content_mode=semantic)' },
+        // Response control
+        return_full: { type: 'boolean', description: 'Return full entity (default: false)' },
+        return_fields: { type: 'array', items: { type: 'string' }, description: 'Specific fields to return' },
+        // Canvas options
+        canvas_source: { type: 'string', description: 'Canvas file path' },
+        add_to_canvas: { type: 'boolean', description: 'Add to canvas' },
+      },
+      required: ['action'],
+    },
+  },
+  // V2 Unified entities tool (bulk operations)
+  {
+    name: 'entities',
+    description: `Unified bulk operations tool. Fetch multiple entities or perform batch operations.
+
+ACTIONS:
+- get: Fetch multiple entities by IDs (more efficient than multiple entity calls)
+- batch: Perform multiple create/update/archive operations in a single call
+
+USE FOR:
+- Fetching 2+ entities at once
+- Batch status updates across multiple items
+- Creating related entities together
+- Any operation touching multiple entities
+
+EXAMPLES:
+- { action: "get", ids: ["M-001", "S-001", "T-001"] }
+- { action: "batch", ops: [...], options: { dry_run: true } }`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['get', 'batch'],
+          description: 'Action to perform',
+        },
+        // For 'get' action
+        ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Entity IDs to fetch (for get action)',
+        },
+        fields: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Fields to include in response (default: all)',
+        },
+        content_mode: {
+          type: 'string',
+          enum: ['none', 'full', 'semantic'],
+          description: 'Content mode: none (default), full, or semantic',
+        },
+        query: {
+          type: 'string',
+          description: 'Query for semantic content extraction',
+        },
+        // For 'batch' action
+        ops: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              client_id: { type: 'string', description: 'Client-provided ID for idempotency' },
+              op: { type: 'string', enum: ['create', 'update', 'archive'], description: 'Operation type' },
+              type: { type: 'string', enum: ['milestone', 'story', 'task', 'decision', 'document', 'feature'], description: 'Entity type (for create)' },
+              id: { type: 'string', description: 'Entity ID (for update/archive)' },
+              payload: { type: 'object', description: 'Operation payload' },
+            },
+            required: ['client_id', 'op', 'payload'],
+          },
+          description: 'Operations to perform (for batch action)',
+        },
+        options: {
+          type: 'object',
+          properties: {
+            atomic: { type: 'boolean', description: 'Rollback all on any failure' },
+            add_to_canvas: { type: 'boolean', description: 'Add created entities to canvas' },
+            canvas_source: { type: 'string', description: 'Canvas file path' },
+            include_entities: { type: 'boolean', description: 'Include full entity data in results' },
+            dry_run: { type: 'boolean', description: 'Preview changes without executing' },
+            batch_size: { type: 'number', description: 'Batch size for chunking large operations' },
+          },
+          description: 'Options for batch action',
+        },
+      },
+      required: ['action'],
+    },
+  },
+  // ==========================================================================
+  // Category 1: Entity Management (Legacy - use 'entity' tool instead)
+  // ==========================================================================
   {
     name: 'create_entity',
-    description: `Create a new entity (milestone, story, task, decision, document, or feature).
+    description: `⚠️ DEPRECATED: Use 'entity' tool with action: "create" instead.
 
-USE FOR: Creating new work items, decisions, or documentation.
-NOT FOR: Bulk creation (use batch_update), updating existing entities (use update_entity).
+Create a new entity (milestone, story, task, decision, document, or feature).
+
+MIGRATION: Replace with entity tool:
+  OLD: { tool: "create_entity", type: "milestone", data: { title: "...", workstream: "..." } }
+  NEW: { tool: "entity", action: "create", type: "milestone", title: "...", workstream: "..." }
 
 REQUIRED RELATIONSHIPS (to prevent orphaned entities):
 - story: MUST have 'parent' (MilestoneId)
 - task: MUST have 'parent' (StoryId)
-- decision: MUST have at least one of 'affects' or 'blocks'
-
-EXAMPLES:
-- "Create a new milestone for Q1 planning"
-- "Add a task to implement authentication" → requires parent story
-- "Record a decision about database choice" → requires affects or blocks`,
+- decision: MUST have at least one of 'affects' or 'blocks'`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -174,20 +340,19 @@ EXAMPLES:
   },
   {
     name: 'update_entity',
-    description: `Update a single entity's fields, status, relationships, or archive/restore it.
+    description: `⚠️ DEPRECATED: Use 'entity' tool with action: "update" instead.
 
-USE FOR: Modifying one entity, changing status, adding/removing relationships, archiving.
-NOT FOR: Bulk updates (use batch_update), creating new entities (use create_entity).
+Update a single entity's fields, status, relationships, or archive/restore it.
+
+MIGRATION: Replace with entity tool:
+  OLD: { tool: "update_entity", id: "M-001", data: { title: "..." } }
+  NEW: { tool: "entity", action: "update", id: "M-001", title: "..." }
 
 FEATURES:
-- Returns before/after diff in 'changes' array showing what changed
-- All bidirectional relationships auto-sync (parent↔children, depends_on↔blocks, etc.)
-- Can archive (archived: true) or restore (archived: false) in same call
-
-EXAMPLES:
-- "Update task T-001 status to Complete"
-- "Add M-029 to F-010's implemented_by list"
-- "Archive milestone M-005 and its children"`,
+- Returns minimal response by default (id, status, changes)
+- Use return_full=true to get full entity in response
+- All bidirectional relationships auto-sync
+- Can archive (archived: true) or restore (archived: false)`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -237,30 +402,33 @@ EXAMPLES:
           },
           description: 'Options for restore operation',
         },
+        // Response control - minimize context window usage
+        return_full: { type: 'boolean', description: 'If true, returns full entity (legacy behavior). Default: false (minimal response).' },
+        return_fields: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Specific fields to return in response. Only used when return_full is false.',
+        },
       },
       required: ['id'],
     },
   },
-  // Category 2: Batch Operations
-
-  // NEW: Unified batch_update tool with client_id support
+  // Category 2: Batch Operations (Legacy - use 'entities' tool instead)
   {
     name: 'batch_update',
-    description: `Perform multiple create/update/archive operations in a single call.
+    description: `⚠️ DEPRECATED: Use 'entities' tool with action: "batch" instead.
 
-USE FOR: Bulk operations, creating related entities together, batch status updates.
-NOT FOR: Single entity changes (use update_entity for better diff output).
+Perform multiple create/update/archive operations in a single call.
+
+MIGRATION: Replace with entities tool:
+  OLD: { tool: "batch_update", ops: [...] }
+  NEW: { tool: "entities", action: "batch", ops: [...] }
 
 FEATURES:
 - client_id for idempotency and cross-referencing within batch
 - dry_run: true to preview changes without executing
-- include_entities: true to get full entity data in response (avoids follow-up get_entity calls)
-- Atomic mode: rollback all on any failure
-
-EXAMPLES:
-- "Create 5 features with their relationships in one call"
-- "Update phase to '4' for features F-021 through F-029"
-- "Preview what batch changes would do with dry_run: true"`,
+- include_entities: true to get full entity data in response
+- Atomic mode: rollback all on any failure`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -353,18 +521,27 @@ EXAMPLES:
 USE FOR: Finding blockers, getting actionable recommendations, understanding what's stuck.
 NOT FOR: Simple status checks (use get_project_overview), listing entities (use search_entities).
 
+FIELDS PARAMETER: Use 'fields' to request only specific sections and reduce response size.
+Available fields: health, blockers, critical_path, pending_decisions, incomplete_specs, stale_items, suggested_actions, stats
+
 PAGINATION: Default max_items is 20 (conservative for smaller contexts). Agents with larger context windows can increase max_items up to 200.
 
 EXAMPLES:
-- "What's blocking progress in the engineering workstream?"
-- "What actions should I take next?"
-- "Give me a detailed blocker analysis"`,
+- "What's blocking progress?" → { fields: ["critical_path", "stats"] }
+- "What actions should I take?" → { fields: ["suggested_actions"] }
+- "Quick health check" → { fields: ["health", "stats"] }
+- "Full analysis" → {} (no fields = all fields)`,
     inputSchema: {
       type: 'object',
       properties: {
         workstream: { type: 'string', description: 'Filter by workstream (optional)' },
         focus: { type: 'string', enum: ['blockers', 'actions', 'both'] },
         depth: { type: 'string', enum: ['summary', 'detailed'] },
+        fields: {
+          type: 'array',
+          items: { type: 'string', enum: ['health', 'blockers', 'critical_path', 'pending_decisions', 'incomplete_specs', 'stale_items', 'suggested_actions', 'stats'] },
+          description: 'Fields to include in response. If not specified, returns all fields. Use to reduce response size.',
+        },
         // Pagination
         max_items: { type: 'number', description: 'Maximum blockers to return (default: 20, max: 200). Increase for larger context windows.' },
         max_response_size: { type: 'number', description: 'Optional hard cap on response size in bytes.' },
@@ -463,6 +640,8 @@ EXAMPLES:
         // Legacy pagination (deprecated, use max_items/continuation_token instead)
         limit: { type: 'number', description: 'DEPRECATED: Use max_items instead. Max results to return.' },
         offset: { type: 'number', description: 'DEPRECATED: Use continuation_token instead. Number of results to skip.' },
+        // Incremental sync
+        since: { type: 'string', description: 'ISO timestamp. Only return entities updated after this time. Use with etag/latest_update for incremental sync.' },
         // Response control
         include_content: { type: 'boolean' },
         fields: {
@@ -475,16 +654,15 @@ EXAMPLES:
   },
   {
     name: 'get_entity',
-    description: `Get a single entity by ID with selective field retrieval.
+    description: `⚠️ DEPRECATED: Use 'entity' tool with action: "get" instead.
 
-USE FOR: Fetching one entity's details, verifying an update, getting specific fields.
-NOT FOR: Multiple entities (use get_entities), searching (use search_entities).
+Get a single entity by ID with selective field retrieval.
 
-TIP: Specify fields to reduce response size. Default returns summary fields only.
+MIGRATION: Replace with entity tool:
+  OLD: { tool: "get_entity", id: "M-001", fields: ["id", "title"] }
+  NEW: { tool: "entity", action: "get", id: "M-001", fields: ["id", "title"] }
 
-EXAMPLES:
-- "Get task T-001 details" → id: "T-001"
-- "Get F-001's documentation status" → id: "F-001", fields: ["id", "documented_by"]`,
+TIP: Specify fields to reduce response size. Default returns summary fields only.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -508,18 +686,15 @@ EXAMPLES:
   },
   {
     name: 'get_entities',
-    description: `Get multiple entities in a single call (bulk fetch).
+    description: `⚠️ DEPRECATED: Use 'entities' tool with action: "get" instead.
 
-USE FOR: Fetching 2+ entities at once, verifying batch updates, efficient bulk retrieval.
-NOT FOR: Single entity (use get_entity), searching (use search_entities).
+Get multiple entities in a single call (bulk fetch).
 
-EFFICIENCY: ~75% token savings vs multiple get_entity calls.
+MIGRATION: Replace with entities tool:
+  OLD: { tool: "get_entities", ids: ["M-001", "M-002"], fields: ["id", "title"] }
+  NEW: { tool: "entities", action: "get", ids: ["M-001", "M-002"], fields: ["id", "title"] }
 
-PAGINATION: Default max_items is 20 (conservative for smaller contexts). Agents with larger context windows can increase max_items up to 200.
-
-EXAMPLES:
-- "Get features F-001 through F-005" → ids: ["F-001", "F-002", "F-003", "F-004", "F-005"]
-- "Verify these entities exist" → ids: [...], fields: ["id", "title"]`,
+EFFICIENCY: ~75% token savings vs multiple get_entity calls.`,
     inputSchema: {
       type: 'object',
       properties: {

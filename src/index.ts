@@ -40,8 +40,9 @@ import {
 import {
   createEntity,
   updateEntity,
+  handleEntity,
 } from './tools/entity-management-tools.js';
-import { batchUpdate } from './tools/batch-operations-tools.js';
+import { batchUpdate, handleEntities } from './tools/batch-operations-tools.js';
 import {
   getProjectOverview,
   analyzeProjectState,
@@ -303,6 +304,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       // Entity Management
+      case 'entity': {
+        // V2 Unified entity tool - routes to create, get, or update based on action
+        const runtime = await getOrCreateV2Runtime();
+        const input = args as any;
+        if (input.action === 'get') {
+          // Route get action to search-navigation-tools
+          result = await getEntity(input, runtime.getSearchNavigationDeps());
+        } else {
+          // Route create/update actions to entity-management-tools
+          result = await handleEntity(input, runtime.getEntityManagementDeps());
+        }
+        break;
+      }
       case 'create_entity': {
         const runtime = await getOrCreateV2Runtime();
         result = await createEntity(args as any, runtime.getEntityManagementDeps());
@@ -315,6 +329,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       // Batch Operations
+      case 'entities': {
+        // V2 Unified entities tool - routes to get or batch based on action
+        const runtime = await getOrCreateV2Runtime();
+        result = await handleEntities(args as any, runtime.getEntitiesDeps());
+        break;
+      }
       case 'batch_update': {
         const runtime = await getOrCreateV2Runtime();
         result = await batchUpdate(args as any, runtime.getBatchOperationsDeps());

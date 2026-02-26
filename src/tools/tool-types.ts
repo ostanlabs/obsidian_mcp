@@ -213,6 +213,11 @@ export interface UpdateEntityInput {
     add_to_canvas?: boolean;
     canvas_source?: string;
   };
+  // Response control - minimize context window usage
+  /** If true, returns full entity (current behavior). Default: false (minimal response) */
+  return_full?: boolean;
+  /** Specific fields to return. Only used when return_full is false. */
+  return_fields?: string[];
 }
 
 /** Represents a single field change in an update operation */
@@ -226,22 +231,21 @@ export interface FieldChange {
   removed?: unknown[];
 }
 
-export interface UpdateEntityOutput {
+/** Minimal update response (default) - optimized for context window */
+export interface UpdateEntityMinimalOutput {
   id: EntityId;
-  entity: EntityFull;
+  status: 'ok';
   /** List of field changes made (before/after diff) */
   changes?: FieldChange[];
-  dependencies_added: number;
-  dependencies_removed: number;
   /** Messages from automatic processing (e.g., workstream normalization) */
   messages?: string[];
-  // Enhanced: Status change info
+  // Enhanced: Status change info (only if status was changed)
   status_changed?: {
     old_status: EntityStatus;
     new_status: EntityStatus;
     cascaded_updates: EntityId[];
   };
-  // Enhanced: Archive/restore info
+  // Enhanced: Archive/restore info (only if archive/restore was performed)
   archive_result?: {
     archived: boolean;
     archive_path?: string;
@@ -252,6 +256,24 @@ export interface UpdateEntityOutput {
     restored_children?: EntityId[];
   };
 }
+
+/** Full update response (when return_full=true) */
+export interface UpdateEntityFullOutput extends UpdateEntityMinimalOutput {
+  status: 'ok';
+  entity: EntityFull;
+  dependencies_added: number;
+  dependencies_removed: number;
+}
+
+/** Partial update response (when return_fields is specified) */
+export interface UpdateEntityPartialOutput extends UpdateEntityMinimalOutput {
+  status: 'ok';
+  /** Partial entity with only requested fields */
+  entity: Partial<EntityFull>;
+}
+
+/** Union type for all update response variants */
+export type UpdateEntityOutput = UpdateEntityMinimalOutput | UpdateEntityFullOutput | UpdateEntityPartialOutput;
 
 // update_entity_status
 export interface UpdateEntityStatusInput {
@@ -314,6 +336,236 @@ export interface RestoreFromArchiveOutput {
   restored: boolean;
   restored_children: EntityId[];
 }
+
+// =============================================================================
+// V2 Unified Entity Tool (consolidates create_entity, get_entity, update_entity)
+// =============================================================================
+
+/** Action type for the unified entity tool */
+export type EntityAction = 'create' | 'get' | 'update';
+
+/** Content mode for get action */
+export type ContentMode = 'none' | 'full' | 'semantic';
+
+/**
+ * Unified entity tool input.
+ * Consolidates create_entity, get_entity, and update_entity into a single tool.
+ * Uses flat schema for entity fields (no nested 'data' object).
+ */
+export interface EntityInput {
+  /** Action to perform */
+  action: EntityAction;
+
+  // --- For create (required) ---
+  /** Entity type (required for create) */
+  type?: EntityType;
+
+  // --- For get/update (required) ---
+  /** Entity ID (required for get/update) */
+  id?: EntityId;
+
+  // --- Entity fields (flat, for create/update) ---
+  title?: string;
+  workstream?: Workstream;
+  parent?: EntityId;
+  depends_on?: EntityId[];
+  blocks?: EntityId[];
+  implements?: EntityId[];
+  enables?: EntityId[];
+  affects?: EntityId[];
+  status?: EntityStatus;
+  priority?: Priority;
+  target_date?: string;
+  owner?: string;
+  outcome?: string;
+  notes?: string;
+  goal?: string;
+  description?: string;
+  technical_notes?: string;
+  acceptance_criteria?: string[];
+  context?: string;
+  decision?: string;
+  rationale?: string;
+  doc_type?: string;
+  version?: string;
+  content?: string;
+  user_story?: string;
+  tier?: string;
+  phase?: string;
+  estimated_hrs?: number;
+  actual_hrs?: number;
+
+  // --- Relationship modifications (for update) ---
+  add_dependencies?: EntityId[];
+  remove_dependencies?: EntityId[];
+  add_to?: {
+    implements?: EntityId[];
+    affects?: EntityId[];
+  };
+  remove_from?: {
+    implements?: EntityId[];
+    affects?: EntityId[];
+  };
+
+  // --- Archive/restore (for update) ---
+  /** Set to true to archive, false to restore */
+  archived?: boolean;
+  /** Cascade archive to children (for milestones) */
+  cascade?: boolean;
+  /** Force archive even if entity has children */
+  force?: boolean;
+
+  // --- For get ---
+  /** Fields to include in response (for get). Default: summary fields */
+  fields?: string[];
+  /** Content mode: 'none' (default), 'full', or 'semantic' */
+  content_mode?: ContentMode;
+  /** Query for semantic content retrieval (required when content_mode='semantic') */
+  query?: string;
+
+  // --- Response control (for create/update) ---
+  /** If true, returns full entity. Default: false (minimal response) */
+  return_full?: boolean;
+  /** Specific fields to return (only when return_full is false) */
+  return_fields?: string[];
+
+  // --- Canvas options ---
+  canvas_source?: string;
+  add_to_canvas?: boolean;
+}
+
+/** Output for entity create action */
+export interface EntityCreateOutput {
+  id: EntityId;
+  /** Full entity or partial (when return_fields is used) */
+  entity?: EntityFull | Partial<EntityFull>;
+  dependencies_created: number;
+  canvas_node_added: boolean;
+  messages?: string[];
+}
+
+/** Output for entity get action */
+export interface EntityGetOutput {
+  id: EntityId;
+  type: EntityType;
+  title: string;
+  status: EntityStatus;
+  workstream: Workstream;
+  last_updated: string;
+  // Optional fields based on request
+  parent?: { id: EntityId; title: string };
+  children_count?: number;
+  children?: EntitySummary[];
+  content?: string;
+  priority?: Priority;
+  dependencies?: {
+    blocks: EntityId[];
+    blocked_by: EntityId[];
+  };
+  dependency_details?: {
+    blocks: EntitySummary[];
+    blocked_by: EntitySummary[];
+  };
+  task_progress?: {
+    total: number;
+    completed: number;
+  };
+  acceptance_criteria?: string[];
+  target_date?: string;
+  owner?: string;
+  estimated_hrs?: number;
+  actual_hrs?: number;
+  // Semantic search result
+  semantic_excerpt?: string;
+  // Fields that don't apply to this entity type
+  inapplicable_fields?: string[];
+}
+
+/** Output for entity update action */
+export interface EntityUpdateOutput {
+  id: EntityId;
+  status: 'ok';
+  changes?: FieldChange[];
+  messages?: string[];
+  status_changed?: {
+    old_status: EntityStatus;
+    new_status: EntityStatus;
+    cascaded_updates: EntityId[];
+  };
+  archive_result?: {
+    archived: boolean;
+    archive_path: string;
+    children_archived?: EntityId[];
+  };
+  restore_result?: {
+    restored: boolean;
+    restored_children: EntityId[];
+  };
+  entity?: EntityFull | Partial<EntityFull>;
+}
+
+/** Union type for entity tool output */
+export type EntityOutput = EntityCreateOutput | EntityGetOutput | EntityUpdateOutput;
+
+// =============================================================================
+// V2 Unified Entities Tool (bulk operations)
+// =============================================================================
+
+/** Action type for entities tool */
+export type EntitiesAction = 'get' | 'batch';
+
+/** Input for entities tool - unified bulk operations */
+export interface EntitiesInput {
+  /** Action to perform */
+  action: EntitiesAction;
+
+  // ===== For 'get' action =====
+  /** Array of entity IDs to fetch */
+  ids?: EntityId[];
+  /** Fields to include in response (default: all) */
+  fields?: EntityField[];
+  /** Content mode for each entity */
+  content_mode?: ContentMode;
+  /** Query for semantic content extraction */
+  query?: string;
+
+  // ===== For 'batch' action =====
+  /** Array of operations to perform */
+  ops?: BatchOp[];
+  /** Options for batch operation */
+  options?: {
+    /** If true, rollback all on any failure. Default: false */
+    atomic?: boolean;
+    /** Add created entities to canvas */
+    add_to_canvas?: boolean;
+    /** Canvas file path */
+    canvas_source?: string;
+    /** If true, include full entity data in results. Default: false */
+    include_entities?: boolean;
+    /** Fields to include when include_entities is true */
+    fields?: EntityField[];
+    /** If true, preview changes without executing them. Default: false */
+    dry_run?: boolean;
+    /** Batch size for chunking large operations */
+    batch_size?: number;
+  };
+}
+
+/** Output for entities 'get' action */
+export interface EntitiesGetOutput {
+  /** Fetched entities */
+  entities: (EntityFull | Partial<EntityFull>)[];
+  /** Count of entities returned */
+  count: number;
+  /** IDs that were not found */
+  not_found?: EntityId[];
+}
+
+/** Output for entities 'batch' action - same as BatchUpdateOutput */
+export type EntitiesBatchOutput = BatchUpdateOutput;
+
+/** Union type for entities tool output */
+export type EntitiesOutput = EntitiesGetOutput | EntitiesBatchOutput;
 
 // =============================================================================
 // Category 2: Batch Operations
@@ -499,10 +751,36 @@ export interface GetWorkstreamStatusOutput {
 }
 
 // analyze_project_state
+/** Fields that can be included in analyze_project_state response */
+export type AnalyzeProjectStateField =
+  | 'health'
+  | 'blockers'
+  | 'critical_path'
+  | 'pending_decisions'
+  | 'incomplete_specs'
+  | 'stale_items'
+  | 'suggested_actions'
+  | 'stats';
+
 export interface AnalyzeProjectStateInput extends PaginationInput {
   workstream?: Workstream;
   focus?: 'blockers' | 'actions' | 'both';
   depth?: 'summary' | 'detailed';
+  /**
+   * Fields to include in response. If not specified, returns all fields.
+   * Use this to reduce response size by requesting only needed sections.
+   *
+   * Available fields:
+   * - 'health': Overall and per-workstream health status
+   * - 'blockers': All blocker information (includes critical_path, pending_decisions, etc.)
+   * - 'critical_path': Only critical path blockers
+   * - 'pending_decisions': Only pending decisions
+   * - 'incomplete_specs': Only incomplete specs
+   * - 'stale_items': Only stale items
+   * - 'suggested_actions': Suggested actions
+   * - 'stats': Summary statistics
+   */
+  fields?: AnalyzeProjectStateField[];
 }
 
 export interface AnalyzeProjectStateOutput {
@@ -581,6 +859,10 @@ export interface SearchEntitiesInput extends PaginationInput {
     valid?: boolean;  // Filter by validation status (currently only decisions have validation rules)
   };
 
+  // Cache optimization - filter by last update time
+  /** ISO timestamp - only return entities updated after this time. Useful for incremental sync. */
+  since?: string;
+
   // Response control (legacy - prefer max_items from PaginationInput)
   /** @deprecated Use max_items instead */
   limit?: number;
@@ -623,6 +905,11 @@ export interface SearchEntitiesOutput {
   // Navigation mode fields
   origin?: EntitySummary;  // Only for navigation mode
   path_description?: string;  // Only for navigation mode
+  // Cache validation - hash of result set for detecting changes
+  /** ETag for cache validation. Use with If-None-Match header or compare with previous etag. */
+  etag?: string;
+  /** ISO timestamp of the most recently updated entity in results. Use with 'since' param for incremental sync. */
+  latest_update?: string;
 }
 
 // get_entity (unified - replaces get_entity_summary and get_entity_full)
@@ -671,6 +958,15 @@ export interface GetEntityInput {
   id: EntityId;
   /** Fields to include in response. If not specified, returns summary fields. */
   fields?: EntityField[];
+  /**
+   * Content mode for the response:
+   * - 'none' (default): No content field included
+   * - 'full': Complete content included
+   * - 'semantic': Only relevant excerpt based on query (requires query param)
+   */
+  content_mode?: ContentMode;
+  /** Query for semantic content extraction (required when content_mode='semantic') */
+  query?: string;
 }
 
 export interface GetEntityOutput {

@@ -238,6 +238,26 @@ export class EntityParser {
     return [...new Set(validIds)];
   }
 
+  /**
+   * Safely extract a string value from frontmatter.
+   * Handles malformed YAML where a string field might be parsed as an array or other type.
+   */
+  private getString(value: any, fallback: string = ''): string {
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      // If it's an array, try to join non-empty string elements
+      const strings = value.filter(v => typeof v === 'string' && v.trim());
+      return strings.length > 0 ? strings.join(' ') : fallback;
+    }
+    if (value === null || value === undefined) {
+      return fallback;
+    }
+    // For other types, try to convert to string
+    return String(value);
+  }
+
   // ---------------------------------------------------------------------------
   // ID Extraction
   // ---------------------------------------------------------------------------
@@ -267,10 +287,13 @@ export class EntityParser {
     // So we use the body content if no frontmatter objective exists
     const objective = fm.objective || this.extractBodyContent(body);
 
+    // Use getString to safely handle malformed YAML where title might be an array
+    const title = this.getString(fm.title) || this.extractTitleFromBody(body) || 'Untitled';
+
     return {
       id: id as any, // Cast to specific ID type
       type: 'milestone',
-      title: fm.title || this.extractTitleFromBody(body) || 'Untitled',
+      title,
       workstream: fm.workstream || 'default',
       status: this.validateStatus<MilestoneStatus>(fm.status, ['Not Started', 'In Progress', 'Completed', 'Blocked'] as MilestoneStatus[], 'Not Started' as MilestoneStatus),
       priority: this.validatePriority(fm.priority),
@@ -303,10 +326,13 @@ export class EntityParser {
     // Migration: if workstream is missing but effort exists, use effort as workstream
     const workstream = fm.workstream || fm.effort || 'default';
 
+    // Use getString to safely handle malformed YAML where title might be an array
+    const title = this.getString(fm.title) || this.extractTitleFromBody(body) || 'Untitled';
+
     return {
       id: id as any, // Cast to specific ID type
       type: 'story',
-      title: fm.title || this.extractTitleFromBody(body) || 'Untitled',
+      title,
       workstream,
       status: this.validateStatus<StoryStatus>(fm.status, ['Not Started', 'In Progress', 'Completed', 'Blocked'] as StoryStatus[], 'Not Started' as StoryStatus),
       priority: this.validatePriority(fm.priority),
@@ -338,10 +364,13 @@ export class EntityParser {
     const technical_notes = fm.technical_notes || this.extractSection(body, 'Technical Notes');
     const notes = fm.notes || this.extractSection(body, 'Notes');
 
+    // Use getString to safely handle malformed YAML where title might be an array
+    const title = this.getString(fm.title) || this.extractTitleFromBody(body) || 'Untitled';
+
     return {
       id: id as any, // Cast to specific ID type
       type: 'task',
-      title: fm.title || this.extractTitleFromBody(body) || 'Untitled',
+      title,
       workstream: fm.workstream || 'default',
       status: this.validateStatus<TaskStatus>(fm.status, ['Not Started', 'In Progress', 'Completed', 'Blocked'] as TaskStatus[], 'Not Started' as TaskStatus),
       parent: fm.parent,
@@ -378,10 +407,13 @@ export class EntityParser {
     // Migration: if affects is missing but blocks exists, use blocks as affects
     const affects = fm.affects || fm.blocks;
 
+    // Use getString to safely handle malformed YAML where title might be an array
+    const title = this.getString(fm.title) || this.extractTitleFromBody(body) || 'Untitled';
+
     return {
       id: id as any, // Cast to specific ID type
       type: 'decision',
-      title: fm.title || this.extractTitleFromBody(body) || 'Untitled',
+      title,
       workstream: fm.workstream || 'default',
       status: this.validateStatus<DecisionStatus>(fm.status, ['Pending', 'Decided', 'Superseded'] as DecisionStatus[], 'Pending' as DecisionStatus),
       context,
@@ -410,10 +442,13 @@ export class EntityParser {
     filePath: VaultPath,
     _errors: string[]
   ): Document {
+    // Use getString to safely handle malformed YAML where title might be an array
+    const title = this.getString(fm.title) || this.extractTitleFromBody(body) || 'Untitled';
+
     return {
       id: id as any, // Cast to specific ID type
       type: 'document',
-      title: fm.title || this.extractTitleFromBody(body) || 'Untitled',
+      title,
       workstream: fm.workstream || 'default',
       status: this.validateStatus<DocumentStatus>(fm.status, ['Draft', 'Review', 'Approved', 'Superseded'] as DocumentStatus[], 'Draft' as DocumentStatus),
       doc_type: fm.doc_type || 'spec',
@@ -440,10 +475,13 @@ export class EntityParser {
     filePath: VaultPath,
     _errors: string[]
   ): Feature {
+    // Use getString to safely handle malformed YAML where title might be an array
+    const title = this.getString(fm.title) || this.extractTitleFromBody(body) || 'Untitled';
+
     return {
       id: id as any, // Cast to specific ID type
       type: 'feature',
-      title: fm.title || this.extractTitleFromBody(body) || 'Untitled',
+      title,
       workstream: fm.workstream || 'default',
       status: this.validateStatus<FeatureStatus>(fm.status, ['Planned', 'In Progress', 'Complete', 'Deferred'] as FeatureStatus[], 'Planned' as FeatureStatus),
       user_story: fm.user_story || '',
