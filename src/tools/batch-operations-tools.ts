@@ -23,6 +23,10 @@ import type {
   EntityField,
   DryRunPreview,
   FieldChange,
+  EntitiesInput,
+  EntitiesOutput,
+  EntitiesGetOutput,
+  ContentMode,
 } from './tool-types.js';
 
 import { validateRelationships } from './entity-management-tools.js';
@@ -496,4 +500,152 @@ export async function batchUpdate(
   }
 
   return output;
+}
+
+// =============================================================================
+// V2 Unified Entities Tool
+// =============================================================================
+
+/**
+ * Dependencies for entities tool 'get' action.
+ * Extends BatchOperationsDependencies with additional methods.
+ */
+export interface EntitiesDependencies extends BatchOperationsDependencies {
+  /** Get multiple entities by IDs */
+  getEntities: (ids: EntityId[]) => Promise<(Entity | null)[]>;
+}
+
+/**
+ * Unified entities tool handler.
+ * Routes to appropriate handler based on action.
+ */
+export async function handleEntities(
+  input: EntitiesInput,
+  deps: EntitiesDependencies
+): Promise<EntitiesOutput> {
+  const { action } = input;
+
+  switch (action) {
+    case 'get':
+      return handleEntitiesGet(input, deps);
+    case 'batch':
+      return handleEntitiesBatch(input, deps);
+    default:
+      throw new Error(`Invalid action: ${action}. Valid actions: get, batch`);
+  }
+}
+
+/**
+ * Handle 'get' action - fetch multiple entities by IDs.
+ */
+async function handleEntitiesGet(
+  input: EntitiesInput,
+  deps: EntitiesDependencies
+): Promise<EntitiesGetOutput> {
+  const { ids, fields, content_mode } = input;
+
+  if (!ids || ids.length === 0) {
+    throw new Error('ids is required for get action');
+  }
+
+  // Fetch all entities in parallel
+  const entityResults = await deps.getEntities(ids);
+
+  const entities: (EntityFull | Partial<EntityFull>)[] = [];
+  const notFound: EntityId[] = [];
+
+  for (let i = 0; i < ids.length; i++) {
+    const entity = entityResults[i];
+    if (entity) {
+      // Convert to EntityFull
+      const entityFull = await deps.toEntityFull(entity);
+
+      // Apply content_mode
+      const processedEntity = applyContentMode(entityFull, content_mode);
+
+      // Apply field filtering
+      const filteredEntity = filterEntityFields(processedEntity, fields);
+      entities.push(filteredEntity);
+    } else {
+      notFound.push(ids[i]);
+    }
+  }
+
+  const output: EntitiesGetOutput = {
+    entities,
+    count: entities.length,
+  };
+
+  if (notFound.length > 0) {
+    output.not_found = notFound;
+  }
+
+  return output;
+}
+
+/**
+ * Handle 'batch' action - perform batch operations.
+ * Delegates to existing batchUpdate function.
+ */
+async function handleEntitiesBatch(
+  input: EntitiesInput,
+  deps: EntitiesDependencies
+): Promise<BatchUpdateOutput> {
+  const { ops, options } = input;
+
+  if (!ops || ops.length === 0) {
+    throw new Error('ops is required for batch action');
+  }
+
+  // Delegate to existing batchUpdate
+  return batchUpdate({ ops, options }, deps);
+}
+
+/**
+ * Apply content_mode to entity.
+ */
+function applyContentMode(
+  entity: EntityFull,
+  contentMode?: ContentMode
+): EntityFull {
+  const mode = contentMode ?? 'none';
+
+  switch (mode) {
+    case 'none':
+      // Remove content field
+      const { content: _content, ...withoutContent } = entity;
+      return withoutContent as EntityFull;
+    case 'full':
+      // Return as-is
+      return entity;
+    case 'semantic':
+      // For now, return full content. Semantic extraction will be implemented in Phase 3.
+      return entity;
+    default:
+      return entity;
+  }
+}
+
+/**
+ * Filter entity fields based on requested fields.
+ */
+function filterEntityFields(
+  entity: EntityFull,
+  fields?: EntityField[]
+): EntityFull | Partial<EntityFull> {
+  if (!fields || fields.length === 0) {
+    return entity;
+  }
+
+  const filtered: Partial<EntityFull> = {};
+  for (const field of fields) {
+    if (field in entity) {
+      (filtered as Record<string, unknown>)[field] = (entity as unknown as Record<string, unknown>)[field];
+    }
+  }
+
+  // Always include id
+  filtered.id = entity.id;
+
+  return filtered;
 }

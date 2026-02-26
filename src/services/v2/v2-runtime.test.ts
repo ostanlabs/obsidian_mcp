@@ -777,6 +777,109 @@ This task involves implementing OAuth2 authentication.`;
     });
   });
 
+  describe('stripObsidianContent', () => {
+    it('should strip dataview queries from content', async () => {
+      const content = `---
+id: DOC-001
+title: Document with Dataview
+workstream: engineering
+status: Draft
+doc_type: spec
+---
+# Document
+
+Some actual content here.
+
+\`\`\`dataview
+TABLE file.name, status
+FROM "accomplishments"
+WHERE type = "task"
+\`\`\`
+
+More content after the query.`;
+      await fs.writeFile(
+        path.join(tempDir, config.entitiesFolder, 'documents', 'DOC-001 Document.md'),
+        content,
+        'utf-8'
+      );
+      await runtime.initialize();
+
+      const entity = await runtime.getEntity('DOC-001' as EntityId);
+      const full = await runtime.toEntityFull(entity!);
+
+      // Content should NOT contain the dataview query block
+      expect(full.content).not.toContain('```dataview');
+      expect(full.content).not.toContain('TABLE file.name');
+      // But should contain the actual content
+      expect(full.content).toContain('Some actual content here');
+      expect(full.content).toContain('More content after the query');
+    });
+
+    it('should strip dataviewjs queries from content', async () => {
+      const content = `---
+id: DOC-002
+title: Document with Dataviewjs
+workstream: engineering
+status: Draft
+doc_type: spec
+---
+# Document
+
+Content before.
+
+\`\`\`dataviewjs
+dv.table(["Name", "Status"], dv.pages().map(p => [p.file.name, p.status]))
+\`\`\`
+
+Content after.`;
+      await fs.writeFile(
+        path.join(tempDir, config.entitiesFolder, 'documents', 'DOC-002 Document.md'),
+        content,
+        'utf-8'
+      );
+      await runtime.initialize();
+
+      const entity = await runtime.getEntity('DOC-002' as EntityId);
+      const full = await runtime.toEntityFull(entity!);
+
+      expect(full.content).not.toContain('dataviewjs');
+      expect(full.content).not.toContain('dv.table');
+      expect(full.content).toContain('Content before');
+      expect(full.content).toContain('Content after');
+    });
+
+    it('should strip Obsidian comments from content', async () => {
+      const content = `---
+id: DOC-003
+title: Document with Comments
+workstream: engineering
+status: Draft
+doc_type: spec
+---
+# Document
+
+Visible content.
+
+%% This is a hidden comment that should not appear in API responses %%
+
+More visible content.`;
+      await fs.writeFile(
+        path.join(tempDir, config.entitiesFolder, 'documents', 'DOC-003 Document.md'),
+        content,
+        'utf-8'
+      );
+      await runtime.initialize();
+
+      const entity = await runtime.getEntity('DOC-003' as EntityId);
+      const full = await runtime.toEntityFull(entity!);
+
+      expect(full.content).not.toContain('%%');
+      expect(full.content).not.toContain('hidden comment');
+      expect(full.content).toContain('Visible content');
+      expect(full.content).toContain('More visible content');
+    });
+  });
+
   describe('getV2Runtime singleton', () => {
     it('should return same instance', async () => {
       const runtime1 = await getV2Runtime(config);
