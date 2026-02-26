@@ -73,7 +73,7 @@ describe('EntitySerializer', () => {
       expect(result).toContain('---');
       expect(result).toContain('id: M-001');
       expect(result).toContain('type: milestone');
-      expect(result).toContain('title: Q1 Release');
+      expect(result).toContain('title: "Q1 Release"'); // Title is always quoted
       expect(result).toContain('status: In Progress');
       expect(result).toContain('target_date: 2024-03-31');
       expect(result).toContain('owner: john');
