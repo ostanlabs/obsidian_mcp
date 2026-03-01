@@ -1,5 +1,10 @@
 # Obsidian Project Management MCP Server
 
+[![npm version](https://img.shields.io/npm/v/obsidian-accomplishments-mcp.svg)](https://www.npmjs.com/package/obsidian-accomplishments-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**Current Version:** v0.2.18
+
 An MCP (Model Context Protocol) server for AI-native project management in Obsidian. Enables AI assistants to create, update, search, and manage project entities stored as markdown files with automatic relationship tracking.
 
 ## What This Does
@@ -36,6 +41,8 @@ This MCP server lets AI assistants:
 ### Configure Your AI Assistant
 
 Add the MCP server to your AI client's configuration. No separate installation needed - npx handles it automatically.
+
+**Latest Version:** v0.2.18
 
 **For Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
@@ -157,11 +164,70 @@ Entities are organized by workstream. Values are automatically normalized:
 - `ux`, `ui`, `design` → `design`
 - `mktg`, `marketing` → `marketing`
 
+### MSRL Semantic Search
+
+Search your entire vault using hybrid vector + keyword search:
+
+**Features:**
+- **Hybrid search** - Combines vector embeddings with keyword matching
+- **Workspace-based** - Search across configured document collections
+- **Fast indexing** - Automatic index updates on document changes
+- **Relevance ranking** - Results ranked by semantic similarity
+
+**Tools:**
+- `search_docs` - Semantic search across workspace documents
+- `msrl_status` - Check semantic search index status
+
+**Example queries:**
+> "Search for all documents about authentication"
+> "Find references to database design decisions"
+> "Show me documentation about API endpoints"
+
+See [Semantic Search Guide](../obsidian_docs/docs/user-guide/semantic-search.md) for setup and advanced usage.
+
+### Archive Structure
+
+Archived entities are organized in a flat structure by type:
+
+```
+archive/
+├── milestones/
+├── stories/
+├── tasks/
+├── decisions/
+├── documents/
+└── features/
+```
+
+Entities with `status: archived` are automatically moved to the appropriate folder and excluded from canvas and searches.
+
+See [Archive Structure Guide](../obsidian_docs/docs/user-guide/archive-structure.md) for workflows.
+
+---
+
+## Migration Notes
+
+### Recent Schema Changes
+
+**Decision Relationships:**
+- ✅ Use `affects` field (new)
+- ❌ `blocks` field is deprecated
+
+**Story Workstreams:**
+- ✅ Use `workstream` field (new)
+- ❌ `effort` field is deprecated (auto-migrated)
+
+**CSS Classes:**
+- ✅ Use `canvas-workstream-*` pattern (new)
+- ❌ `canvas-effort-*` pattern is deprecated
+
+See [Entity Schemas](../obsidian_docs/docs/reference/entity-schemas.md) for complete schema documentation.
+
 ---
 
 ## Available Tools
 
-The MCP server provides 16 tools organized by function:
+The MCP server provides 27 tools organized by function:
 
 ### Entity Management
 
@@ -175,6 +241,9 @@ The MCP server provides 16 tools organized by function:
 | Tool | Description |
 |------|-------------|
 | `batch_update` | Bulk create/update/archive with `dry_run` preview and `include_entities` option |
+| `bulk_create_entities` | Create multiple entities in one operation with relationship setup |
+| `bulk_archive_entities` | Archive multiple entities with cascade option for children |
+| `bulk_restore_entities` | Restore multiple entities from archive with relationship preservation |
 
 ### Project Understanding
 
@@ -182,7 +251,9 @@ The MCP server provides 16 tools organized by function:
 |------|-------------|
 | `get_project_overview` | High-level project status with workstream filtering |
 | `analyze_project_state` | Deep analysis with blockers and recommendations |
-| `get_feature_coverage` | Feature implementation/documentation coverage with `summary_only` option |
+| `get_feature_coverage` | Feature implementation/test/documentation coverage with `summary_only` option |
+| `get_dependency_analysis` | Analyze dependency graphs, detect cycles, and identify critical paths |
+| `get_project_metrics` | Project-wide metrics and statistics (velocity, completion rates, etc.) |
 
 ### Search & Navigation
 
@@ -191,12 +262,21 @@ The MCP server provides 16 tools organized by function:
 | `search_entities` | Full-text search, list with filters, or navigate hierarchy |
 | `get_entity` | Get single entity with selective field retrieval |
 | `get_entities` | Bulk fetch multiple entities (~75% token savings) |
+| `search_docs` | Semantic search across workspace documents using MSRL hybrid search |
+| `msrl_status` | Check MSRL semantic search index status |
 
 ### Document Management
 
 | Tool | Description |
 |------|-------------|
 | `manage_documents` | Decision history, versioning, freshness checks |
+
+### Canvas Operations
+
+| Tool | Description |
+|------|-------------|
+| `populate_canvas` | Populate canvas from vault entities with layout options |
+| `refresh_canvas` | Refresh canvas layout and styling |
 
 ### Maintenance
 
@@ -205,7 +285,7 @@ The MCP server provides 16 tools organized by function:
 | `reconcile_relationships` | Fix inconsistent bidirectional relationships |
 | `get_schema` | Get entity schema information |
 
-### Utility Tools
+### Workspace Management
 
 | Tool | Description |
 |------|-------------|
@@ -214,6 +294,13 @@ The MCP server provides 16 tools organized by function:
 | `list_files` | List all markdown files in a workspace |
 | `read_docs` | Read a document from a workspace |
 | `update_doc` | Create, update, or delete documents in a workspace |
+
+### Utility Tools
+
+| Tool | Description |
+|------|-------------|
+| `validate_entity` | Validate entity data against schema with detailed error messages |
+| `export_project_data` | Export project data in various formats (JSON, CSV, Markdown) |
 
 ---
 
@@ -253,6 +340,28 @@ Once configured, ask your AI assistant things like:
 > "What workspaces are available?"
 > "List files in the docs workspace"
 > "Read the architecture document"
+
+---
+
+## Documentation
+
+For comprehensive documentation, see the [obsidian_docs](../obsidian_docs) repository:
+
+### Quick Links
+
+- **[Quick Start Guide](../obsidian_docs/guides/QUICK_START.md)** - Get started in 15 minutes
+- **[User Guide](../obsidian_docs/guides/USER_GUIDE.md)** - Complete workflows and features
+- **[MCP Tools Reference](../obsidian_docs/docs/reference/mcp-tools-complete.md)** - All 27 tools documented
+- **[Entity Schemas](../obsidian_docs/docs/reference/entity-schemas.md)** - Complete entity definitions
+
+### Feature Guides
+
+- [Semantic Search](../obsidian_docs/docs/user-guide/semantic-search.md) - MSRL hybrid search
+- [Feature Coverage](../obsidian_docs/docs/user-guide/feature-coverage.md) - Track implementation status
+- [Workspace Management](../obsidian_docs/docs/user-guide/workspace-management.md) - Multi-vault organization
+- [Relationship Reconciliation](../obsidian_docs/docs/user-guide/relationship-reconciliation.md) - Data integrity
+- [Archive Structure](../obsidian_docs/docs/user-guide/archive-structure.md) - Archive workflows
+- [Workstream Normalization](../obsidian_docs/docs/user-guide/workstream-normalization.md) - Auto-normalization
 
 ---
 
