@@ -37,12 +37,8 @@ import {
 } from './tools/index.js';
 
 // Entity tool implementations
-import {
-  createEntity,
-  updateEntity,
-  handleEntity,
-} from './tools/entity-management-tools.js';
-import { batchUpdate, handleEntities } from './tools/batch-operations-tools.js';
+import { handleEntity } from './tools/entity-management-tools.js';
+import { handleEntities } from './tools/batch-operations-tools.js';
 import {
   getProjectOverview,
   analyzeProjectState,
@@ -52,7 +48,6 @@ import {
 import {
   searchEntities,
   getEntity,
-  getEntities,
 } from './tools/search-navigation-tools.js';
 import { manageDocuments } from './tools/decision-document-tools.js';
 import { cleanupCompleted } from './tools/cleanup-tools.js';
@@ -317,27 +312,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         break;
       }
-      case 'create_entity': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await createEntity(args as any, runtime.getEntityManagementDeps());
-        break;
-      }
-      case 'update_entity': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await updateEntity(args as any, runtime.getEntityManagementDeps());
-        break;
-      }
 
       // Batch Operations
       case 'entities': {
         // V2 Unified entities tool - routes to get or batch based on action
         const runtime = await getOrCreateV2Runtime();
         result = await handleEntities(args as any, runtime.getEntitiesDeps());
-        break;
-      }
-      case 'batch_update': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await batchUpdate(args as any, runtime.getBatchOperationsDeps());
         break;
       }
 
@@ -381,16 +361,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         result = await searchEntities(args as any, deps);
-        break;
-      }
-      case 'get_entity': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await getEntity(args as any, runtime.getSearchNavigationDeps());
-        break;
-      }
-      case 'get_entities': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await getEntities(args as any, runtime.getSearchNavigationDeps());
         break;
       }
 
