@@ -97,7 +97,7 @@ RETURNS:
 // Entity tool definitions (non-prefixed)
 export const entityToolDefinitions: Tool[] = [
   // ==========================================================================
-  // V2 Unified Entity Tool (consolidates create_entity, get_entity, update_entity)
+  // V2 Unified Entity Tool
   // ==========================================================================
   {
     name: 'entity',
@@ -107,8 +107,6 @@ ACTIONS:
 - create: Create a new entity (milestone, story, task, decision, document, feature)
 - get: Retrieve an entity with optional field selection and content modes
 - update: Modify an entity's fields, status, relationships, or archive/restore
-
-USE THIS INSTEAD OF: create_entity, get_entity, update_entity (deprecated)
 
 FLAT SCHEMA: Entity fields are at the top level (no nested 'data' object).
 
@@ -262,227 +260,6 @@ EXAMPLES:
       required: ['action'],
     },
   },
-  // ==========================================================================
-  // Category 1: Entity Management (Legacy - use 'entity' tool instead)
-  // ==========================================================================
-  {
-    name: 'create_entity',
-    description: `⚠️ DEPRECATED: Use 'entity' tool with action: "create" instead.
-
-Create a new entity (milestone, story, task, decision, document, or feature).
-
-MIGRATION: Replace with entity tool:
-  OLD: { tool: "create_entity", type: "milestone", data: { title: "...", workstream: "..." } }
-  NEW: { tool: "entity", action: "create", type: "milestone", title: "...", workstream: "..." }
-
-REQUIRED RELATIONSHIPS (to prevent orphaned entities):
-- story: MUST have 'parent' (MilestoneId)
-- task: MUST have 'parent' (StoryId)
-- decision: MUST have at least one of 'affects' or 'blocks'`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        type: { type: 'string', enum: ['milestone', 'story', 'task', 'decision', 'document', 'feature'], description: 'Entity type to create' },
-        data: {
-          type: 'object',
-          properties: {
-            // Common fields
-            title: { type: 'string', description: 'Entity title' },
-            workstream: { type: 'string', description: 'Workstream identifier' },
-            status: { type: 'string', description: 'Initial status. Defaults vary by type.' },
-            // Hierarchy
-            parent: { type: 'string', description: 'Parent entity ID. REQUIRED for story (MilestoneId) and task (StoryId). Auto-syncs children on parent.' },
-            // Dependencies
-            depends_on: { type: 'array', items: { type: 'string' }, description: 'IDs of entities this depends on. Auto-syncs blocks on target.' },
-            blocks: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this entity blocks (auto-syncs depends_on on target)' },
-            // Implementation relationships
-            implements: { type: 'array', items: { type: 'string' }, description: 'Document/Feature IDs this entity implements (milestone, story). Auto-syncs implemented_by on target.' },
-            implemented_by: { type: 'array', items: { type: 'string' }, description: 'Milestone/Story IDs that implement this (document, feature). Auto-syncs implements on target.' },
-            // Shared fields (multiple entity types)
-            priority: { type: 'string', enum: ['P0', 'P1', 'P2', 'P3'], description: 'Priority level (milestone, story).' },
-            owner: { type: 'string', description: 'Owner/assignee (milestone, document).' },
-            // Milestone-specific fields
-            objective: { type: 'string', description: 'Milestone objective/goal (milestone only).' },
-            target_date: { type: 'string', description: 'Target completion date ISO format (milestone only).' },
-            // Story-specific fields
-            acceptance_criteria: { type: 'array', items: { type: 'string' }, description: 'Acceptance criteria list (story only).' },
-            outcome: { type: 'string', description: 'Expected outcome description (story only).' },
-            // Task-specific fields
-            goal: { type: 'string', description: 'Task goal/outcome (task only).' },
-            estimate_hrs: { type: 'number', description: 'Estimated hours (task only).' },
-            assignee: { type: 'string', description: 'Assigned person (task only).' },
-            description: { type: 'string', description: 'Task description (task only).' },
-            // Decision-specific fields
-            affects: { type: 'array', items: { type: 'string' }, description: 'Entity IDs affected by this decision (decision only). REQUIRED - at least one of affects/blocks must be set.' },
-            supersedes: { type: 'string', description: 'Decision ID this supersedes (decision only). Auto-syncs superseded_by on target.' },
-            // Document-specific fields
-            doc_type: { type: 'string', enum: ['spec', 'adr', 'guide', 'research'], description: 'Document type (document only).' },
-            previous_version: { type: 'string', description: 'Document ID of previous version (document only). Auto-syncs next_version on target.' },
-            // Feature-specific fields
-            user_story: { type: 'string', description: 'User story format: "As a... I want... so that..." (feature only).' },
-            tier: { type: 'string', enum: ['OSS', 'Premium'], description: 'Feature tier (feature only).' },
-            phase: { type: 'string', enum: ['MVP', 'V1', 'V2', 'Future'], description: 'Implementation phase (feature only).' },
-            documented_by: { type: 'array', items: { type: 'string' }, description: 'Document IDs that document this (feature only).' },
-            decided_by: { type: 'array', items: { type: 'string' }, description: 'Decision IDs that decided this (feature only).' },
-          },
-          required: ['title', 'workstream'],
-        },
-        options: {
-          type: 'object',
-          properties: {
-            canvas_source: { type: 'string', description: 'Canvas file path' },
-            add_to_canvas: { type: 'boolean', description: 'Whether to add to canvas' },
-          },
-        },
-      },
-      required: ['type', 'data'],
-    },
-  },
-  {
-    name: 'update_entity',
-    description: `⚠️ DEPRECATED: Use 'entity' tool with action: "update" instead.
-
-Update a single entity's fields, status, relationships, or archive/restore it.
-
-MIGRATION: Replace with entity tool:
-  OLD: { tool: "update_entity", id: "M-001", data: { title: "..." } }
-  NEW: { tool: "entity", action: "update", id: "M-001", title: "..." }
-
-FEATURES:
-- Returns minimal response by default (id, status, changes)
-- Use return_full=true to get full entity in response
-- All bidirectional relationships auto-sync
-- Can archive (archived: true) or restore (archived: false)`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Entity ID to update' },
-        data: { type: 'object', description: 'Fields to update. Relationship fields auto-sync their reverse.' },
-        add_dependencies: { type: 'array', items: { type: 'string' }, description: 'Dependencies to add (auto-syncs blocks on target). Milestone: MilestoneId|DecisionId. Story: any EntityId. Task: DecisionId only.' },
-        remove_dependencies: { type: 'array', items: { type: 'string' }, description: 'Dependencies to remove' },
-        add_to: {
-          type: 'object',
-          properties: {
-            implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs to add to implements (auto-syncs implemented_by on document)' },
-            blocks: { type: 'array', items: { type: 'string' }, description: 'Entity IDs to add to blocks (auto-syncs depends_on on target)' },
-          },
-          description: 'Add to array fields',
-        },
-        remove_from: {
-          type: 'object',
-          properties: {
-            implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs to remove from implements' },
-            blocks: { type: 'array', items: { type: 'string' }, description: 'Entity IDs to remove from blocks' },
-          },
-          description: 'Remove from array fields',
-        },
-        // Enhanced: Status update (replaces update_entity_status)
-        status: { type: 'string', description: 'New status (replaces update_entity_status)' },
-        status_note: { type: 'string', description: 'Optional note about the status change' },
-        cascade: { type: 'boolean', description: 'Whether to cascade status changes to related entities' },
-        // Enhanced: Archive/restore (replaces archive_entity, archive_milestone, restore_from_archive)
-        archived: { type: 'boolean', description: 'Set to true to archive, false to restore' },
-        archive_options: {
-          type: 'object',
-          properties: {
-            force: { type: 'boolean', description: 'Archive even if entity has children' },
-            cascade: { type: 'boolean', description: 'Archive children too (for milestones)' },
-            archive_folder: { type: 'string', description: 'Custom archive folder path' },
-            remove_from_canvas: { type: 'boolean', description: 'Remove from canvas when archiving' },
-            canvas_source: { type: 'string', description: 'Canvas file path' },
-          },
-          description: 'Options for archive operation',
-        },
-        restore_options: {
-          type: 'object',
-          properties: {
-            restore_children: { type: 'boolean', description: 'Restore children as well' },
-            add_to_canvas: { type: 'boolean', description: 'Add to canvas when restoring' },
-            canvas_source: { type: 'string', description: 'Canvas file path' },
-          },
-          description: 'Options for restore operation',
-        },
-        // Response control - minimize context window usage
-        return_full: { type: 'boolean', description: 'If true, returns full entity (legacy behavior). Default: false (minimal response).' },
-        return_fields: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Specific fields to return in response. Only used when return_full is false.',
-        },
-      },
-      required: ['id'],
-    },
-  },
-  // Category 2: Batch Operations (Legacy - use 'entities' tool instead)
-  {
-    name: 'batch_update',
-    description: `⚠️ DEPRECATED: Use 'entities' tool with action: "batch" instead.
-
-Perform multiple create/update/archive operations in a single call.
-
-MIGRATION: Replace with entities tool:
-  OLD: { tool: "batch_update", ops: [...] }
-  NEW: { tool: "entities", action: "batch", ops: [...] }
-
-FEATURES:
-- client_id for idempotency and cross-referencing within batch
-- dry_run: true to preview changes without executing
-- include_entities: true to get full entity data in response
-- Atomic mode: rollback all on any failure`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ops: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              client_id: { type: 'string', description: 'Client-provided ID for idempotency and cross-reference' },
-              op: { type: 'string', enum: ['create', 'update', 'archive'], description: 'Operation type' },
-              type: { type: 'string', enum: ['milestone', 'story', 'task', 'decision', 'document'], description: 'Entity type (required for create)' },
-              id: { type: 'string', description: 'Entity ID (required for update/archive)' },
-              payload: {
-                type: 'object',
-                properties: {
-                  title: { type: 'string', description: 'Entity title (for create)' },
-                  workstream: { type: 'string', description: 'Workstream (for create)' },
-                  parent: { type: 'string', description: 'Parent ID or client_id (auto-syncs children on parent)' },
-                  depends_on: { type: 'array', items: { type: 'string' }, description: 'Dependency IDs or client_ids (auto-syncs blocks on target)' },
-                  blocks: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this blocks (auto-syncs depends_on on target)' },
-                  implements: { type: 'array', items: { type: 'string' }, description: 'Document IDs this implements (auto-syncs implemented_by)' },
-                  supersedes: { type: 'string', description: 'Decision ID this supersedes (auto-syncs superseded_by)' },
-                  previous_version: { type: 'string', description: 'Document ID of previous version (auto-syncs next_version)' },
-                  status: { type: 'string', description: 'New status (for update)' },
-                  archived: { type: 'boolean', description: 'Archive flag (for archive)' },
-                  cascade: { type: 'boolean', description: 'Archive children too (for archive)' },
-                },
-                description: 'Operation payload',
-              },
-            },
-            required: ['client_id', 'op', 'payload'],
-          },
-          description: 'Array of operations to perform',
-        },
-        options: {
-          type: 'object',
-          properties: {
-            atomic: { type: 'boolean', description: 'Rollback all on any failure (default: false)' },
-            add_to_canvas: { type: 'boolean', description: 'Add created entities to canvas' },
-            canvas_source: { type: 'string', description: 'Canvas file path' },
-            include_entities: { type: 'boolean', description: 'Include full entity data in results (default: false). Eliminates need for follow-up get_entity calls.' },
-            fields: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Fields to include when include_entities is true. If not specified, returns all fields.',
-            },
-            dry_run: { type: 'boolean', description: 'Preview changes without executing them (default: false). Returns would_update array with predicted changes.' },
-          },
-        },
-      },
-      required: ['ops'],
-    },
-  },
-
   // Category 3: Project Understanding
   {
     name: 'get_project_overview',
@@ -652,88 +429,13 @@ EXAMPLES:
       },
     },
   },
-  {
-    name: 'get_entity',
-    description: `⚠️ DEPRECATED: Use 'entity' tool with action: "get" instead.
-
-Get a single entity by ID with selective field retrieval.
-
-MIGRATION: Replace with entity tool:
-  OLD: { tool: "get_entity", id: "M-001", fields: ["id", "title"] }
-  NEW: { tool: "entity", action: "get", id: "M-001", fields: ["id", "title"] }
-
-TIP: Specify fields to reduce response size. Default returns summary fields only.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Entity ID' },
-        fields: {
-          type: 'array',
-          items: {
-            type: 'string',
-            enum: [
-              'id', 'type', 'title', 'status', 'workstream', 'last_updated',
-              'parent', 'children_count', 'content', 'priority',
-              'dependencies', 'dependency_details', 'task_progress',
-              'acceptance_criteria', 'children', 'implementation_context'
-            ],
-          },
-          description: 'Fields to include in response. If not specified, returns summary fields.',
-        },
-      },
-      required: ['id'],
-    },
-  },
-  {
-    name: 'get_entities',
-    description: `⚠️ DEPRECATED: Use 'entities' tool with action: "get" instead.
-
-Get multiple entities in a single call (bulk fetch).
-
-MIGRATION: Replace with entities tool:
-  OLD: { tool: "get_entities", ids: ["M-001", "M-002"], fields: ["id", "title"] }
-  NEW: { tool: "entities", action: "get", ids: ["M-001", "M-002"], fields: ["id", "title"] }
-
-EFFICIENCY: ~75% token savings vs multiple get_entity calls.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ids: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Array of entity IDs to retrieve',
-        },
-        fields: {
-          type: 'array',
-          items: {
-            type: 'string',
-            enum: [
-              'id', 'type', 'title', 'status', 'workstream', 'last_updated',
-              'parent', 'children_count', 'content', 'priority',
-              'dependencies', 'dependency_details', 'task_progress',
-              'acceptance_criteria', 'children', 'implementation_context',
-              'documents', 'documented_by', 'implemented_by', 'decided_by',
-              'test_refs', 'user_story', 'tier', 'phase'
-            ],
-          },
-          description: 'Fields to include in response. If not specified, returns summary fields.',
-        },
-        // Pagination
-        max_items: { type: 'number', description: 'Maximum entities to return per page (default: 20, max: 200). Increase for larger context windows.' },
-        max_response_size: { type: 'number', description: 'Optional hard cap on response size in bytes.' },
-        continuation_token: { type: 'string', description: 'Token from previous response to get next page.' },
-      },
-      required: ['ids'],
-    },
-  },
-
   // Category 5: Decision & Document Management
   {
     name: 'manage_documents',
     description: `Manage documents and decisions: history, versioning, freshness checks.
 
 USE FOR: Decision history, document versioning, checking if docs are stale.
-NOT FOR: Creating documents (use create_entity), updating content (use update_entity).
+NOT FOR: Creating documents (use entity with action: "create"), updating content (use entity with action: "update").
 
 ACTIONS:
 - get_decision_history: List decisions, optionally filtered by topic/workstream
@@ -800,7 +502,7 @@ EXAMPLES:
     description: `Get entity schema information without reading source code.
 
 USE FOR: Learning field names, valid values, relationship definitions.
-NOT FOR: Getting entity data (use get_entity), searching (use search_entities).
+NOT FOR: Getting entity data (use entity with action: "get"), searching (use search_entities).
 
 RETURNS: Field definitions, types, valid enum values, relationship info, status transitions.
 
@@ -832,7 +534,7 @@ Also archives orphaned completed stories/tasks (those without a valid parent).
 Milestones, decisions, and documents are NOT archived.
 
 USE FOR: Archiving completed work, cleaning up the canvas, end-of-milestone housekeeping.
-NOT FOR: Archiving individual entities (use update_entity with archived: true).
+NOT FOR: Archiving individual entities (use entity with action: "update" and archived: true).
 
 FLOW:
 1. Find completed milestones (all or specific one)

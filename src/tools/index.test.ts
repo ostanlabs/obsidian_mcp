@@ -98,7 +98,8 @@ describe('Tools Index Integration Tests', () => {
       expect(toolNames).toContain('update_doc');
       expect(toolNames).toContain('list_workspaces');
       expect(toolNames).toContain('list_files');
-      expect(toolNames).toContain('create_entity');
+      expect(toolNames).toContain('entity'); // Consolidated tool
+      expect(toolNames).toContain('entities'); // Consolidated tool
       expect(toolNames).toContain('search_entities');
     });
 
@@ -122,31 +123,40 @@ describe('Tools Index Integration Tests', () => {
       expect(entityToolDefinitions.length).toBeGreaterThan(0);
 
       const toolNames = entityToolDefinitions.map((t) => t.name);
-      // Entity management (consolidated)
-      expect(toolNames).toContain('create_entity');
-      expect(toolNames).toContain('update_entity');
-      // Batch operations (consolidated)
-      expect(toolNames).toContain('batch_update');
+      // Entity management (consolidated into 'entity' tool)
+      expect(toolNames).toContain('entity');
+      // Batch operations (consolidated into 'entities' tool)
+      expect(toolNames).toContain('entities');
       // Project understanding
       expect(toolNames).toContain('get_project_overview');
       expect(toolNames).toContain('analyze_project_state');
-      // Search & navigation (consolidated)
+      // Search & navigation
       expect(toolNames).toContain('search_entities');
-      expect(toolNames).toContain('get_entity');
-      expect(toolNames).toContain('get_entities'); // Bulk retrieval
       // Decision & document (consolidated)
       expect(toolNames).toContain('manage_documents');
       // Feature coverage
       expect(toolNames).toContain('get_feature_coverage');
     });
 
-    it('should have batch_update with include_entities and fields options', () => {
-      const batchUpdateTool = entityToolDefinitions.find((t) => t.name === 'batch_update');
-      expect(batchUpdateTool).toBeDefined();
-      const options = batchUpdateTool?.inputSchema.properties?.options as { properties?: Record<string, unknown> } | undefined;
-      const optionsProps = options?.properties;
-      expect(optionsProps?.include_entities).toBeDefined();
-      expect(optionsProps?.fields).toBeDefined();
+    it('should have entity tool with action parameter for create/get/update', () => {
+      const entityTool = entityToolDefinitions.find((t) => t.name === 'entity');
+      expect(entityTool).toBeDefined();
+      const props = entityTool?.inputSchema.properties;
+      expect(props?.action).toBeDefined();
+      const actionProp = props?.action as { enum?: string[] };
+      expect(actionProp?.enum).toContain('create');
+      expect(actionProp?.enum).toContain('get');
+      expect(actionProp?.enum).toContain('update');
+    });
+
+    it('should have entities tool with action parameter for get/batch', () => {
+      const entitiesTool = entityToolDefinitions.find((t) => t.name === 'entities');
+      expect(entitiesTool).toBeDefined();
+      const props = entitiesTool?.inputSchema.properties;
+      expect(props?.action).toBeDefined();
+      const actionProp = props?.action as { enum?: string[] };
+      expect(actionProp?.enum).toContain('get');
+      expect(actionProp?.enum).toContain('batch');
     });
 
     it('should have get_feature_coverage with summary_only, feature_ids, and fields options', () => {
@@ -156,15 +166,6 @@ describe('Tools Index Integration Tests', () => {
       expect(props?.summary_only).toBeDefined();
       expect(props?.feature_ids).toBeDefined();
       expect(props?.fields).toBeDefined();
-    });
-
-    it('should have get_entities tool with ids and fields parameters', () => {
-      const getEntitiesTool = entityToolDefinitions.find((t) => t.name === 'get_entities');
-      expect(getEntitiesTool).toBeDefined();
-      const props = getEntitiesTool?.inputSchema.properties;
-      expect(props?.ids).toBeDefined();
-      expect(props?.fields).toBeDefined();
-      expect(getEntitiesTool?.inputSchema.required).toContain('ids');
     });
 
     it('should have valid inputSchema for each tool definition', () => {
