@@ -1,5 +1,16 @@
 #!/usr/bin/env node
 
+// Handle --version flag early, before any config loading
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const packageJson = require('../package.json');
+const VERSION = packageJson.version;
+
+if (process.argv.includes('--version') || process.argv.includes('-v')) {
+  console.log(`obsidian-accomplishments-mcp v${VERSION}`);
+  process.exit(0);
+}
+
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -517,7 +528,7 @@ async function main() {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('Obsidian Accomplishments MCP Server running on stdio');
+  console.error(`Obsidian Accomplishments MCP Server v${VERSION} running on stdio`);
 }
 
 main().catch((error) => {
