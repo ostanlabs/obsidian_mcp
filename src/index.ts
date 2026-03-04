@@ -11,6 +11,13 @@ if (process.argv.includes('--version') || process.argv.includes('-v')) {
   process.exit(0);
 }
 
+// Parse --semantic-search flag (default: false)
+// Usage: --semantic-search or --semantic-search=true/false
+const semanticSearchArg = process.argv.find(arg => arg.startsWith('--semantic-search'));
+const SEMANTIC_SEARCH_ENABLED = semanticSearchArg
+  ? (semanticSearchArg === '--semantic-search' || semanticSearchArg === '--semantic-search=true')
+  : false;
+
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -116,6 +123,71 @@ async function getOrCreateV2Runtime() {
 // MSRL engine instance (initialized on startup)
 let msrlEngine: MsrlEngineType | null = null;
 
+// MSRL initialization state tracking
+let msrlInitializationState: 'not_started' | 'downloading_model' | 'indexing' | 'ready' | 'failed' = 'not_started';
+let msrlInitializationError: Error | null = null;
+
+// MSRL indexing progress (updated during background initialization)
+let msrlIndexProgress: {
+  phase: string;
+  filesProcessed: number;
+  totalFiles: number;
+  chunksProcessed: number;
+  percent: number;
+  currentFile?: string;
+} | null = null;
+
+/**
+ * Wait for MSRL engine to be ready with timeout.
+ * Returns the engine if ready, or throws an error with retry guidance.
+ *
+ * @param maxWaitMs Maximum time to wait (default: 45s to stay under typical 60s client timeout)
+ * @param pollIntervalMs How often to check status (default: 500ms)
+ */
+async function waitForMsrlReady(maxWaitMs: number = 45000, pollIntervalMs: number = 500): Promise<MsrlEngineType> {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWaitMs) {
+    // Already ready
+    if (msrlEngine && msrlInitializationState === 'ready') {
+      return msrlEngine;
+    }
+
+    // Failed permanently
+    if (msrlInitializationState === 'failed') {
+      throw new MCPError(
+        `Semantic search initialization failed: ${msrlInitializationError?.message || 'Unknown error'}. ` +
+        'Try restarting the server or check the logs for details.',
+        'INITIALIZATION_FAILED',
+        503
+      );
+    }
+
+    // Not started (shouldn't happen if SEMANTIC_SEARCH_ENABLED)
+    if (msrlInitializationState === 'not_started') {
+      throw new MCPError(
+        'Semantic search is enabled but initialization has not started. This is unexpected.',
+        'INITIALIZATION_ERROR',
+        500
+      );
+    }
+
+    // In progress (downloading_model or indexing) - wait a bit and check again
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+  }
+
+  // Timeout reached while still initializing - provide detailed progress info
+  const progressInfo = msrlIndexProgress
+    ? ` Progress: ${msrlIndexProgress.percent}% (${msrlIndexProgress.filesProcessed}/${msrlIndexProgress.totalFiles} files, ${msrlIndexProgress.chunksProcessed} chunks)`
+    : '';
+  throw new MCPError(
+    `Semantic search is still initializing (${msrlInitializationState}).${progressInfo} ` +
+    'This is a temporary condition - please retry in a few moments.',
+    'INDEXING_IN_PROGRESS',
+    503
+  );
+}
+
 /**
  * Unified reindex function that rebuilds BOTH indexes:
  * 1. V2Runtime entity index (milestones, stories, tasks, etc.)
@@ -163,47 +235,65 @@ async function rebuildAllIndexes(options: {
     console.error(err.stack);
   }
 
-  // 2. Rebuild MSRL semantic index
-  try {
-    console.error('[rebuildAllIndexes] Rebuilding MSRL semantic index...');
-
-    // Create engine if not exists
-    // Engine will auto-download the ONNX model to ~/.msrl/models/bge-m3 if not present
-    if (!msrlEngine) {
-      console.error('[rebuildAllIndexes] MSRL engine not initialized, creating...');
-      msrlEngine = await MsrlEngine.create({
-        vaultRoot: config.vaultPath,
-      });
-    }
-
-    // Force reindex
-    await msrlEngine.reindex({ wait: true, force: true });
-    const status = msrlEngine.getStatus();
-
-    if (status.state === 'error') {
-      throw new Error(`MSRL reindex completed but state is 'error': ${JSON.stringify(status)}`);
-    }
-
-    if (status.stats.docs === 0) {
-      throw new Error(`MSRL reindex completed but 0 docs indexed. Status: ${JSON.stringify(status)}`);
-    }
-
+  // 2. Rebuild MSRL semantic index (only if semantic search is enabled)
+  if (!SEMANTIC_SEARCH_ENABLED) {
+    console.error('[rebuildAllIndexes] Semantic search disabled (--semantic-search not set), skipping MSRL');
     result.msrl = {
       success: true,
-      docs: status.stats.docs,
-      chunks: status.stats.leaves,
+      docs: 0,
+      chunks: 0,
     };
-    console.error(`[rebuildAllIndexes] MSRL: ${result.msrl.docs} docs, ${result.msrl.chunks} chunks indexed`);
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
-    result.msrl = {
-      success: false,
-      error: err.message,
-      stack: err.stack,
-    };
-    result.success = false;
-    console.error(`[rebuildAllIndexes] MSRL FAILED: ${err.message}`);
-    console.error(err.stack);
+  } else {
+    try {
+      console.error('[rebuildAllIndexes] Rebuilding MSRL semantic index...');
+
+      // Create engine if not exists
+      // Engine will auto-download the ONNX model to ~/.msrl/models/bge-m3 if not present
+      if (!msrlEngine) {
+        console.error('[rebuildAllIndexes] MSRL engine not initialized, creating...');
+
+        // Import the model path helper to log where models are stored
+        const { getDefaultModelPath } = await import('@ostanlabs/md-retriever');
+        const modelPath = getDefaultModelPath('bge-m3');
+        console.error(`[rebuildAllIndexes] MSRL model location: ${modelPath}`);
+        console.error('[rebuildAllIndexes] Model will be auto-downloaded if not present (~2.3 GB)');
+
+        msrlEngine = await MsrlEngine.create({
+          vaultRoot: config.vaultPath,
+        });
+
+        console.error(`[rebuildAllIndexes] MSRL engine initialized with model at: ${modelPath}`);
+      }
+
+      // Force reindex
+      await msrlEngine.reindex({ wait: true, force: true });
+      const status = msrlEngine.getStatus();
+
+      if (status.state === 'error') {
+        throw new Error(`MSRL reindex completed but state is 'error': ${JSON.stringify(status)}`);
+      }
+
+      if (status.stats.docs === 0) {
+        throw new Error(`MSRL reindex completed but 0 docs indexed. Status: ${JSON.stringify(status)}`);
+      }
+
+      result.msrl = {
+        success: true,
+        docs: status.stats.docs,
+        chunks: status.stats.leaves,
+      };
+      console.error(`[rebuildAllIndexes] MSRL: ${result.msrl.docs} docs, ${result.msrl.chunks} chunks indexed`);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      result.msrl = {
+        success: false,
+        error: err.message,
+        stack: err.stack,
+      };
+      result.success = false;
+      console.error(`[rebuildAllIndexes] MSRL FAILED: ${err.message}`);
+      console.error(err.stack);
+    }
   }
 
   const elapsed = Date.now() - startTime;
@@ -383,10 +473,52 @@ const getResourcesIndexDefinition = {
   },
 };
 
+/**
+ * Get tool definitions, filtering based on semantic search availability.
+ * When semantic search is disabled:
+ * - Remove 'semantic' parameter from search_entities tool
+ * - Remove MSRL-specific tools (search_docs, msrl_status)
+ */
+function getToolDefinitions() {
+  // Start with all tool definitions
+  let tools = [...allToolDefinitions, getResourcesIndexDefinition];
+
+  if (SEMANTIC_SEARCH_ENABLED) {
+    // Include MSRL tools when semantic search is enabled
+    tools = [...tools, ...msrlToolDefinitions];
+  } else {
+    // Modify search_entities to remove semantic parameter when disabled
+    tools = tools.map(tool => {
+      if (tool.name === 'search_entities') {
+        // Create a deep copy of the tool definition
+        const modifiedTool = JSON.parse(JSON.stringify(tool));
+
+        // Remove 'semantic' from properties
+        if (modifiedTool.inputSchema?.properties?.semantic) {
+          delete modifiedTool.inputSchema.properties.semantic;
+        }
+
+        // Update the description to remove semantic search mentions
+        modifiedTool.description = modifiedTool.description
+          .replace(/1\. SEMANTIC SEARCH:.*?\n/g, '')
+          .replace(/FOUR MODES:/g, 'THREE MODES:')
+          .replace(/, semantic: true.*?search\)/g, '')
+          .replace(/\(best for natural language queries\)\n/g, '')
+          .replace(/- "Find entities about.*?semantic: true\n/g, '');
+
+        return modifiedTool;
+      }
+      return tool;
+    });
+  }
+
+  return tools;
+}
+
 // Register tool list handler
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
-    tools: [...allToolDefinitions, getResourcesIndexDefinition, ...msrlToolDefinitions],
+    tools: getToolDefinitions(),
   };
 });
 
@@ -517,15 +649,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Search & Navigation
       case 'search_entities': {
+        const input = args as any;
+
+        // Reject semantic search requests when disabled
+        if (input.semantic && !SEMANTIC_SEARCH_ENABLED) {
+          throw new MCPError(
+            'Semantic search is not enabled. Start the server with --semantic-search flag to enable it.',
+            'FEATURE_DISABLED',
+            400
+          );
+        }
+
         const runtime = await getOrCreateV2Runtime();
         const deps = runtime.getSearchNavigationDeps();
 
-        // Inject semantic search if MSRL is available, with self-healing
-        if (msrlEngine) {
+        // Inject semantic search if enabled and requested
+        if (SEMANTIC_SEARCH_ENABLED && input.semantic) {
+          // Wait for MSRL to be ready (with timeout to avoid client timeout)
+          const engine = await waitForMsrlReady();
+
           deps.semanticSearch = async (query, options) => {
             // Wrap semantic search in self-healing to handle NOT_INDEXED errors
             return executeWithSelfHealing(async () => {
-              const queryResult = await msrlEngine!.query({
+              const queryResult = await engine.query({
                 query,
                 topK: options?.topK,
                 filters: options?.docUriPrefix ? { docUriPrefix: options.docUriPrefix } : undefined,
@@ -540,7 +686,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
-        result = await searchEntities(args as any, deps);
+        result = await searchEntities(input, deps);
         break;
       }
 
@@ -572,27 +718,76 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       }
 
-      // MSRL Semantic Search Tools
+      // MSRL Semantic Search Tools (only available when --semantic-search is enabled)
       case 'search_docs': {
-        if (!msrlEngine) {
-          // Try to initialize MSRL if not available
-          console.error('[search_docs] MSRL engine not initialized, attempting initialization...');
-          await rebuildAllIndexes({ crashOnError: false, source: 'search_docs:init' });
-          if (!msrlEngine) {
-            throw new MCPError('MSRL engine failed to initialize', 'NOT_INDEXED', 503);
-          }
+        if (!SEMANTIC_SEARCH_ENABLED) {
+          throw new MCPError(
+            'Semantic search is not enabled. Start the server with --semantic-search flag to enable it.',
+            'FEATURE_DISABLED',
+            400
+          );
         }
+        // Wait for MSRL to be ready (with timeout to avoid client timeout)
+        const engine = await waitForMsrlReady();
+
         // Use self-healing wrapper to auto-reindex on NOT_INDEXED error
         result = await executeWithSelfHealing(
-          () => handleSearchDocs(msrlEngine!, args as unknown as SearchDocsInput),
+          () => handleSearchDocs(engine, args as unknown as SearchDocsInput),
           'search_docs'
         );
         break;
       }
       case 'msrl_status': {
-        if (!msrlEngine) {
+        if (!SEMANTIC_SEARCH_ENABLED) {
+          throw new MCPError(
+            'Semantic search is not enabled. Start the server with --semantic-search flag to enable it.',
+            'FEATURE_DISABLED',
+            400
+          );
+        }
+        // For status, return current state even if not ready (useful for debugging)
+        if (msrlInitializationState === 'downloading_model') {
+          result = {
+            state: 'initializing',
+            initialization_state: msrlInitializationState,
+            snapshot_id: null,
+            snapshot_timestamp: null,
+            stats: { docs: 0, nodes: 0, leaves: 0, shards: 0 },
+            watcher: { enabled: false, debounce_ms: 0 },
+            message: 'MSRL is downloading the embedding model (~2.3 GB). Please wait.',
+          };
+        } else if (msrlInitializationState === 'indexing') {
+          result = {
+            state: 'initializing',
+            initialization_state: msrlInitializationState,
+            snapshot_id: null,
+            snapshot_timestamp: null,
+            stats: { docs: 0, nodes: 0, leaves: 0, shards: 0 },
+            watcher: { enabled: false, debounce_ms: 0 },
+            message: 'MSRL is building the semantic index. Please wait.',
+            progress: msrlIndexProgress ? {
+              phase: msrlIndexProgress.phase,
+              percent: msrlIndexProgress.percent,
+              files_processed: msrlIndexProgress.filesProcessed,
+              total_files: msrlIndexProgress.totalFiles,
+              chunks_processed: msrlIndexProgress.chunksProcessed,
+              current_file: msrlIndexProgress.currentFile,
+            } : undefined,
+          };
+        } else if (msrlInitializationState === 'failed') {
           result = {
             state: 'error',
+            initialization_state: msrlInitializationState,
+            snapshot_id: null,
+            snapshot_timestamp: null,
+            stats: { docs: 0, nodes: 0, leaves: 0, shards: 0 },
+            watcher: { enabled: false, debounce_ms: 0 },
+            error: msrlInitializationError?.message || 'MSRL initialization failed',
+          };
+        } else if (!msrlEngine) {
+          result = {
+            state: 'error',
+            initialization_state: msrlInitializationState,
             snapshot_id: null,
             snapshot_timestamp: null,
             stats: { docs: 0, nodes: 0, leaves: 0, shards: 0 },
@@ -644,17 +839,80 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // Start the server
 async function main() {
   console.error(`Obsidian Accomplishments MCP Server v${VERSION} starting...`);
+  console.error(`Semantic search: ${SEMANTIC_SEARCH_ENABLED ? 'ENABLED (--semantic-search)' : 'DISABLED (use --semantic-search to enable)'}`);
 
-  // Index all resources on startup
+  // Index all resources on startup (fast operation)
   await indexAllResources();
 
-  // Initialize BOTH indexes on startup (V2Runtime + MSRL)
-  // crashOnError=true means server will fail to start if indexes can't be built
-  await rebuildAllIndexes({ crashOnError: true, source: 'startup' });
+  // Build V2Runtime index BEFORE connecting (it's fast, ~100ms)
+  // This ensures entity tools work immediately
+  console.error('[startup] Building V2Runtime entity index...');
+  try {
+    const runtime = await getOrCreateV2Runtime();
+    const v2Result = await runtime.rebuildIndex();
+    console.error(`[startup] V2Runtime: ${v2Result.entities_after ?? 0} entities indexed in ${v2Result.duration_ms}ms`);
+  } catch (error) {
+    console.error('[startup] FATAL: V2Runtime index failed:', error);
+    throw error;
+  }
 
+  // Connect to MCP transport FIRST - don't make the client wait
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(`Obsidian Accomplishments MCP Server v${VERSION} running on stdio`);
+
+  // Initialize MSRL in the background (may use existing snapshot or build fresh)
+  // Tools will wait for initialization with timeout, returning retry guidance if not ready
+  if (SEMANTIC_SEARCH_ENABLED) {
+    console.error('[startup] Initializing MSRL semantic search in background...');
+    msrlInitializationState = 'downloading_model';
+
+    // Don't await - let it run in background
+    (async () => {
+      try {
+        const { getDefaultModelPath } = await import('@ostanlabs/md-retriever');
+        const modelPath = getDefaultModelPath('bge-m3');
+        console.error(`[startup] MSRL model location: ${modelPath}`);
+        console.error('[startup] Model will be auto-downloaded if not present (~2.3 GB)');
+
+        // MsrlEngine.create() will:
+        // 1. Download model if needed
+        // 2. Load existing snapshot from {vault}/.msrl/snapshots/ if available
+        // 3. Only build fresh index if no snapshot exists
+        // This means restarts are fast if a snapshot already exists!
+        msrlInitializationState = 'indexing'; // May be loading existing or building new
+
+        msrlEngine = await MsrlEngine.create({
+          vaultRoot: config.vaultPath,
+          watcher: { enabled: true, debounceMs: 1000 }, // Enable file watcher for live updates
+        });
+
+        const status = msrlEngine.getStatus();
+        console.error(`[startup] MSRL engine initialized with model at: ${modelPath}`);
+
+        if (status.snapshotId) {
+          // Loaded existing snapshot - fast path!
+          console.error(`[startup] MSRL: Loaded existing snapshot '${status.snapshotId}' from ${status.snapshotTimestamp}`);
+          console.error(`[startup] MSRL: ${status.stats.docs} docs, ${status.stats.leaves} chunks ready`);
+          console.error('[startup] MSRL file watcher enabled for live updates');
+        } else {
+          // Built fresh index
+          console.error(`[startup] MSRL: Built fresh index - ${status.stats.docs} docs, ${status.stats.leaves} chunks`);
+        }
+
+        // Mark as ready
+        msrlInitializationState = 'ready';
+        msrlIndexProgress = null;
+        console.error('[startup] Semantic search is now ready!');
+      } catch (error) {
+        // Mark as failed with error details
+        msrlInitializationState = 'failed';
+        msrlInitializationError = error instanceof Error ? error : new Error(String(error));
+        console.error('[startup] MSRL background initialization failed:', error);
+        // Don't crash - semantic search will return appropriate errors
+      }
+    })();
+  }
 }
 
 main().catch((error) => {

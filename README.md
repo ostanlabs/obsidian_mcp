@@ -61,10 +61,36 @@ Add the MCP server to your AI client's configuration. No separate installation n
 }
 ```
 
+**With Semantic Search (optional):**
+
+To enable hybrid vector + keyword search, add the `--semantic-search` flag:
+
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "npx",
+      "args": ["-y", "obsidian-accomplishments-mcp", "--semantic-search"],
+      "env": {
+        "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
+        "DEFAULT_CANVAS": "projects/main.canvas"
+      }
+    }
+  }
+}
+```
+
+> **Note:** Semantic search requires downloading the BGE-M3 ONNX model (~2.3 GB) on first use. The model is stored at `~/.msrl/models/bge-m3` and only needs to be downloaded once.
+
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `VAULT_PATH` | Yes | Absolute path to your Obsidian vault |
 | `DEFAULT_CANVAS` | No | Path to your main project canvas file (relative to vault) |
+
+| Flag | Description |
+|------|-------------|
+| `--semantic-search` | Enable hybrid vector + keyword search. Downloads model on first use (~2.3 GB). |
+| `--version`, `-v` | Print version and exit |
 
 ### Vault Structure
 
@@ -166,17 +192,23 @@ Entities are organized by workstream. Values are automatically normalized:
 
 ### MSRL Semantic Search
 
-Search your entire vault using hybrid vector + keyword search:
+Search your entire vault using hybrid vector + keyword search.
+
+> **Requires:** Start the server with `--semantic-search` flag to enable.
 
 **Features:**
 - **Hybrid search** - Combines vector embeddings with keyword matching
-- **Workspace-based** - Search across configured document collections
+- **Auto-download** - BGE-M3 model (~2.3 GB) downloaded automatically on first use
 - **Fast indexing** - Automatic index updates on document changes
 - **Relevance ranking** - Results ranked by semantic similarity
 
-**Tools:**
+**Model Storage:**
+The ONNX model is stored at `~/.msrl/models/bge-m3` and shared across all vaults.
+
+**Tools (only available with `--semantic-search`):**
 - `search_docs` - Semantic search across workspace documents
 - `msrl_status` - Check semantic search index status
+- `search_entities` with `semantic: true` - Hybrid search for entities
 
 **Example queries:**
 > "Search for all documents about authentication"
