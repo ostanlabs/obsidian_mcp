@@ -117,74 +117,161 @@ async function getOrCreateV2Runtime() {
 let msrlEngine: MsrlEngineType | null = null;
 
 /**
- * Initialize MSRL engine on startup (eager initialization).
- * This indexes the vault so the first search is fast.
- * Includes proactive health check to ensure index is ready.
+ * Unified reindex function that rebuilds BOTH indexes:
+ * 1. V2Runtime entity index (milestones, stories, tasks, etc.)
+ * 2. MSRL semantic search index (vector embeddings)
+ *
+ * If either fails, returns verbose error with full stack trace.
+ * Used on startup and for self-healing on index errors.
  */
-async function initializeMsrl(): Promise<void> {
+async function rebuildAllIndexes(options: {
+  crashOnError?: boolean;
+  source: string;
+}): Promise<{
+  success: boolean;
+  v2Runtime: { success: boolean; entities?: number; error?: string; stack?: string };
+  msrl: { success: boolean; docs?: number; chunks?: number; error?: string; stack?: string };
+}> {
+  const result = {
+    success: true,
+    v2Runtime: { success: false } as { success: boolean; entities?: number; error?: string; stack?: string },
+    msrl: { success: false } as { success: boolean; docs?: number; chunks?: number; error?: string; stack?: string },
+  };
+
+  console.error(`[rebuildAllIndexes] Starting unified reindex (source: ${options.source})...`);
+  const startTime = Date.now();
+
+  // 1. Rebuild V2Runtime entity index
   try {
-    console.error('Initializing MSRL semantic search engine...');
-    const startTime = Date.now();
+    console.error('[rebuildAllIndexes] Rebuilding V2Runtime entity index...');
+    const runtime = await getOrCreateV2Runtime();
+    const v2Result = await runtime.rebuildIndex();
+    result.v2Runtime = {
+      success: true,
+      entities: v2Result.entities_after ?? 0,
+    };
+    console.error(`[rebuildAllIndexes] V2Runtime: ${result.v2Runtime.entities} entities indexed`);
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    result.v2Runtime = {
+      success: false,
+      error: err.message,
+      stack: err.stack,
+    };
+    result.success = false;
+    console.error(`[rebuildAllIndexes] V2Runtime FAILED: ${err.message}`);
+    console.error(err.stack);
+  }
 
-    msrlEngine = await MsrlEngine.create({
-      vaultRoot: config.vaultPath,
-      // Use default config for other settings
-    });
+  // 2. Rebuild MSRL semantic index
+  try {
+    console.error('[rebuildAllIndexes] Rebuilding MSRL semantic index...');
 
-    // Option 2: Proactive health check - ensure index is actually ready
-    const status = msrlEngine.getStatus();
-    if (status.state === 'error' || status.stats.docs === 0) {
-      console.error('MSRL snapshot missing or empty, forcing reindex...');
-      await msrlEngine.reindex({ wait: true, force: true });
-      const newStatus = msrlEngine.getStatus();
-      console.error(
-        `MSRL reindex complete: ${newStatus.stats.docs} docs, ${newStatus.stats.leaves} chunks indexed`
-      );
+    // Create engine if not exists
+    if (!msrlEngine) {
+      console.error('[rebuildAllIndexes] MSRL engine not initialized, creating...');
+      msrlEngine = await MsrlEngine.create({
+        vaultRoot: config.vaultPath,
+      });
     }
 
-    const finalStatus = msrlEngine.getStatus();
-    const elapsed = Date.now() - startTime;
-    console.error(
-      `MSRL initialized in ${elapsed}ms: ${finalStatus.stats.docs} docs, ${finalStatus.stats.leaves} chunks indexed`
-    );
+    // Force reindex
+    await msrlEngine.reindex({ wait: true, force: true });
+    const status = msrlEngine.getStatus();
+
+    if (status.state === 'error') {
+      throw new Error(`MSRL reindex completed but state is 'error': ${JSON.stringify(status)}`);
+    }
+
+    if (status.stats.docs === 0) {
+      throw new Error(`MSRL reindex completed but 0 docs indexed. Status: ${JSON.stringify(status)}`);
+    }
+
+    result.msrl = {
+      success: true,
+      docs: status.stats.docs,
+      chunks: status.stats.leaves,
+    };
+    console.error(`[rebuildAllIndexes] MSRL: ${result.msrl.docs} docs, ${result.msrl.chunks} chunks indexed`);
   } catch (error) {
-    console.error('Failed to initialize MSRL:', error);
-    // Don't fail startup - MSRL tools will return errors if engine is null
+    const err = error instanceof Error ? error : new Error(String(error));
+    result.msrl = {
+      success: false,
+      error: err.message,
+      stack: err.stack,
+    };
+    result.success = false;
+    console.error(`[rebuildAllIndexes] MSRL FAILED: ${err.message}`);
+    console.error(err.stack);
   }
+
+  const elapsed = Date.now() - startTime;
+  console.error(`[rebuildAllIndexes] Completed in ${elapsed}ms. Success: ${result.success}`);
+
+  // Crash if requested and any index failed
+  if (options.crashOnError && !result.success) {
+    const errorMsg = [
+      `FATAL: Index rebuild failed (source: ${options.source})`,
+      `V2Runtime: ${result.v2Runtime.success ? 'OK' : `FAILED - ${result.v2Runtime.error}`}`,
+      result.v2Runtime.stack ? `  Stack: ${result.v2Runtime.stack}` : '',
+      `MSRL: ${result.msrl.success ? 'OK' : `FAILED - ${result.msrl.error}`}`,
+      result.msrl.stack ? `  Stack: ${result.msrl.stack}` : '',
+    ].filter(Boolean).join('\n');
+
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+
+  return result;
 }
 
 /**
- * Option 1: Self-healing helper for MSRL operations.
- * If the query fails due to NOT_INDEXED error, triggers reindex and retries once.
+ * Self-healing wrapper for operations that may fail due to index issues.
+ * On NOT_INDEXED or similar errors, triggers full reindex of both indexes and retries.
  */
-async function executeWithMsrlSelfHealing<T>(
+async function executeWithSelfHealing<T>(
   operation: () => Promise<T>,
   operationName: string
 ): Promise<T> {
   try {
     return await operation();
   } catch (error) {
-    // Check if this is a NOT_INDEXED error
-    const isNotIndexedError =
-      error instanceof Error &&
-      (error.message.includes('not indexed') || error.message.includes('NOT_INDEXED'));
+    const err = error instanceof Error ? error : new Error(String(error));
 
-    if (isNotIndexedError && msrlEngine) {
-      console.error(`MSRL ${operationName} failed with NOT_INDEXED, attempting self-heal via reindex...`);
-      try {
-        await msrlEngine.reindex({ wait: true, force: true });
-        const status = msrlEngine.getStatus();
-        console.error(
-          `MSRL self-heal reindex complete: ${status.stats.docs} docs, ${status.stats.leaves} chunks indexed`
+    // Check if this is an index-related error
+    const isIndexError =
+      err.message.includes('not indexed') ||
+      err.message.includes('NOT_INDEXED') ||
+      err.message.includes('reindex');
+
+    if (isIndexError) {
+      console.error(`[self-heal] ${operationName} failed with index error: ${err.message}`);
+      console.error(`[self-heal] Triggering full reindex of both indexes...`);
+
+      const reindexResult = await rebuildAllIndexes({
+        crashOnError: false,
+        source: `self-heal:${operationName}`
+      });
+
+      if (!reindexResult.success) {
+        // Return verbose error to client
+        throw new MCPError(
+          `Self-healing reindex failed.\n` +
+          `Original error: ${err.message}\n` +
+          `V2Runtime: ${reindexResult.v2Runtime.success ? 'OK' : reindexResult.v2Runtime.error}\n` +
+          `MSRL: ${reindexResult.msrl.success ? 'OK' : reindexResult.msrl.error}\n` +
+          `V2Runtime stack: ${reindexResult.v2Runtime.stack || 'N/A'}\n` +
+          `MSRL stack: ${reindexResult.msrl.stack || 'N/A'}`,
+          'INDEX_REBUILD_FAILED',
+          500
         );
-        // Retry the operation once after reindex
-        return await operation();
-      } catch (reindexError) {
-        console.error('MSRL self-heal reindex failed:', reindexError);
-        // Re-throw original error if reindex fails
-        throw error;
       }
+
+      console.error(`[self-heal] Reindex successful, retrying ${operationName}...`);
+      // Retry the operation once after successful reindex
+      return await operation();
     }
+
     throw error;
   }
 }
@@ -334,8 +421,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
 
       case 'rebuild_index': {
-        const runtime = await getOrCreateV2Runtime();
-        result = await runtime.rebuildIndex();
+        // Rebuild BOTH indexes (V2Runtime + MSRL)
+        const reindexResult = await rebuildAllIndexes({
+          crashOnError: false,
+          source: 'tool:rebuild_index'
+        });
+
+        if (!reindexResult.success) {
+          throw new MCPError(
+            `Index rebuild failed.\n` +
+            `V2Runtime: ${reindexResult.v2Runtime.success ? `OK (${reindexResult.v2Runtime.entities} entities)` : reindexResult.v2Runtime.error}\n` +
+            `MSRL: ${reindexResult.msrl.success ? `OK (${reindexResult.msrl.docs} docs)` : reindexResult.msrl.error}\n` +
+            (reindexResult.v2Runtime.stack ? `V2Runtime stack:\n${reindexResult.v2Runtime.stack}\n` : '') +
+            (reindexResult.msrl.stack ? `MSRL stack:\n${reindexResult.msrl.stack}` : ''),
+            'INDEX_REBUILD_FAILED',
+            500
+          );
+        }
+
+        result = {
+          content: {
+            v2Runtime: {
+              success: true,
+              entities: reindexResult.v2Runtime.entities,
+            },
+            msrl: {
+              success: true,
+              docs: reindexResult.msrl.docs,
+              chunks: reindexResult.msrl.chunks,
+            },
+          },
+          error: null,
+        };
         break;
       }
 
@@ -406,7 +523,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (msrlEngine) {
           deps.semanticSearch = async (query, options) => {
             // Wrap semantic search in self-healing to handle NOT_INDEXED errors
-            return executeWithMsrlSelfHealing(async () => {
+            return executeWithSelfHealing(async () => {
               const queryResult = await msrlEngine!.query({
                 query,
                 topK: options?.topK,
@@ -457,10 +574,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // MSRL Semantic Search Tools
       case 'search_docs': {
         if (!msrlEngine) {
-          throw new MCPError('MSRL engine not initialized', 'NOT_INDEXED', 503);
+          // Try to initialize MSRL if not available
+          console.error('[search_docs] MSRL engine not initialized, attempting initialization...');
+          await rebuildAllIndexes({ crashOnError: false, source: 'search_docs:init' });
+          if (!msrlEngine) {
+            throw new MCPError('MSRL engine failed to initialize', 'NOT_INDEXED', 503);
+          }
         }
         // Use self-healing wrapper to auto-reindex on NOT_INDEXED error
-        result = await executeWithMsrlSelfHealing(
+        result = await executeWithSelfHealing(
           () => handleSearchDocs(msrlEngine!, args as unknown as SearchDocsInput),
           'search_docs'
         );
@@ -520,11 +642,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // Start the server
 async function main() {
+  console.error(`Obsidian Accomplishments MCP Server v${VERSION} starting...`);
+
   // Index all resources on startup
   await indexAllResources();
 
-  // Initialize MSRL semantic search engine (eager initialization)
-  await initializeMsrl();
+  // Initialize BOTH indexes on startup (V2Runtime + MSRL)
+  // crashOnError=true means server will fail to start if indexes can't be built
+  await rebuildAllIndexes({ crashOnError: true, source: 'startup' });
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -532,7 +657,11 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('Fatal error:', error);
+  console.error('FATAL ERROR - Server failed to start:');
+  console.error(error);
+  if (error instanceof Error && error.stack) {
+    console.error('Stack trace:', error.stack);
+  }
   process.exit(1);
 });
 
