@@ -482,9 +482,10 @@ async function performSemanticSearch(
     docUriPrefix = typeToFolder[filters.type[0]];
   }
 
-  // Perform semantic search - get enough results for pagination
+  // Perform semantic search - cap at 50 (MSRL's maxTopK limit)
+  // This is sufficient since semantic search returns the most relevant results first
   const semanticResults = await deps.semanticSearch(query, {
-    topK: PAGINATION_DEFAULTS.MAX_ITEMS_LIMIT * 2,
+    topK: Math.min(50, PAGINATION_DEFAULTS.MAX_ITEMS_LIMIT * 2),
     docUriPrefix,
   });
 
