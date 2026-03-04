@@ -655,6 +655,21 @@ export interface BatchOpResult {
   };
   /** Entity data (when include_entities option is true) */
   entity?: Partial<EntityFull>;
+  /**
+   * True if the requested ID (from client_id) was already taken and a fallback ID was assigned.
+   * Only present on create operations where client_id matched the entity ID format.
+   */
+  id_conflict?: boolean;
+  /**
+   * The ID that was requested via client_id but could not be assigned due to conflict.
+   * Only present when id_conflict is true.
+   */
+  requested_id?: EntityId;
+  /**
+   * True if this operation was a duplicate within the same batch (idempotent hit).
+   * The entity was already created by an earlier operation in this batch with the same client_id.
+   */
+  idempotent?: boolean;
 }
 
 /** Output for batch_update tool */

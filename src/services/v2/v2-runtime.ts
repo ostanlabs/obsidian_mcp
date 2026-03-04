@@ -2222,8 +2222,37 @@ export class V2Runtime {
   /** Get batch operations dependencies */
   getBatchOperationsDeps(): BatchOperationsDependencies {
     return {
-      createEntity: async (type, data) => {
-        const id = await this.getNextId(type);
+      createEntity: async (type, data, requestedId) => {
+        let id: EntityId;
+        let reservation: { id: EntityId; conflict: boolean; requestedId?: EntityId } | undefined;
+
+        if (requestedId) {
+          // ID reservation requested - check if the slot is available
+          const slotTaken = this.entityExists(requestedId);
+
+          if (slotTaken) {
+            // Slot is taken - fall back to auto-assignment
+            id = await this.getNextId(type);
+            reservation = {
+              id,
+              conflict: true,
+              requestedId,
+            };
+            console.error(`[V2Runtime] ID reservation conflict: ${requestedId} already exists, assigned ${id} instead`);
+          } else {
+            // Slot is free - use the requested ID
+            id = requestedId;
+            reservation = {
+              id,
+              conflict: false,
+            };
+            console.error(`[V2Runtime] ID reservation successful: ${requestedId}`);
+          }
+        } else {
+          // No reservation requested - use auto-assignment
+          id = await this.getNextId(type);
+        }
+
         const now = this.getCurrentTimestamp() as ISODateTime;
         // Build entity with all required base fields plus type-specific data
         const baseFields = {
@@ -2239,7 +2268,7 @@ export class V2Runtime {
         // Merge with provided data (which should include title, workstream, status, etc.)
         const entity = { ...baseFields, ...data } as unknown as Entity;
         await this.writeEntity(entity);
-        return entity;
+        return { entity, reservation };
       },
       getEntity: (id) => this.getEntity(id),
       entityExists: (id) => this.entityExists(id),
