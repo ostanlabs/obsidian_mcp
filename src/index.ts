@@ -2,6 +2,8 @@
 
 // Handle --version flag early, before any config loading
 import { createRequire } from 'module';
+import * as os from 'os';
+import * as path from 'path';
 const require = createRequire(import.meta.url);
 const packageJson = require('../package.json');
 const VERSION = packageJson.version;
@@ -26,6 +28,9 @@ import { listFilesRecursive, readFile } from './utils/file-utils.js';
 import { MCPError } from './models/types.js';
 import { getV2Runtime } from './services/v2/v2-runtime.js';
 import type { V2Config } from './models/v2-types.js';
+
+// Default MSRL model path
+const DEFAULT_MSRL_MODEL_PATH = path.join(os.homedir(), '.msrl', 'models', 'bge-m3');
 
 // MSRL imports
 import { MsrlEngine } from '@ostanlabs/md-retriever';
@@ -172,6 +177,9 @@ async function rebuildAllIndexes(options: {
       console.error('[rebuildAllIndexes] MSRL engine not initialized, creating...');
       msrlEngine = await MsrlEngine.create({
         vaultRoot: config.vaultPath,
+        embedding: {
+          modelPath: DEFAULT_MSRL_MODEL_PATH,
+        },
       });
     }
 
