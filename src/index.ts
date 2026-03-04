@@ -108,6 +108,7 @@ let msrlEngine: MsrlEngineType | null = null;
 /**
  * Initialize MSRL engine on startup (eager initialization).
  * This indexes the vault so the first search is fast.
+ * Includes proactive health check to ensure index is ready.
  */
 async function initializeMsrl(): Promise<void> {
   try {
@@ -119,14 +120,61 @@ async function initializeMsrl(): Promise<void> {
       // Use default config for other settings
     });
 
+    // Option 2: Proactive health check - ensure index is actually ready
     const status = msrlEngine.getStatus();
+    if (status.state === 'error' || status.stats.docs === 0) {
+      console.error('MSRL snapshot missing or empty, forcing reindex...');
+      await msrlEngine.reindex({ wait: true, force: true });
+      const newStatus = msrlEngine.getStatus();
+      console.error(
+        `MSRL reindex complete: ${newStatus.stats.docs} docs, ${newStatus.stats.leaves} chunks indexed`
+      );
+    }
+
+    const finalStatus = msrlEngine.getStatus();
     const elapsed = Date.now() - startTime;
     console.error(
-      `MSRL initialized in ${elapsed}ms: ${status.stats.docs} docs, ${status.stats.leaves} chunks indexed`
+      `MSRL initialized in ${elapsed}ms: ${finalStatus.stats.docs} docs, ${finalStatus.stats.leaves} chunks indexed`
     );
   } catch (error) {
     console.error('Failed to initialize MSRL:', error);
     // Don't fail startup - MSRL tools will return errors if engine is null
+  }
+}
+
+/**
+ * Option 1: Self-healing helper for MSRL operations.
+ * If the query fails due to NOT_INDEXED error, triggers reindex and retries once.
+ */
+async function executeWithMsrlSelfHealing<T>(
+  operation: () => Promise<T>,
+  operationName: string
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    // Check if this is a NOT_INDEXED error
+    const isNotIndexedError =
+      error instanceof Error &&
+      (error.message.includes('not indexed') || error.message.includes('NOT_INDEXED'));
+
+    if (isNotIndexedError && msrlEngine) {
+      console.error(`MSRL ${operationName} failed with NOT_INDEXED, attempting self-heal via reindex...`);
+      try {
+        await msrlEngine.reindex({ wait: true, force: true });
+        const status = msrlEngine.getStatus();
+        console.error(
+          `MSRL self-heal reindex complete: ${status.stats.docs} docs, ${status.stats.leaves} chunks indexed`
+        );
+        // Retry the operation once after reindex
+        return await operation();
+      } catch (reindexError) {
+        console.error('MSRL self-heal reindex failed:', reindexError);
+        // Re-throw original error if reindex fails
+        throw error;
+      }
+    }
+    throw error;
   }
 }
 
@@ -343,20 +391,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const runtime = await getOrCreateV2Runtime();
         const deps = runtime.getSearchNavigationDeps();
 
-        // Inject semantic search if MSRL is available
+        // Inject semantic search if MSRL is available, with self-healing
         if (msrlEngine) {
           deps.semanticSearch = async (query, options) => {
-            const queryResult = await msrlEngine!.query({
-              query,
-              topK: options?.topK,
-              filters: options?.docUriPrefix ? { docUriPrefix: options.docUriPrefix } : undefined,
-            });
-            return queryResult.results.map((r) => ({
-              docUri: r.docUri,
-              headingPath: r.headingPath,
-              excerpt: r.excerpt,
-              score: r.score,
-            }));
+            // Wrap semantic search in self-healing to handle NOT_INDEXED errors
+            return executeWithMsrlSelfHealing(async () => {
+              const queryResult = await msrlEngine!.query({
+                query,
+                topK: options?.topK,
+                filters: options?.docUriPrefix ? { docUriPrefix: options.docUriPrefix } : undefined,
+              });
+              return queryResult.results.map((r) => ({
+                docUri: r.docUri,
+                headingPath: r.headingPath,
+                excerpt: r.excerpt,
+                score: r.score,
+              }));
+            }, 'search_entities.semanticSearch');
           };
         }
 
@@ -397,7 +448,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!msrlEngine) {
           throw new MCPError('MSRL engine not initialized', 'NOT_INDEXED', 503);
         }
-        result = await handleSearchDocs(msrlEngine, args as unknown as SearchDocsInput);
+        // Use self-healing wrapper to auto-reindex on NOT_INDEXED error
+        result = await executeWithMsrlSelfHealing(
+          () => handleSearchDocs(msrlEngine!, args as unknown as SearchDocsInput),
+          'search_docs'
+        );
         break;
       }
       case 'msrl_status': {
