@@ -32,6 +32,54 @@ import type {
 import { validateRelationships } from './entity-management-tools.js';
 
 // =============================================================================
+// ID Reservation Helpers
+// =============================================================================
+
+/**
+ * ID prefix patterns for each entity type.
+ * Used to determine if a client_id is a valid ID reservation request.
+ */
+const ID_PATTERNS: Record<EntityType, RegExp> = {
+  task: /^T-\d+$/,
+  story: /^S-\d+$/,
+  milestone: /^M-\d+$/,
+  decision: /^DEC-\d+$/,
+  feature: /^F-\d+$/,
+  document: /^DOC-\d+$/,
+};
+
+/**
+ * Check if a client_id is a valid ID format for the given entity type.
+ * Used to determine if the client_id should be treated as an ID reservation request.
+ *
+ * @param clientId - The client-provided ID
+ * @param entityType - The type of entity being created
+ * @returns true if clientId matches the ID pattern for entityType
+ *
+ * @example
+ * isValidIdForType('T-691', 'task') // true
+ * isValidIdForType('S-001', 'task') // false (wrong type)
+ * isValidIdForType('my-ref', 'task') // false (not an ID format)
+ */
+export function isValidIdForType(clientId: string, entityType: EntityType): boolean {
+  const pattern = ID_PATTERNS[entityType];
+  if (!pattern) return false;
+  return pattern.test(clientId);
+}
+
+/**
+ * Result of an ID reservation attempt.
+ */
+export interface IdReservationResult {
+  /** The ID to use for the entity */
+  id: EntityId;
+  /** True if the requested ID was already taken */
+  conflict: boolean;
+  /** The originally requested ID (only set if conflict is true) */
+  requestedId?: EntityId;
+}
+
+// =============================================================================
 // Dependencies Interface
 // =============================================================================
 
@@ -40,8 +88,18 @@ import { validateRelationships } from './entity-management-tools.js';
  * Injected at runtime to allow for testing and flexibility.
  */
 export interface BatchOperationsDependencies {
-  /** Create a new entity */
-  createEntity: (type: EntityType, data: Record<string, unknown>) => Promise<Entity>;
+  /**
+   * Create a new entity with optional ID reservation.
+   * @param type - Entity type to create
+   * @param data - Entity data (title, workstream, etc.)
+   * @param requestedId - Optional: ID to reserve if available. If the ID is taken, falls back to auto-assignment.
+   * @returns The created entity and reservation result
+   */
+  createEntity: (
+    type: EntityType,
+    data: Record<string, unknown>,
+    requestedId?: EntityId
+  ) => Promise<{ entity: Entity; reservation?: IdReservationResult }>;
 
   /** Get entity by ID */
   getEntity: (id: EntityId) => Promise<Entity | null>;
@@ -203,10 +261,13 @@ export async function batchUpdate(
   for (const op of ops) {
     // Skip duplicate client_ids (idempotency)
     if (processedClientIds.has(op.client_id)) {
-      // Return existing result if we have one
+      // Return existing result with idempotent flag
       const existingResult = results.find(r => r.client_id === op.client_id);
       if (existingResult) {
-        results.push({ ...existingResult });
+        results.push({
+          ...existingResult,
+          idempotent: true,
+        });
       }
       continue;
     }
@@ -226,6 +287,11 @@ export async function batchUpdate(
           // Resolve client_ids in payload
           const resolvedPayload = resolveClientIds(op.payload);
 
+          // Check if client_id is a valid ID reservation request for this entity type
+          const requestedId = isValidIdForType(op.client_id, op.type)
+            ? (op.client_id as EntityId)
+            : undefined;
+
           if (dryRun) {
             // In dry_run mode, just preview what would be created
             const preview: DryRunPreview = {
@@ -243,8 +309,8 @@ export async function batchUpdate(
             break;
           }
 
-          // Create the entity
-          const entity = await deps.createEntity(op.type, resolvedPayload);
+          // Create the entity with optional ID reservation
+          const { entity, reservation } = await deps.createEntity(op.type, resolvedPayload, requestedId);
 
           // Store mapping for cross-references
           clientIdMap.set(op.client_id, entity.id);
@@ -260,6 +326,12 @@ export async function batchUpdate(
             status: 'ok',
             id: entity.id,
           };
+
+          // Add ID reservation conflict info if applicable
+          if (reservation?.conflict) {
+            createResult.id_conflict = true;
+            createResult.requested_id = reservation.requestedId;
+          }
 
           // Include entity data if requested
           if (includeEntities) {
