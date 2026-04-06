@@ -641,3 +641,84 @@ describe('validateRelationships', () => {
   });
 });
 
+// =============================================================================
+// Colon Sanitization Tests
+// =============================================================================
+
+import { sanitizeEntityData } from './entity-management-tools.js';
+
+describe('sanitizeEntityData', () => {
+  it('should replace colons with dashes in string values', () => {
+    const data = {
+      workstream: 'backend:api',
+      description: 'Some:Value:Here',
+    };
+
+    const result = sanitizeEntityData(data);
+
+    expect(result.workstream).toBe('backend-api');
+    expect(result.description).toBe('Some-Value-Here');
+  });
+
+  it('should not modify id field', () => {
+    const data = {
+      id: 'T-001',
+      title: 'Task with: colon',
+    };
+
+    const result = sanitizeEntityData(data);
+
+    expect(result.id).toBe('T-001');
+    expect(result.title).toBe('Task with: colon'); // title is exempt
+  });
+
+  it('should not modify date fields', () => {
+    const data = {
+      created_at: '2024-01-15T10:30:00Z',
+      updated_at: '2024-01-15T10:30:00Z',
+      decided_on: '2024-01-15T10:30:00Z',
+    };
+
+    const result = sanitizeEntityData(data);
+
+    expect(result.created_at).toBe('2024-01-15T10:30:00Z');
+    expect(result.updated_at).toBe('2024-01-15T10:30:00Z');
+    expect(result.decided_on).toBe('2024-01-15T10:30:00Z');
+  });
+
+  it('should sanitize array elements', () => {
+    const data = {
+      tags: ['tag:one', 'tag:two', 'normal'],
+    };
+
+    const result = sanitizeEntityData(data);
+
+    expect(result.tags).toEqual(['tag-one', 'tag-two', 'normal']);
+  });
+
+  it('should pass through non-string values unchanged', () => {
+    const data = {
+      count: 42,
+      enabled: true,
+      nested: { key: 'value' },
+    };
+
+    const result = sanitizeEntityData(data);
+
+    expect(result.count).toBe(42);
+    expect(result.enabled).toBe(true);
+    expect(result.nested).toEqual({ key: 'value' });
+  });
+
+  it('should not modify values without colons', () => {
+    const data = {
+      workstream: 'backend',
+      description: 'No colons here',
+    };
+
+    const result = sanitizeEntityData(data);
+
+    expect(result.workstream).toBe('backend');
+    expect(result.description).toBe('No colons here');
+  });
+});

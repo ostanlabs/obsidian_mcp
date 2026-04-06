@@ -58,7 +58,13 @@ export interface ReadDocsResult {
 
 export const readDocsDefinition = {
   name: 'read_docs',
-  description: `Read a document from a workspace with optional outline and search modes.
+  description: `Read a markdown document from an Obsidian vault WORKSPACE.
+
+NOT FOR ENTITIES: This tool reads files from user-configured workspaces, NOT project entities.
+For entity content (milestones, stories, tasks, decisions, documents, features), use:
+  entities(action="get", ids=["DOC-082"], content_mode="full")
+
+Use list_workspaces to see available workspaces and their paths.
 
 MODES:
 - Default: Returns full content (with pagination)
@@ -66,18 +72,14 @@ MODES:
 - search="query": Returns only sections matching the query - targeted retrieval
 
 Parameters:
-- workspace: Name of the workspace (use list_workspaces to see available workspaces)
-- doc_name: Filename of the document (with or without .md extension)
+- workspace: Workspace name from list_workspaces (e.g., "docs", "specs")
+- doc_name: Filename in that workspace (with or without .md extension)
 - outline_only: If true, returns only headings (no content)
 - search: Query to filter content - returns only matching sections
-- from_line: Optional start line (0-based, inclusive)
-- to_line: Optional end line (0-based, exclusive)
-- max_lines: Maximum lines to return (default: 100, max: 1000). Alternative to to_line.
 
 EXAMPLES:
 - Get outline: { workspace: "docs", doc_name: "api-spec", outline_only: true }
 - Search: { workspace: "docs", doc_name: "api-spec", search: "authentication" }
-- Full read: { workspace: "docs", doc_name: "api-spec" }
 
 Pagination: Default max_lines is 100. Use pagination.next_from_line to continue reading.`,
   inputSchema: {

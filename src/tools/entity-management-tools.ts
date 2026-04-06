@@ -82,6 +82,51 @@ const DEPENDS_ON_VALID_TYPES: Record<EntityType, EntityType[]> = {
 };
 
 // =============================================================================
+// Frontmatter Sanitization
+// =============================================================================
+
+/** Fields to skip during colon sanitization (preserve their format) */
+const SKIP_SANITIZATION_FIELDS = ['id', 'title', 'created_at', 'updated_at', 'decided_on', 'target_date'];
+
+/**
+ * Sanitize entity data to prevent YAML frontmatter issues.
+ * Replaces colons with dashes in string values (except for exempt fields).
+ * Logs a warning when a colon is replaced.
+ */
+export function sanitizeEntityData(data: Record<string, unknown>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === 'string' && !SKIP_SANITIZATION_FIELDS.includes(key)) {
+      if (value.includes(':')) {
+        const sanitizedValue = value.replace(/:/g, '-');
+        console.warn(
+          `[sanitize] Replacing colon with dash in field '${key}': "${value}" → "${sanitizedValue}"`
+        );
+        sanitized[key] = sanitizedValue;
+      } else {
+        sanitized[key] = value;
+      }
+    } else if (Array.isArray(value)) {
+      sanitized[key] = value.map(v => {
+        if (typeof v === 'string' && !SKIP_SANITIZATION_FIELDS.includes(key) && v.includes(':')) {
+          const sanitizedValue = v.replace(/:/g, '-');
+          console.warn(
+            `[sanitize] Replacing colon with dash in array field '${key}': "${v}" → "${sanitizedValue}"`
+          );
+          return sanitizedValue;
+        }
+        return v;
+      });
+    } else {
+      sanitized[key] = value;
+    }
+  }
+
+  return sanitized;
+}
+
+// =============================================================================
 // Dependencies (injected)
 // =============================================================================
 
@@ -489,7 +534,10 @@ export async function createEntity(
   input: CreateEntityInput,
   deps: EntityManagementDependencies
 ): Promise<CreateEntityOutput> {
-  const { type, data, options } = input;
+  const { type, options } = input;
+
+  // Sanitize data to prevent YAML issues (replace colons with dashes)
+  const data = sanitizeEntityData(input.data) as CreateEntityInput['data'];
 
   // Validate that entity won't be orphaned (stories/tasks must have parent)
   const orphanErrors = validateNotOrphaned(type, data);
@@ -808,15 +856,18 @@ export async function updateEntity(
   let workstreamNormalizationMessage: string | undefined;
 
   if (data) {
+    // Sanitize data to prevent YAML issues (replace colons with dashes)
+    const sanitizedData = sanitizeEntityData(data);
+
     // Normalize workstream if being updated
-    if (data.workstream !== undefined) {
-      const workstreamResult = workstreamNormalizer.normalize(data.workstream as string);
-      data.workstream = workstreamResult.normalized;
+    if (sanitizedData.workstream !== undefined) {
+      const workstreamResult = workstreamNormalizer.normalize(sanitizedData.workstream as string);
+      sanitizedData.workstream = workstreamResult.normalized;
       if (workstreamResult.wasNormalized && workstreamResult.message) {
         workstreamNormalizationMessage = workstreamResult.message;
       }
     }
-    Object.assign(updatedEntity, data);
+    Object.assign(updatedEntity, sanitizedData);
   }
 
   // Handle status update with validation and cascade

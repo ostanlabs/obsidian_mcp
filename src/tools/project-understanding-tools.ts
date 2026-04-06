@@ -34,6 +34,7 @@ import type {
 
 import { PAGINATION_DEFAULTS } from './tool-types.js';
 import { applyPagination } from './pagination-utils.js';
+import { runValidationForOverview } from './validation-tools.js';
 
 // =============================================================================
 // Dependencies Interface
@@ -50,6 +51,9 @@ export interface ProjectUnderstandingDependencies {
     workstream?: Workstream;
     types?: EntityType[];
   }) => Promise<Entity[]>;
+
+  /** Get a single entity by ID */
+  getEntity: (id: EntityId) => Promise<Entity | null>;
 
   /** Convert entity to summary */
   toEntitySummary: (entity: Entity) => EntitySummary;
@@ -80,7 +84,7 @@ export async function getProjectOverview(
   input: GetProjectOverviewInput,
   deps: ProjectUnderstandingDependencies
 ): Promise<GetProjectOverviewOutput> {
-  const { include_completed, include_archived, workstream: filterWorkstream, group_by, max_items, max_response_size, continuation_token } = input;
+  const { include_completed, include_archived, workstream: filterWorkstream, group_by, max_items, max_response_size, continuation_token, include_validation = true } = input;
   const paginationInput: PaginationInput = { max_items, max_response_size, continuation_token };
 
   // Always fetch completed entities so we can count them for the summary.
@@ -188,6 +192,16 @@ export async function getProjectOverview(
       include_completed ?? false,
       paginationInput
     );
+  }
+
+  // Run validation if requested (default: true)
+  if (include_validation) {
+    const validationSummary = await runValidationForOverview(entities, {
+      getEntity: deps.getEntity,
+    });
+    if (validationSummary) {
+      result.validation = validationSummary;
+    }
   }
 
   return result;

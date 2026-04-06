@@ -50,6 +50,7 @@ import type { ProjectUnderstandingDependencies, FeatureCoverageDependencies } fr
 import type { SearchNavigationDependencies } from '../../tools/search-navigation-tools.js';
 import type { DecisionDocumentDependencies } from '../../tools/decision-document-tools.js';
 import type { CleanupDependencies } from '../../tools/cleanup-tools.js';
+import type { ValidationDependencies } from '../../tools/validation-tools.js';
 import type { EntitySummary, EntityFull, Workstream } from '../../tools/tool-types.js';
 
 import { getConfig } from '../../utils/config.js';
@@ -2325,10 +2326,23 @@ export class V2Runtime {
   getProjectUnderstandingDeps(): ProjectUnderstandingDependencies {
     return {
       getAllEntities: (options) => this.getAllEntities(options),
+      getEntity: (id) => this.getEntity(id),
       toEntitySummary: (entity) => this.toEntitySummary(entity),
       getBlockers: (id) => this.getDependencies(id),
       getBlockedBy: (id) => this.getDependents(id),
       getLastUpdated: (entity) => new Date(entity.updated_at || entity.created_at || Date.now()),
+    };
+  }
+
+  /** Get validation dependencies */
+  getValidationDeps(): ValidationDependencies {
+    return {
+      getAllEntities: (options) => this.getAllEntities({
+        includeCompleted: options.includeCompleted,
+        includeArchived: options.includeArchived,
+        workstream: options.workstream as Workstream | undefined,
+      }),
+      getEntity: (id) => this.getEntity(id),
     };
   }
 

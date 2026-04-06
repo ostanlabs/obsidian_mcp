@@ -268,6 +268,9 @@ EXAMPLES:
 USE FOR: Dashboard views, overall progress checks, workstream summaries.
 NOT FOR: Searching entities (use search_entities), feature coverage (use get_feature_coverage).
 
+INCLUDES: Validation summary (by default) showing relationship rule violations. Set include_validation: false to exclude.
+For full validation details, use validate_project tool.
+
 PAGINATION: Default max_items is 20 (conservative for smaller contexts). Agents with larger context windows can increase max_items up to 200.
 
 EXAMPLES:
@@ -284,6 +287,8 @@ EXAMPLES:
         workstream: { type: 'string', description: 'Filter by specific workstream. When specified, returns detailed workstream info in workstream_detail field.' },
         // Enhanced: grouping (from get_workstream_status)
         group_by: { type: 'string', enum: ['status', 'type', 'priority'], description: 'Group entities by this field (only used when workstream is specified)' },
+        // Validation
+        include_validation: { type: 'boolean', description: 'Include validation summary in response. Default: true. Set false to reduce response size.' },
         // Pagination
         max_items: { type: 'number', description: 'Maximum items per group (default: 20, max: 200). Increase for larger context windows.' },
         max_response_size: { type: 'number', description: 'Optional hard cap on response size in bytes.' },
@@ -358,11 +363,56 @@ EXAMPLES:
       },
     },
   },
+  {
+    name: 'validate_project',
+    description: `Validate project entities against relationship rules.
+
+USE FOR: Finding missing relationships, ensuring entities are properly connected.
+NOT FOR: General status checks (use get_project_overview).
+
+NOTE: get_project_overview includes a validation summary by default. Use this tool for full details.
+
+RULES CHECKED:
+- DOC_REQUIRES_IMPLEMENTATION: Documents should have implementing stories/tasks
+- DEC_REQUIRES_DOCUMENT: Decisions should block at least one document
+- FEATURE_REQUIRES_COVERAGE: Features should have implementation or documentation coverage
+
+EXAMPLES:
+- "Are there any orphaned documents?" → {}
+- "Validate backend workstream" → { workstream: "backend" }
+- "Check only decisions" → { entity_types: ["decision"] }`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        rules: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Filter to specific rule IDs. If not specified, checks all enabled rules.',
+        },
+        workstream: { type: 'string', description: 'Filter by workstream' },
+        entity_types: {
+          type: 'array',
+          items: { type: 'string', enum: ['milestone', 'story', 'task', 'decision', 'document', 'feature'] },
+          description: 'Filter to specific entity types',
+        },
+        include_archived: { type: 'boolean', description: 'Include archived entities. Default: false.' },
+        severity_filter: {
+          type: 'string',
+          enum: ['all', 'error', 'warning'],
+          description: 'Filter violations by severity. Default: all.',
+        },
+      },
+    },
+  },
 
   // Category 4: Search & Navigation
   {
     name: 'search_entities',
-    description: `Search, list, or navigate entities with filtering and pagination.
+    description: `Search, list, or navigate structured project entities in the user's Obsidian vault.
+
+ENTITIES vs WORKSPACES: This tool searches project entities (milestones, stories, tasks, decisions, documents, features).
+To read FULL CONTENT of an entity, use the 'entities' tool with action="get" and content_mode="full", NOT read_docs.
+The read_docs tool is for workspace documents, not for entities returned by search_entities.
 
 USE FOR: Finding entities by text, listing by type/status, traversing relationships.
 NOT FOR: Coverage analysis (use get_feature_coverage), project overview (use get_project_overview).
@@ -373,19 +423,17 @@ FOUR MODES:
 3. NAVIGATE: from_id="M-001", direction="down" - Traverse hierarchy
 4. LIST: filters={type:["task"], status:["Blocked"]} - List matching entities
 
+WORKFLOW: search_entities → entities(action="get", ids=[...], content_mode="full") to get full content
+
 EXCLUDED BY DEFAULT: Archived milestones/stories/tasks and superseded decisions/documents are excluded. Features are always included. Use filters.archived=true to include archived, or filters.include_superseded=true for superseded.
 
-PAGINATION: Default max_items is 20 (conservative for smaller contexts). Agents with larger context windows can increase max_items up to 200. Legacy limit/offset still supported but max_items/continuation_token preferred.
+PAGINATION: Default max_items is 20 (conservative for smaller contexts). Agents with larger context windows can increase max_items up to 200.
 
 EXAMPLES:
-- "Find entities about authentication implementation" → query: "authentication implementation", semantic: true
-- "Find entities mentioning 'authentication'" → query: "authentication"
+- "Find entities about authentication" → query: "authentication", semantic: true
 - "List all blocked tasks" → filters: {type: ["task"], status: ["Blocked"]}
 - "Get children of milestone M-001" → from_id: "M-001", direction: "down"
-- "Find orphaned stories" → filters: {type: ["story"], orphaned: true}
-- "Find all orphaned entities" → filters: {orphaned: true}
-- "Find invalid decisions" → filters: {type: ["decision"], valid: false}
-- "List all valid decisions" → filters: {type: ["decision"], valid: true}`,
+- "Find orphaned stories" → filters: {type: ["story"], orphaned: true}`,
     inputSchema: {
       type: 'object',
       properties: {

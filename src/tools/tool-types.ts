@@ -701,6 +701,8 @@ export interface GetProjectOverviewInput extends PaginationInput {
   workstream?: Workstream;
   // Enhanced: grouping (from get_workstream_status)
   group_by?: 'status' | 'type' | 'priority';
+  /** Include validation in response. Default: true */
+  include_validation?: boolean;
 }
 
 export interface GetProjectOverviewOutput {
@@ -739,6 +741,8 @@ export interface GetProjectOverviewOutput {
   };
   /** Overall pagination info for the response */
   pagination?: PaginationOutput;
+  /** Validation summary (included by default, use include_validation: false to exclude) */
+  validation?: ValidationSummary;
 }
 
 // get_workstream_status (DEPRECATED - use get_project_overview with workstream filter)
@@ -1311,4 +1315,71 @@ export interface CleanupCompletedOutput {
   };
   /** Present if operation completed (or dry_run) */
   summary?: CleanupSummary;
+}
+
+// =============================================================================
+// Category 9: Project Validation
+// =============================================================================
+
+export type ValidationSeverity = 'error' | 'warning';
+
+export interface ValidationRule {
+  id: string;
+  name: string;
+  description: string;
+  severity: ValidationSeverity;
+  entity_type: EntityType;
+  enabled: boolean;
+}
+
+export interface ValidationViolation {
+  rule_id: string;
+  rule_name: string;
+  severity: ValidationSeverity;
+  entity_id: EntityId;
+  entity_type: EntityType;
+  entity_title: string;
+  workstream: string;
+  message: string;
+  suggestion: string;
+}
+
+export interface ValidateProjectInput {
+  /** Rule IDs to check. If not specified, runs all enabled rules. */
+  rules?: string[];
+  /** Filter validation to specific workstream. */
+  workstream?: string;
+  /** Entity types to validate. Default: all applicable types. */
+  entity_types?: EntityType[];
+  /** Include archived entities in validation. Default: false. */
+  include_archived?: boolean;
+  /** Filter violations by severity. Default: all. */
+  severity_filter?: 'error' | 'warning' | 'all';
+}
+
+export interface ValidateProjectOutput {
+  total_entities_checked: number;
+  total_violations: number;
+  violations_by_severity: {
+    error: number;
+    warning: number;
+  };
+  violations_by_rule: Record<string, number>;
+  violations: ValidationViolation[];
+  rules_checked: ValidationRule[];
+  summary: string;
+}
+
+/** Validation summary for inclusion in project overview */
+export interface ValidationSummary {
+  total_violations: number;
+  violations_by_severity: {
+    error: number;
+    warning: number;
+  };
+  violations_by_rule: Record<string, number>;
+  /** Top N violations (limited to avoid bloating response) */
+  top_violations: ValidationViolation[];
+  /** Hint for agent to call validate_project for full details */
+  has_more: boolean;
 }

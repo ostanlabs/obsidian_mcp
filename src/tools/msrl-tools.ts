@@ -13,10 +13,24 @@ import type { MsrlEngine, EngineQueryParams, QueryResult, IndexStatus } from '@o
 // Types
 // =============================================================================
 
+export interface ExcerptBudgetInput {
+  /** Total character budget across all results (default: 8000) */
+  total_chars?: number;
+  /** Minimum characters per result (default: 200) */
+  min_per_result?: number;
+  /** Maximum characters per result (default: 3000) */
+  max_per_result?: number;
+}
+
 export interface SearchDocsInput {
   query: string;
   top_k?: number;
+  /** @deprecated Use excerpt_budget.max_per_result instead */
   max_excerpt_chars?: number;
+  /** Minimum score threshold (default: 0.2, floor: 0.2). Results below this are dropped. */
+  min_score?: number;
+  /** Excerpt budget for relevance-weighted allocation */
+  excerpt_budget?: ExcerptBudgetInput;
   filters?: {
     doc_uri_prefix?: string;
     doc_uris?: string[];
@@ -31,12 +45,29 @@ export interface SearchDocsOutput {
     heading_path: string;
     excerpt: string;
     excerpt_truncated: boolean;
+    /** Full content length available (before truncation) */
+    content_length: number;
+    /** Budget allocated to this result based on relevance score */
+    allocated_budget: number;
     score?: number;
     vector_score?: number;
     bm25_score?: number;
   }>;
   total_results: number;
   took_ms: number;
+  /** Budget metadata for agent feedback */
+  budget_info: {
+    /** Total characters returned across all excerpts */
+    total_chars_returned: number;
+    /** Total characters available (before truncation) */
+    total_chars_available: number;
+    /** True if any excerpts were truncated due to budget */
+    budget_exhausted: boolean;
+    /** Results dropped because score < min_score */
+    results_dropped_by_score: number;
+    /** Results dropped because limit was exceeded */
+    results_dropped_by_limit: number;
+  };
 }
 
 export interface MsrlStatusOutput {
@@ -53,6 +84,14 @@ export interface MsrlStatusOutput {
     enabled: boolean;
     debounce_ms: number;
   };
+  build_progress?: {
+    phase: 'scanning' | 'parsing' | 'embedding' | 'indexing' | 'complete';
+    files_processed: number;
+    total_files: number;
+    chunks_processed: number;
+    percent: number;
+    current_file?: string;
+  };
 }
 
 // =============================================================================
@@ -68,13 +107,20 @@ NOT FOR: Listing all files (use list_files), getting specific entity (use get_en
 
 FEATURES:
 - Hybrid search: combines semantic (vector) and keyword (BM25) matching
-- Returns relevant excerpts with context
-- Filters by document path or heading
+- Relevance-weighted excerpt budgets: higher-scoring results get more context
+- Score threshold filtering: drop low-relevance results
+- Budget feedback: know when excerpts were truncated to adjust queries
+
+BUDGET BEHAVIOR:
+- Total budget (default 8000 chars) is distributed across results based on relevance scores
+- Higher-scoring results get proportionally more characters
+- If a result's content is smaller than its allocation, surplus is redistributed
+- budget_info in response tells you if content was truncated
 
 EXAMPLES:
 - "Search for authentication implementation details"
-- "Find documents about Kubernetes deployment"
-- "Search for API design decisions"`,
+- "Find documents about Kubernetes deployment" with min_score: 0.5 to filter noise
+- Large budget search: excerpt_budget: { total_chars: 15000 }`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -86,9 +132,31 @@ EXAMPLES:
         type: 'number',
         description: 'Maximum number of results to return (default: 10, max: 100)',
       },
+      min_score: {
+        type: 'number',
+        description: 'Minimum relevance score threshold (default: 0.2, floor: 0.2). Results below this are dropped.',
+      },
+      excerpt_budget: {
+        type: 'object',
+        description: 'Configure how character budget is allocated across results',
+        properties: {
+          total_chars: {
+            type: 'number',
+            description: 'Total character budget across all results (default: 8000)',
+          },
+          min_per_result: {
+            type: 'number',
+            description: 'Minimum characters per result (default: 200)',
+          },
+          max_per_result: {
+            type: 'number',
+            description: 'Maximum characters per result (default: 3000)',
+          },
+        },
+      },
       max_excerpt_chars: {
         type: 'number',
-        description: 'Maximum characters per excerpt (default: 500, max: 2000)',
+        description: '[DEPRECATED] Use excerpt_budget.max_per_result instead',
       },
       filters: {
         type: 'object',
@@ -153,13 +221,21 @@ export async function handleSearchDocs(
   engine: MsrlEngine,
   input: SearchDocsInput
 ): Promise<SearchDocsOutput> {
-  const { query, top_k, max_excerpt_chars, filters, include_scores } = input;
+  const { query, top_k, max_excerpt_chars, min_score, excerpt_budget, filters, include_scores } = input;
 
   // Map snake_case to camelCase for engine
   const engineParams: EngineQueryParams = {
     query,
     topK: top_k,
     maxExcerptChars: max_excerpt_chars,
+    minScore: min_score,
+    excerptBudget: excerpt_budget
+      ? {
+          totalChars: excerpt_budget.total_chars,
+          minPerResult: excerpt_budget.min_per_result,
+          maxPerResult: excerpt_budget.max_per_result,
+        }
+      : undefined,
     filters: filters
       ? {
           docUriPrefix: filters.doc_uri_prefix,
@@ -183,6 +259,8 @@ export async function handleSearchDocs(
       heading_path: r.headingPath,
       excerpt: r.excerpt,
       excerpt_truncated: r.excerptTruncated,
+      content_length: r.contentLength,
+      allocated_budget: r.allocatedBudget,
       ...(include_scores && {
         score: r.score,
         vector_score: r.vectorScore,
@@ -191,6 +269,13 @@ export async function handleSearchDocs(
     })),
     total_results: result.results.length,
     took_ms: result.meta.tookMs,
+    budget_info: {
+      total_chars_returned: result.meta.totalCharsReturned,
+      total_chars_available: result.meta.totalCharsAvailable,
+      budget_exhausted: result.meta.budgetExhausted,
+      results_dropped_by_score: result.meta.resultsDroppedByScore,
+      results_dropped_by_limit: result.meta.resultsDroppedByLimit,
+    },
   };
 }
 
@@ -201,7 +286,7 @@ export async function handleSearchDocs(
 export function handleMsrlStatus(engine: MsrlEngine): MsrlStatusOutput {
   const status: IndexStatus = engine.getStatus();
 
-  return {
+  const output: MsrlStatusOutput = {
     state: status.state,
     snapshot_id: status.snapshotId,
     snapshot_timestamp: status.snapshotTimestamp,
@@ -211,4 +296,18 @@ export function handleMsrlStatus(engine: MsrlEngine): MsrlStatusOutput {
       debounce_ms: status.watcher.debounceMs,
     },
   };
+
+  // Include build progress if present
+  if (status.buildProgress) {
+    output.build_progress = {
+      phase: status.buildProgress.phase,
+      files_processed: status.buildProgress.filesProcessed,
+      total_files: status.buildProgress.totalFiles,
+      chunks_processed: status.buildProgress.chunksProcessed,
+      percent: status.buildProgress.percent,
+      current_file: status.buildProgress.currentFile,
+    };
+  }
+
+  return output;
 }

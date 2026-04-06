@@ -69,6 +69,7 @@ import {
 } from './tools/search-navigation-tools.js';
 import { manageDocuments } from './tools/decision-document-tools.js';
 import { cleanupCompleted } from './tools/cleanup-tools.js';
+import { validateProject } from './tools/validation-tools.js';
 
 // Create server instance
 const server = new Server(
@@ -644,6 +645,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'get_feature_coverage': {
         const runtime = await getOrCreateV2Runtime();
         result = await getFeatureCoverage(args as any, runtime.getFeatureCoverageDeps());
+        break;
+      }
+      case 'validate_project': {
+        const runtime = await getOrCreateV2Runtime();
+        result = await validateProject(args as any, runtime.getValidationDeps());
         break;
       }
 
