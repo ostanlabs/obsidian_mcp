@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/obsidian-accomplishments-mcp.svg)](https://www.npmjs.com/package/obsidian-accomplishments-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Current Version:** v0.2.18
+**Current Version:** v0.2.21
 
 An MCP (Model Context Protocol) server for AI-native project management in Obsidian. Enables AI assistants to create, update, search, and manage project entities stored as markdown files with automatic relationship tracking.
 
@@ -42,7 +42,7 @@ This MCP server lets AI assistants:
 
 Add the MCP server to your AI client's configuration. No separate installation needed - npx handles it automatically.
 
-**Latest Version:** v0.2.18
+**Latest Version:** v0.2.21
 
 **For Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
 
