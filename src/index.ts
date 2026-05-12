@@ -7,7 +7,7 @@ const packageJson = require('../package.json');
 const VERSION = packageJson.version;
 
 if (process.argv.includes('--version') || process.argv.includes('-v')) {
-  console.log(`obsidian-accomplishments-mcp v${VERSION}`);
+  console.log(`obsidian-mcp v${VERSION}`);
   process.exit(0);
 }
 

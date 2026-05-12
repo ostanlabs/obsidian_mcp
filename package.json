@@ -1,12 +1,12 @@
 {
-  "name": "obsidian-accomplishments-mcp",
-  "version": "0.2.21",
+  "name": "@ostanlabs/obsidian-mcp",
+  "version": "0.2.22",
   "description": "Model Context Protocol (MCP) server for managing structured project accomplishments in Obsidian",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "obsidian-accomplishments-mcp": "dist/index.js"
+    "obsidian-mcp": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",

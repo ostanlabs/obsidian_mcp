@@ -1,6 +1,6 @@
 # Obsidian Project Management MCP Server
 
-[![npm version](https://img.shields.io/npm/v/obsidian-accomplishments-mcp.svg)](https://www.npmjs.com/package/obsidian-accomplishments-mcp)
+[![npm version](https://img.shields.io/npm/v/@ostanlabs/obsidian-mcp.svg)](https://www.npmjs.com/package/@ostanlabs/obsidian-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Current Version:** v0.2.21
@@ -51,7 +51,7 @@ Add the MCP server to your AI client's configuration. No separate installation n
   "mcpServers": {
     "obsidian": {
       "command": "npx",
-      "args": ["-y", "obsidian-accomplishments-mcp"],
+      "args": ["-y", "@ostanlabs/obsidian-mcp"],
       "env": {
         "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
         "DEFAULT_CANVAS": "projects/main.canvas"
@@ -70,7 +70,7 @@ To enable hybrid vector + keyword search, add the `--semantic-search` flag:
   "mcpServers": {
     "obsidian": {
       "command": "npx",
-      "args": ["-y", "obsidian-accomplishments-mcp", "--semantic-search"],
+      "args": ["-y", "@ostanlabs/obsidian-mcp", "--semantic-search"],
       "env": {
         "VAULT_PATH": "/absolute/path/to/your/obsidian/vault",
         "DEFAULT_CANVAS": "projects/main.canvas"
