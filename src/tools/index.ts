@@ -139,7 +139,7 @@ REQUIRED RELATIONSHIPS (for create):
         enables: { type: 'array', items: { type: 'string' }, description: 'Entity IDs this enables' },
         affects: { type: 'array', items: { type: 'string' }, description: 'Entity IDs affected (for decisions)' },
         status: { type: 'string', description: 'Entity status' },
-        priority: { type: 'string', enum: ['P0', 'P1', 'P2', 'P3'], description: 'Priority level' },
+        priority: { type: 'string', enum: ['Critical', 'High', 'Medium', 'Low'], description: 'Priority level (Critical | High | Medium | Low)' },
         target_date: { type: 'string', description: 'Target date (ISO format)' },
         owner: { type: 'string', description: 'Owner/assignee' },
         outcome: { type: 'string', description: 'Expected outcome (story)' },

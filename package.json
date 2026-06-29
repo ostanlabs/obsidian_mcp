@@ -1,6 +1,6 @@
 {
   "name": "@ostanlabs/obsidian-mcp",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "description": "Model Context Protocol (MCP) server for managing structured project accomplishments in Obsidian",
   "type": "module",
   "main": "dist/index.js",

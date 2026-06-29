@@ -520,6 +520,20 @@ export function validateRelationships(
     }
   }
 
+  // Validate priority field (milestone and story only — Task has no priority)
+  if (type === 'milestone' || type === 'story') {
+    const priority = data.priority as string | undefined;
+    if (priority !== undefined) {
+      const validPriorities = ['Critical', 'High', 'Medium', 'Low'];
+      if (!validPriorities.includes(priority)) {
+        errors.push({
+          field: 'priority',
+          message: `Invalid priority '${priority}'. Valid values: ${validPriorities.join(', ')}`,
+        });
+      }
+    }
+  }
+
   return errors;
 }
 
@@ -681,6 +695,7 @@ function buildTask(
     status: (data.status as string) || 'Not Started',
     parent: data.parent as StoryId,
     goal: (data.goal as string) || '',
+    depends_on: (data.depends_on as EntityId[]) || [],
     estimate_hrs: data.estimate_hrs as number,
     actual_hrs: data.actual_hrs as number,
     assignee: data.assignee as string,
@@ -867,6 +882,18 @@ export async function updateEntity(
         workstreamNormalizationMessage = workstreamResult.message;
       }
     }
+
+    // Validate priority if being updated (milestone and story only)
+    if (sanitizedData.priority !== undefined &&
+        (entity.type === 'milestone' || entity.type === 'story')) {
+      const validPriorities = ['Critical', 'High', 'Medium', 'Low'];
+      if (!validPriorities.includes(sanitizedData.priority as string)) {
+        throw new ValidationError(
+          `Invalid priority '${sanitizedData.priority}'. Valid values: ${validPriorities.join(', ')}`
+        );
+      }
+    }
+
     Object.assign(updatedEntity, sanitizedData);
   }
 
@@ -877,19 +904,21 @@ export async function updateEntity(
     updatedEntity.status = status as typeof updatedEntity.status;
   }
 
-  // Handle dependency changes
-  if ('depends_on' in updatedEntity) {
-    const currentDeps = (updatedEntity as { depends_on: EntityId[] }).depends_on || [];
+  // Handle dependency changes.
+  // Do NOT guard with 'depends_on' in updatedEntity: the field may be absent when
+  // a Task entity was created before the field was introduced (treat as empty array).
+  if (add_dependencies || remove_dependencies) {
+    const currentDeps = ((updatedEntity as any).depends_on as EntityId[]) || [];
 
     if (add_dependencies) {
       const newDeps = [...new Set([...currentDeps, ...add_dependencies])];
-      (updatedEntity as { depends_on: EntityId[] }).depends_on = newDeps;
+      (updatedEntity as any).depends_on = newDeps;
       dependenciesAdded = newDeps.length - currentDeps.length;
     }
 
     if (remove_dependencies) {
       const filtered = currentDeps.filter((d) => !remove_dependencies.includes(d));
-      (updatedEntity as { depends_on: EntityId[] }).depends_on = filtered;
+      (updatedEntity as any).depends_on = filtered;
       dependenciesRemoved = currentDeps.length - filtered.length;
     }
   }

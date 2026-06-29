@@ -401,8 +401,11 @@ export async function batchUpdate(
             statusChanged = true;
           }
 
-          // Handle depends_on - add to existing dependencies
-          if (resolvedPayload.depends_on && Array.isArray(resolvedPayload.depends_on) && 'depends_on' in entity) {
+          // Handle depends_on - add to existing dependencies.
+          // Do NOT guard with 'depends_on' in entity: the field may legitimately be
+          // absent from disk when the entity was last written before depends_on was
+          // introduced (e.g. Task).  Treat a missing field as an empty array.
+          if (resolvedPayload.depends_on && Array.isArray(resolvedPayload.depends_on)) {
             const currentDeps = ((entity as any).depends_on as EntityId[]) || [];
             const newDeps = resolvedPayload.depends_on as EntityId[];
             const mergedDeps = [...new Set([...currentDeps, ...newDeps])];

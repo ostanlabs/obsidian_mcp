@@ -979,14 +979,32 @@ export class V2Runtime {
     const dependsOn = (entity as any).depends_on as EntityId[] | undefined;
     if (dependsOn && dependsOn.length > 0) {
       for (const depId of dependsOn) {
-        await this.ensureAffects(depId, entity.id);
+        // The inverse of `depends_on` differs by target entity type:
+        //   Decision  → affects (legacy field, kept for back-compat)
+        //   All others → blocks
+        const depEntity = await this.getEntity(depId);
+        if (!depEntity) continue;
+        if (depEntity.type === 'decision') {
+          await this.ensureAffects(depId, entity.id);
+        } else {
+          await this.ensureBlocks(depId, entity.id);
+        }
       }
     }
 
+    // Sync the affects inverse (Decision-specific: affects → target.depends_on)
     const affects = (entity as any).affects as EntityId[] | undefined;
     if (affects && affects.length > 0) {
       for (const affectedId of affects) {
         await this.ensureDependsOn(affectedId, entity.id);
+      }
+    }
+
+    // Sync the blocks inverse (non-Decision: blocks → target.depends_on)
+    const blocks = (entity as any).blocks as EntityId[] | undefined;
+    if (blocks && blocks.length > 0) {
+      for (const blockedId of blocks) {
+        await this.ensureDependsOn(blockedId, entity.id);
       }
     }
   }
@@ -1111,6 +1129,7 @@ export class V2Runtime {
 
   /**
    * Ensure an entity's affects array includes the given affected ID.
+   * Only valid for Decision entities (use ensureBlocks for all others).
    */
   private async ensureAffects(affecterId: EntityId, affectedId: EntityId): Promise<void> {
     const affecter = await this.getEntity(affecterId);
@@ -1123,6 +1142,23 @@ export class V2Runtime {
     affecter.updated_at = new Date().toISOString();
     await this.writeEntityDirect(affecter);
     console.error(`[V2Runtime] Synced affects: added ${affectedId} to ${affecterId}`);
+  }
+
+  /**
+   * Ensure a non-Decision entity's blocks array includes the given blocked ID.
+   * This is the correct inverse of depends_on for Milestone, Story, Task, Document.
+   */
+  private async ensureBlocks(blockerId: EntityId, blockedId: EntityId): Promise<void> {
+    const blocker = await this.getEntity(blockerId);
+    if (!blocker) return;
+
+    const currentBlocks = (blocker as any).blocks || [];
+    if (currentBlocks.includes(blockedId)) return;
+
+    (blocker as any).blocks = [...currentBlocks, blockedId];
+    blocker.updated_at = new Date().toISOString();
+    await this.writeEntityDirect(blocker);
+    console.error(`[V2Runtime] Synced blocks: added ${blockedId} to ${blockerId}`);
   }
 
   /**
